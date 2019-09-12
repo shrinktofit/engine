@@ -709,7 +709,7 @@ export class LoadingItems extends CallbacksInvoker {
         this.completedCount = 0;
 
         // Reinitialize CallbacksInvoker, generate three new objects, could be improved
-        CallbacksInvoker.call(this);
+        // CallbacksInvoker.call(this);
 
         _queues[this._id] = null;
         if (_queueDeps[this._id]) {

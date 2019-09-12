@@ -54,8 +54,10 @@ export class BuiltInWorld implements BuiltInWorldBase {
 
         // collision detection
         for (let i = 0; i < this._bodies.length; i++) {
+            // @ts-ignore
             const bodyA = this._bodies[i] as BuiltInBody;
             for (let j = i + 1; j < this._bodies.length; j++) {
+                // @ts-ignore
                 const bodyB = this._bodies[j] as BuiltInBody;
 
                 // first, Check collision filter masks

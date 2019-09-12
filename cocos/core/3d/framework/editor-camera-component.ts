@@ -15,88 +15,77 @@ export class EditorCameraComponent extends CameraComponent {
     private _uiEditorCamera: Camera | null = null;
 
     set projection (val) {
-        // @ts-ignore
-        super.projection = val;
+        this._setProjection(val);
         if (this._uiEditorCamera) {
             this._uiEditorCamera.projectionType = val;
         }
     }
 
     set fov (val) {
-        // @ts-ignore
-        super.fov = val;
+        this._setFov(val);
         if (this._uiEditorCamera) {
             this._uiEditorCamera.fov = toRadian(val);
         }
     }
 
     set orthoHeight (val) {
-        // @ts-ignore
-        super.orthoHeight = val;
+        this._setOrthoHeight(val);
         if (this._uiEditorCamera) {
             this._uiEditorCamera.orthoHeight = val;
         }
     }
 
     set near (val) {
-        // @ts-ignore
-        super.near = val;
+        this._setNear(val);
         if (this._uiEditorCamera) {
             this._uiEditorCamera.nearClip = val;
         }
     }
 
     set far (val) {
-        // @ts-ignore
-        super.far = val;
+        this._setFar(val);
         if (this._uiEditorCamera) {
             this._uiEditorCamera.farClip = val;
         }
     }
 
     set color (val) {
-        // @ts-ignore
-        super.color = val;
+        this._setColor(val);
         if (this._uiEditorCamera) {
             this._uiEditorCamera.clearColor = val;
         }
     }
 
     set depth (val) {
-        // @ts-ignore
-        super.depth = val;
+        this._setDepth(val);
         if (this._uiEditorCamera) {
             this._uiEditorCamera.clearDepth = val;
         }
     }
 
     set stencil (val) {
-        // @ts-ignore
-        super.stencil = val;
+        this._setStencil(val);
         if (this._uiEditorCamera) {
             this._uiEditorCamera.clearStencil = val;
         }
     }
 
     set clearFlags (val) {
-        // @ts-ignore
-        super.clearFlags = val;
+        this._setClearFlags(val);
         if (this._uiEditorCamera) {
             this._uiEditorCamera.clearFlag = val;
         }
     }
 
     set rect (val) {
-        // @ts-ignore
-        super.rect = val;
+        this._setRect(val);
         if (this._uiEditorCamera) {
             this._uiEditorCamera.viewport = val;
         }
     }
 
     set screenScale (val) {
-        // @ts-ignore
-        super.screenScale = val;
+        this._setScreenScale(val);
         if (this._uiEditorCamera) {
             this._uiEditorCamera.screenScale = val;
         }

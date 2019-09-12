@@ -16,6 +16,8 @@ import { uglify } from 'rollup-plugin-uglify';
 // @ts-ignore
 import { excludes } from '../plugin/rollup-plugin-excludes';
 import { terser } from 'rollup-plugin-terser';
+import typescript from 'rollup-plugin-typescript2';
+import { grabClassFieldInitializer } from '@cocos/grab-class-field-initializer';
 
 interface IBaseOptions {
     moduleEntries: string[];
@@ -170,6 +172,13 @@ async function _internalBuild (options: IAdvancedOptions) {
             preferConst: true,
         }),
 
+        typescript({
+            check: false,
+            transformers: [(service) => ({
+                before: [ grabClassFieldInitializer ],
+            })],
+        }),
+
         babel({
             extensions: ['.js', '.ts'],
             highlightCode: true,
@@ -178,19 +187,19 @@ async function _internalBuild (options: IAdvancedOptions) {
                 'node_modules/tween.js/**',
             ],
             plugins: [
-                ['@babel/plugin-proposal-decorators', {
-                    legacy: true,
-                }],
-                ['@babel/plugin-proposal-class-properties', {
-                    loose: true,
-                }],
+                // ['@babel/plugin-proposal-decorators', {
+                //     legacy: true,
+                // }],
+                // ['@babel/plugin-proposal-class-properties', {
+                //     loose: true,
+                // }],
                 ['@babel/plugin-transform-for-of', {
                     loose: true,
                 }],
             ],
             presets: [
                 '@babel/preset-env',
-                '@babel/preset-typescript',
+                // '@babel/preset-typescript',
             ],
         }),
 

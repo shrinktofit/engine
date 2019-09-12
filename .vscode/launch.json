@@ -44,6 +44,13 @@
             "console": "integratedTerminal",
             "internalConsoleOptions": "neverOpen",
             "disableOptimisticBPs": true,
-        }
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Browserify",
+            "cwd": "${workspaceFolder}/bin/.browserify",
+            "program": "${workspaceFolder}/bin/.browserify/test.js"
+        },
     ]
 }

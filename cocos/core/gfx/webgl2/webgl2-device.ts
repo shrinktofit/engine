@@ -320,8 +320,11 @@ export class WebGL2GFXDevice extends GFXDevice {
 
         // create primary window
         this._mainWindow = this.createWindow({
+            // @ts-ignore
             title: this._webGL2RC.canvas.title,
+            // @ts-ignore
             left: this._webGL2RC.canvas.offsetLeft,
+            // @ts-ignore
             top: this._webGL2RC.canvas.offsetTop,
             width: this._webGL2RC.drawingBufferWidth,
             height: this._webGL2RC.drawingBufferHeight,

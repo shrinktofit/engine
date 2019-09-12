@@ -125,3 +125,6 @@ class SamplerLib {
 }
 
 export const samplerLib = new SamplerLib();
+
+(cc.internal || (cc.internal = {})).SamplerInfoIndex = SamplerInfoIndex;
+(cc.internal || (cc.internal = {})).genSamplerHash = genSamplerHash;

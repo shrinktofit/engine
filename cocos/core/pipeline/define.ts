@@ -33,6 +33,8 @@ export enum RenderPriority {
     DEFAULT = 0x80,
 }
 
+(cc.internal || (cc.internal = {})).RenderPriority = RenderPriority;
+
 /**
  * @zh
  * 渲染对象。
@@ -90,6 +92,8 @@ export enum UniformBinding {
     CUSTUM_UBO_BINDING_END_POINT = MAX_BINDING_SUPPORTED - 7,
     CUSTOM_SAMPLER_BINDING_START_POINT = MAX_BINDING_SUPPORTED + 6,
 }
+
+(cc.internal || (cc.internal = {})).UniformBinding = UniformBinding;
 
 export const isBuiltinBinding = (binding: number) =>
     binding >= UniformBinding.CUSTUM_UBO_BINDING_END_POINT && binding < UniformBinding.CUSTOM_SAMPLER_BINDING_START_POINT;

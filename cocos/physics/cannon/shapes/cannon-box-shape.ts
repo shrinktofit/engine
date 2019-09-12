@@ -1,4 +1,4 @@
-import CANNON from 'cannon';
+import * as CANNON from 'cannon';
 import { Vec3 } from '../../../core/math';
 import { BoxShapeBase, ShapeBase } from '../../api';
 import { getWrap, setWrap, stringfyVec3 } from '../../util';

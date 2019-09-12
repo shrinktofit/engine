@@ -66,6 +66,10 @@ export class SkinningModelComponent extends ModelComponent {
     }
 
     set skeleton (val) {
+        this._setSkeleton(val);
+    }
+
+    protected _setSkeleton (val) {
         this._skeleton = val;
         this._update();
     }

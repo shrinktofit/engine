@@ -210,16 +210,22 @@ function genProperty (ctor, properties, propName, options, desc, cache) {
         }
         else {
             // typescript
-            const actualDefaultValues = cache.default || (cache.default = extractActualDefaultValues(ctor));
-            if (actualDefaultValues.hasOwnProperty(propName)) {
-                // @property(...)
-                // value = null;
-                defaultValue = actualDefaultValues[propName];
+            if (cache.__initorfx) {
+                // If the initializer is grabed by @cocos/grab-class-field-initializer.
+                defaultValue = cache.__initorfx();
                 isDefaultValueSpecified = true;
-            }
-            else {
-                // @property(...)
-                // value;
+            } else {
+                const actualDefaultValues = cache.default || (cache.default = extractActualDefaultValues(ctor));
+                if (actualDefaultValues.hasOwnProperty(propName)) {
+                    // @property(...)
+                    // value = null;
+                    defaultValue = actualDefaultValues[propName];
+                    isDefaultValueSpecified = true;
+                }
+                else {
+                    // @property(...)
+                    // value;
+                }
             }
         }
 
@@ -607,3 +613,12 @@ export function mixins (...constructors: Function[]) {
         }
     };
 }
+
+((internal) => {
+    internal.__initorfxDecorator = (initorfx: () => any) => {
+        return (target: any, propertyKey: string | symbol)=> {
+            const cache = getClassCache(target.constructor);
+            cache.__initorfx = initorfx;
+        };
+    };
+})(cc.internal || (cc.internal = {}));

@@ -110,11 +110,10 @@ export class BatchedSkinningModelComponent extends SkinningModelComponent {
 
     @property({ override: true, visible: false })
     get mesh () {
-        return this._mesh;
+        return this._getMesh();
     }
     set mesh (val) {
-        // @ts-ignore
-        super.mesh = val;
+        this._setMesh(val);
     }
 
     @property({ override: true, visible: false })
@@ -122,8 +121,7 @@ export class BatchedSkinningModelComponent extends SkinningModelComponent {
         return this._skeleton;
     }
     set skeleton (val) {
-        // @ts-ignore
-        super.skeleton = val;
+        this._setSkeleton(val);
     }
 
     public onLoad () {

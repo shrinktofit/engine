@@ -27,10 +27,18 @@ export class RenderableComponent extends Component {
     })
     get sharedMaterials () {
         // if we don't create an array copy, the editor will modify the original array directly.
-        return this._materials.slice();
+        return this._getSharedMaterials();
     }
 
     set sharedMaterials (val) {
+        this._setSharedMaterials(val);
+    }
+
+    protected _getSharedMaterials() {
+        return this._materials.slice();
+    }
+
+    protected _setSharedMaterials(val) {
         for (let i = 0; i < val.length; i++) {
             if (val[i] !== this._materials[i]) {
                 this.setMaterial(val[i], i);

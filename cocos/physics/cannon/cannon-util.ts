@@ -1,4 +1,4 @@
-import CANNON from 'cannon';
+import * as CANNON from 'cannon';
 import { IRaycastOptions, RigidBodyBase, ShapeBase } from '../api';
 import { RaycastResult } from '../raycast-result';
 import { getWrap } from '../util';

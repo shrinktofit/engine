@@ -326,8 +326,7 @@ export class AvatarModelComponent extends SkinningModelComponent {
         skeleton.joints = skeleton.joints.map((_, idx, arr) => arr[idxMap[idx]]);
         skeleton.bindposes = bindposes.map((_, idx, arr) => arr[idxMap[idx]]);
         // apply
-        // @ts-ignore
-        super.skeleton = skeleton;
+        this._setSkeleton(skeleton);
     }
 
     public combineMeshes () {

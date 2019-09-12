@@ -1,5 +1,5 @@
-declare type GLint64 = number;
-declare type GLuint64 = GLint64;
+// declare type GLint64 = number;
+// declare type GLuint64 = GLint64;
 
 interface EXT_color_buffer_float {
 }
@@ -109,10 +109,10 @@ interface HTMLCanvasElement {
     getContext(contextId: "webgl2" | "experimental-webgl2", contextAttributes?: WebGLContextAttributes): WebGL2RenderingContext | null;
 }
 
-interface WebGL2RenderingContext extends WebGL2RenderingContextBase {
+interface WebGL2RenderingContext334 extends WebGL2RenderingContextBase {
 }
 
-declare var WebGL2RenderingContext: {
+declare var WebGL2RenderingContext33: {
     prototype: WebGLRenderingContext;
     new(): WebGLRenderingContext;
     readonly ACTIVE_ATTRIBUTES: GLenum;
@@ -1551,4 +1551,4 @@ interface WebGL2RenderingContextBase {
     readonly MAX_CLIENT_WAIT_TIMEOUT_WEBGL: GLenum;
 }
 
-type Uint32List = Uint32Array | GLuint[];
+// type Uint32List = Uint32Array | GLuint[];

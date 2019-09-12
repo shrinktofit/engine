@@ -16,10 +16,12 @@ export function createRigidBody (options?: ICreateBodyOptions): RigidBodyBase {
 }
 
 export function createBoxShape (size: Vec3): BoxShapeBase {
+    // @ts-ignore
     return new BoxShape(size);
 }
 
 export function createSphereShape (radius: number): SphereShapeBase {
+    // @ts-ignore
     return new SphereShape(radius);
 }
 

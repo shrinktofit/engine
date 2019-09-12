@@ -260,8 +260,8 @@ export class Game extends EventTarget {
      */
     public renderType: number = -1;
 
-    public eventTargetOn = super.on;
-    public eventTargetOnce = super.once;
+    public eventTargetOn;
+    public eventTargetOnce;
 
     /**
      * @en
@@ -300,6 +300,12 @@ export class Game extends EventTarget {
     public _sceneInfos: string[] = [];
     public collisionMatrix = [];
     public groupList: any[] = [];
+
+    constructor () {
+        super();
+        this.eventTargetOn = super.on;
+        this.eventTargetOnce = super.once;
+    }
 
     // @Methods
 

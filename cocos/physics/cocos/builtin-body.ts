@@ -58,11 +58,13 @@ export class BuiltInBody extends BuiltinObject implements BuiltInRigidBodyBase {
         }
     }
 
+    // @ts-ignore
     public addShape (shape: BuiltinShape): void {
         this._shapes.push(shape);
         shape.body = this;
     }
 
+    // @ts-ignore
     public removeShape (shape: BuiltinShape): void {
         const i = this._shapes.indexOf(shape);
         if (i >= 0) {
@@ -74,9 +76,11 @@ export class BuiltInBody extends BuiltinObject implements BuiltInRigidBodyBase {
 
         const cworld = world as unknown as (BuiltInWorld | null);
         if (cworld) {
+            // @ts-ignore
             cworld.addBody(this);
         } else {
             if (this._world != null) {
+                // @ts-ignore
                 this._world.removeBody(this);
             }
         }

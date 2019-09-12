@@ -232,13 +232,11 @@ export class ParticleSystemComponent extends RenderableComponent {
     })
     get sharedMaterials () {
         // if we don't create an array copy, the editor will modify the original array directly.
-        // @ts-ignore
-        return super.sharedMaterials;
+        return this._getSharedMaterials();
     }
 
     set sharedMaterials (val) {
-        // @ts-ignore
-        super.sharedMaterials = val;
+        this._setSharedMaterials(val);
     }
 
     // color over lifetime module

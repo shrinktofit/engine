@@ -32,6 +32,7 @@
     "@babel/plugin-transform-for-of": "^7.4.4",
     "@babel/preset-env": "^7.2.0",
     "@babel/preset-typescript": "^7.1.0",
+    "@cocos/grab-class-field-initializer": "^1.0.3",
     "@types/fs-extra": "^5.0.4",
     "@types/jest": "^24.0.15",
     "@types/uglify-js": "^3.0.4",
@@ -41,8 +42,9 @@
     "aliasify": "^2.1.0",
     "async": "1.5.2",
     "babel-preset-env": "^1.2.2",
-    "babelify": "7.3.0",
+    "babelify": "^10.0.0",
     "browserify": "^16.2.3",
+    "browserify-incremental": "^3.1.1",
     "cannon": "github:cocos-creator/cannon.js#cocos-master",
     "chalk": "1.1.0",
     "commander": "^2.20.0",
@@ -82,10 +84,12 @@
     "rollup-plugin-multi-entry": "^2.1.0",
     "rollup-plugin-node-resolve": "5.2.0",
     "rollup-plugin-terser": "^5.1.1",
+    "rollup-plugin-typescript2": "^0.24.1",
     "rollup-plugin-uglify": "^6.0.2",
     "rollup-watch": "^4.3.1",
     "tfig": "^1.0.25",
     "ts-jest": "^24.0.2",
+    "tsify": "^4.0.1",
     "tween.js": "github:cocos-creator/tween.js#cocos-master",
     "typedoc": "^0.14.2",
     "typedoc-plugin-external-module-name": "github:cocos-creator/typedoc-plugin-external-module-name#master",
@@ -98,5 +102,6 @@
     "vinyl-source-stream": "1.0.0",
     "watchify": "^3.7.0",
     "yargs": "^12.0.5"
-  }
+  },
+  "dependencies": {}
 }

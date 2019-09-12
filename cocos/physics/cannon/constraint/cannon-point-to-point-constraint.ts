@@ -1,4 +1,4 @@
-import CANNON from 'cannon';
+import * as CANNON from 'cannon';
 import { Vec3 } from '../../../core/math';
 import { IPointToPointConstraintOptions, PointToPointConstraintBase } from '../../api';
 import { CannonRigidBody } from '../cannon-body';

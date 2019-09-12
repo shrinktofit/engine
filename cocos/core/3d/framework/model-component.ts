@@ -68,10 +68,18 @@ export class ModelComponent extends RenderableComponent {
         type: Mesh,
     })
     get mesh () {
-        return this._mesh;
+        return this._getMesh();
     }
 
     set mesh (val) {
+        this._setMesh(val);
+    }
+
+    protected _getMesh() {
+        return this._mesh;
+    }
+
+    protected _setMesh(val) {
         const old = this._mesh;
         this._mesh = val;
         this._onMeshChanged(old);

@@ -123,6 +123,10 @@ export class CameraComponent extends Component {
     }
 
     set projection (val) {
+        this._setProjection(val);
+    }
+
+    protected _setProjection(val) {
         this._projection = val;
         if (this._camera) { this._camera.projectionType = val; }
     }
@@ -137,6 +141,10 @@ export class CameraComponent extends Component {
     }
 
     set priority (val) {
+        this._setPriority(val);
+    }
+
+    protected _setPriority (val) {
         this._priority = val;
         if (this._camera){
             this._camera.priority = val;
@@ -153,6 +161,10 @@ export class CameraComponent extends Component {
     }
 
     set fov (val) {
+        this._setFov(val);
+    }
+
+    protected _setFov (val) {
         this._fov = val;
         if (this._camera) { this._camera.fov = toRadian(val); }
     }
@@ -167,6 +179,10 @@ export class CameraComponent extends Component {
     }
 
     set orthoHeight (val) {
+        this._setOrthoHeight(val);
+    }
+
+    protected _setOrthoHeight (val) {
         this._orthoHeight = val;
         if (this._camera) { this._camera.orthoHeight = val; }
     }
@@ -181,6 +197,10 @@ export class CameraComponent extends Component {
     }
 
     set near (val) {
+        this._setNear(val);
+    }
+
+    protected _setNear (val) {
         this._near = val;
         if (this._camera) { this._camera.nearClip = val; }
     }
@@ -195,6 +215,10 @@ export class CameraComponent extends Component {
     }
 
     set far (val) {
+        this._setFar(val);
+    }
+
+    protected _setFar (val) {
         this._far = val;
         if (this._camera) { this._camera.farClip = val; }
     }
@@ -210,6 +234,10 @@ export class CameraComponent extends Component {
     }
 
     set color (val) {
+        this._setColor(val);
+    }
+
+    protected _setColor (val) {
         this._color.set(val);
         if (this._camera) {
             this._camera.clearColor.r = val.x;
@@ -229,6 +257,10 @@ export class CameraComponent extends Component {
     }
 
     set depth (val) {
+        this._setDepth(val);
+    }
+
+    protected _setDepth (val) {
         this._depth = val;
         if (this._camera) { this._camera.clearDepth = val; }
     }
@@ -243,6 +275,10 @@ export class CameraComponent extends Component {
     }
 
     set stencil (val) {
+        this._setStencil(val);
+    }
+
+    protected _setStencil (val) {
         this._stencil = val;
         if (this._camera) { this._camera.clearStencil = val; }
     }
@@ -259,6 +295,10 @@ export class CameraComponent extends Component {
     }
 
     set clearFlags (val) {
+        this._setClearFlags(val);
+    }
+
+    protected _setClearFlags (val) {
         this._clearFlags = val;
         if (this._camera) { this._camera.clearFlag = val; }
     }
@@ -273,6 +313,10 @@ export class CameraComponent extends Component {
     }
 
     set rect (val) {
+        this._setRect(val);
+    }
+
+    protected _setRect (val) {
         this._rect = val;
         if (this._camera) { this._camera.viewport = val; }
     }
@@ -288,6 +332,10 @@ export class CameraComponent extends Component {
     }
 
     set screenScale (val) {
+        this._setScreenScale(val);
+    }
+
+    protected _setScreenScale (val) {
         this._screenScale = val;
         if (this._camera) { this._camera.screenScale = val; }
     }

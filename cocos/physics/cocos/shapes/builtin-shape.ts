@@ -4,6 +4,7 @@ import { BuiltInBody } from '../builtin-body';
 import { IBuiltinShape } from '../builtin-interface';
 import { BuiltinObject } from '../object/builtin-object';
 
+// @ts-ignore
 export class BuiltinShape extends BuiltinObject implements ShapeBase {
 
     public get localShape () {

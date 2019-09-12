@@ -46,3 +46,5 @@ export function murmurhash2_32_gc (str: string, seed: number) {
 
     return h >>> 0;
 }
+
+(cc.internal || (cc.internal = {})).murmurhash2_32_gc = murmurhash2_32_gc;

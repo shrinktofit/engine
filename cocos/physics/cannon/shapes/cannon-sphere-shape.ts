@@ -1,4 +1,4 @@
-import CANNON from 'cannon';
+import * as CANNON from 'cannon';
 import { Vec3 } from '../../../core/math';
 import { ShapeBase, SphereShapeBase } from '../../api';
 import { maxComponent, setWrap } from '../../util';
