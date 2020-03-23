@@ -47,7 +47,7 @@
     "browserify-incremental": "^3.1.1",
     "cannon": "github:cocos-creator/cannon.js#cocos-master",
     "chalk": "1.1.0",
-    "commander": "^2.20.0",
+    "commander": "^5.0.0",
     "dat.gui": "^0.7.5",
     "del": "1.2.0",
     "eslint": "^6.1.0",
