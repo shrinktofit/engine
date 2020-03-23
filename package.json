@@ -54,7 +54,7 @@
     "event-stream": "3.3.2",
     "fire-fs": "0.2.1",
     "fs-extra": "^7.0.1",
-    "fs-jetpack": "^1.1.0",
+    "fs-jetpack": "^2.2.3",
     "gulp": "^3.9.1",
     "gulp-babel": "6.1.2",
     "gulp-cached": "1.1.0",
