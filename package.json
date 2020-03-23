@@ -67,7 +67,7 @@
     "gulp-plumber": "0.6.6",
     "gulp-rename": "1.2.2",
     "gulp-shell": "^0.6.5",
-    "gulp-size": "2.1.0",
+    "gulp-size": "3.0.0",
     "gulp-sourcemaps": "1.5.2",
     "gulp-uglify": "^3.0.0",
     "gulp-util": "3.0.6",
