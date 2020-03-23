@@ -74,7 +74,7 @@
     "http-server": "^0.11.1",
     "jest": "^24.8.0",
     "jshint-stylish": "2.1.0",
-    "multipipe": "0.3.0",
+    "multipipe": "4.0.0",
     "persistify": "^1.1.1",
     "require-dir": "0.3.0",
     "rollup": "^1.15.6",
