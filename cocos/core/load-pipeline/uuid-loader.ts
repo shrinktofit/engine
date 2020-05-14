@@ -216,6 +216,18 @@ function canDeferredLoad (asset, item, isScene) {
 
 let MissingClass;
 
+function getRequestedClassIds (json: any, classIds: string[]) {
+    if (typeof json !== 'object' || json === null) {
+        return;
+    }
+    if ('__type__' in json) {
+        classIds.push(json.__type__);
+    }
+    for (const p in json) {
+        getRequestedClassIds(json[p], classIds);
+    }
+}
+
 export function loadUuid (item, callback) {
     if (EDITOR) {
         MissingClass = MissingClass || EditorExtends.MissingReporter.classInstance;
@@ -245,6 +257,34 @@ export function loadUuid (item, callback) {
     if (json === undefined || json === null) {
         return new Error(getError(4923, item.id));
     }
+
+    let importRequestedModulesPromise;
+
+    if (globalThis.getRequestedModule) {
+        const requestedClassIds: string[] = [];
+        getRequestedClassIds(json, requestedClassIds);
+        const uniqueClassIds = Array.from(new Set(requestedClassIds));
+        const requestedModules: string[] = [];
+        for (let iClass = 0; iClass < uniqueClassIds.length; ++ iClass) {
+            const requestedModule = globalThis.getRequestedModule(uniqueClassIds[iClass]);
+            if (requestedModule) {
+                requestedModules.push(requestedModule);
+            }
+        }
+        if (requestedModules.length !== 0) {
+            const uniqueModules = Array.from(new Set(requestedModules));
+            const p = Promise.all(uniqueModules.map(m => import(m)));
+            importRequestedModulesPromise = Promise.resolve().then(() => {
+                const label = `Loading modules ${uniqueModules}`;
+                console.time(label);
+                return p.then(() => {
+                    console.timeEnd(label);
+                });
+            });
+        }
+    }
+
+    const fx = () => {
 
     let classFinder;
     let isScene = isSceneObj(json);
@@ -359,6 +399,15 @@ export function loadUuid (item, callback) {
 
     // @ts-ignore
     loadDepends(this.pipeline, item, asset, depends, wrappedCallback);
+    };
+
+    if (!importRequestedModulesPromise) {
+        fx();
+    } else {
+        importRequestedModulesPromise.then(() => {
+            fx();
+        });
+    }
 }
 
 loadUuid.isSceneObj = isSceneObj;
