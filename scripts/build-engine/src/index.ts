@@ -6,8 +6,8 @@ import json from '@rollup/plugin-json';
 import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import { terser as rpTerser } from 'rollup-plugin-terser';
-// @ts-ignore
 import babelPresetEnv from '@babel/preset-env';
+import type { Options as BabelPresetEnvOptions } from '@babel/preset-env';
 import babelPresetCc from '@cocos/babel-preset-cc';
 // @ts-ignore
 import babelPluginTransformForOf from '@babel/plugin-transform-for-of';
@@ -18,11 +18,13 @@ import rpProgress from 'rollup-plugin-progress';
 import rpVirtual from '@rollup/plugin-virtual';
 import { ModuleOption, enumerateModuleOptionReps, parseModuleOption } from './module-option';
 import { generateCCSource } from './make-cc';
-import nodeResolve from 'resolve';
 import { getModuleName } from './module-name';
 import tsConfigPaths from './ts-paths';
-import JSON5 from 'json5';
-import { getPlatformConstantNames, IBuildTimeConstants } from './build-time-constants';
+import { IBuildTimeConstants, getPlatformConstantNames } from './build-time-constants';
+import { CCConfig, CCConfigContext, CCConfigFn } from '../@types/cc-config';
+import { createEmscriptenWasmModulesHelperModules } from './emscripten-wasm';
+import { createConfigGenerator } from './config';
+import { filePathToModuleRequest } from './utils';
 
 export { ModuleOption, enumerateModuleOptionReps, parseModuleOption };
 
@@ -121,11 +123,18 @@ namespace build {
          */
         targets?: string | string[] | Record<string, string>;
 
+        /**
+         * Loose mode.
+         */
+        loose?: boolean;
+
         visualize?: boolean | {
             file?: string;
         };
 
         buildTimeConstants: IBuildTimeConstants;
+
+        wasm?: boolean | 'fallback';
     }
 
     export interface Result {
@@ -150,7 +159,7 @@ export { build };
 function _ensureUniqueModules (options: build.Options) {
     const uniqueModuleEntries: string[] = [];
     for (const moduleEntry of options.moduleEntries!) {
-        if (uniqueModuleEntries.indexOf(moduleEntry) < 0) {
+        if (!uniqueModuleEntries.includes(moduleEntry)) {
             uniqueModuleEntries.push(moduleEntry);
         }
     }
@@ -180,12 +189,6 @@ async function getEngineEntries (
     return result;
 }
 
-interface CCConfig {
-    platforms?: Record<string, {
-        moduleOverrides?: Record<string, string>;
-    }>;
-}
-
 async function _doBuild ({
     moduleEntries,
     options,
@@ -207,8 +210,12 @@ async function _doBuild ({
         ammoJsWasm = false;
     }
 
-    const ccConfigFile = ps.join(engineRoot, 'cc.config.json');
-    const ccConfig: CCConfig = JSON5.parse(await fs.readFile(ccConfigFile, 'utf8'));
+    const configFn = await createConfigGenerator(engineRoot);
+
+    const configContext = {
+        constants: options.buildTimeConstants,
+    };
+    const ccConfig: CCConfig = await configFn(configContext);
 
     const engineEntries = await getEngineEntries(
         engineRoot,
@@ -221,6 +228,8 @@ async function _doBuild ({
     rpVirtualOptions['internal:constants'] = vmInternalConstants;
 
     const forceStandaloneModules = [ 'cc.wait-for-ammo-instantiation', 'cc.decorator' ];
+
+    const rollupExternals: string[] = [];
 
     let rollupEntries: NonNullable<rollup.RollupOptions['input']> | undefined;
     if (split) {
@@ -245,7 +254,20 @@ async function _doBuild ({
         console.debug(`Module source "cc":\n${rpVirtualOptions['cc']}`);
     }
 
-    const presetEnvOptions: any = {};
+    options.wasm = 'fallback';
+    if (ccConfig.emscriptenWasmModules) {
+        const { helperModules, baseDir } = await createEmscriptenWasmModulesHelperModules(
+            ccConfig.emscriptenWasmModules,
+            engineRoot,
+            options.wasm,
+        );
+        Object.assign(rpVirtualOptions, helperModules);
+    }
+
+    const presetEnvOptions: BabelPresetEnvOptions = {
+        loose: options.loose,
+    };
+
     if (options.targets !== undefined) {
         presetEnvOptions.targets = options.targets;
     }
@@ -261,9 +283,7 @@ async function _doBuild ({
         babelHelpers: 'bundled',
         extensions: ['.js', '.ts'],
         highlightCode: true,
-        exclude: [
-            /node_modules[\/\\]/g,
-        ],
+        exclude: ccConfig.transformExcludes ?? [],
         plugins: babelPlugins,
         presets: [
             [babelPresetEnv, presetEnvOptions],
@@ -274,15 +294,11 @@ async function _doBuild ({
     };
 
     const moduleRedirects: Record<string, string> = {};
-    const platformConstant = getPlatformConstantNames().find((name) => options.buildTimeConstants[name] === true);
-    if (platformConstant) {
-        const moduleOverrides = ccConfig.platforms?.[platformConstant]?.moduleOverrides;
-        if (moduleOverrides) {
-            for (const [source, override] of Object.entries(moduleOverrides)) {
-                const normalizedSource = makePathEqualityKey(ps.resolve(engineRoot, source));
-                const normalizedOverride = ps.resolve(engineRoot, override);
-                moduleRedirects[normalizedSource] = normalizedOverride;
-            }
+    if (ccConfig.moduleOverrides) {
+        for (const [source, override] of Object.entries(ccConfig.moduleOverrides)) {
+            const normalizedSource = makePathEqualityKey(ps.resolve(engineRoot, source));
+            const normalizedOverride = ps.resolve(engineRoot, override);
+            moduleRedirects[normalizedSource] = normalizedOverride;
         }
     }
 
@@ -316,10 +332,7 @@ async function _doBuild ({
         rpBabel(babelOptions),
 
         commonjs({
-            namedExports: {
-                '@cocos/ammo': ['Ammo'],
-                '@cocos/cannon': ['CANNON'],
-            },
+            namedExports: ccConfig.namedExports ?? {},
         }),
     ];
 
@@ -370,31 +383,8 @@ async function _doBuild ({
         input: rollupEntries,
         plugins: rollupPlugins,
         cache: false,
+        external: rollupExternals,
     };
-
-    const ammoJsAsmJsModule = await nodeResolveAsync('@cocos/ammo/builds/ammo.full.js');
-    const ammoJsWasmModule = await nodeResolveAsync('@cocos/ammo/builds/ammo.wasm.js');
-    if (ammoJsWasm === 'fallback') {
-        rpVirtualOptions['@cocos/ammo'] = `
-let ammo;
-let isWasm = false;
-if (typeof WebAssembly === 'undefined') {
-    ammo = await import('${filePathToModuleRequest(ammoJsAsmJsModule)}');
-} else {
-    ammo = await import('${filePathToModuleRequest(ammoJsWasmModule)}');
-    isWasm = true;
-}
-export default ammo.default;
-export { isWasm };
-`;
-    } else if (ammoJsWasm === true) {
-        rpVirtualOptions['@cocos/ammo'] = `
-import Ammo from '${filePathToModuleRequest(ammoJsWasmModule)}';
-export default Ammo;
-const isWasm = false;
-export { isWasm };
-`;
-    }
 
     const rollupBuild = await rollup.rollup(rollupOptions);
 
@@ -402,7 +392,7 @@ export { isWasm };
     if (incrementalFile) {
         const watchFiles: Record<string, number> = {};
         for (const watchFile of rollupBuild.watchFiles.concat([
-            ccConfigFile,
+            // ccConfigFile,
         ])) {
             try {
                 const stat = await fs.stat(watchFile);
@@ -472,12 +462,6 @@ export { isWasm };
         }
     }
 
-    if (ammoJsWasm === 'fallback' || ammoJsWasm === true) {
-        await fs.copy(
-            ps.join(ammoJsWasmModule, '..', 'ammo.wasm.wasm'),
-            ps.join(options.out, 'ammo.wasm.wasm'));
-    }
-
     return result;
 
     async function copy (src: string) {
@@ -486,31 +470,13 @@ export { isWasm };
         await fs.ensureDir(ps.dirname(target));
         await fs.copy(src, target);
     }
-
-    async function nodeResolveAsync (specifier: string) {
-        return new Promise<string>((r, reject) => {
-            nodeResolve(specifier, {
-                basedir: engineRoot,
-            }, (err, resolved, pkg) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    r(resolved);
-                }
-            });
-        });
-    }
-}
-
-function filePathToModuleRequest(path: string) {
-    return path.replace(/\\/g, '\\\\');
 }
 
 function getModuleSourceInternalConstants (buildTimeConstants: IBuildTimeConstants) {
     return Object.entries(buildTimeConstants).map(([k, v]) => `export const ${k} = ${v};`).join('\n');
 }
 
-function moduleOptionsToRollupFormat(moduleOptions: ModuleOption): rollup.ModuleFormat {
+function moduleOptionsToRollupFormat (moduleOptions: ModuleOption): rollup.ModuleFormat {
     switch (moduleOptions) {
         case ModuleOption.cjs: return 'cjs';
         case ModuleOption.esm: return 'esm';
@@ -520,7 +486,7 @@ function moduleOptionsToRollupFormat(moduleOptions: ModuleOption): rollup.Module
     }
 }
 
-export async function isSourceChanged(incrementalFile: string) {
+export async function isSourceChanged (incrementalFile: string) {
     let record: Record<string, number>;
     try {
         record = await fs.readJSON(incrementalFile);

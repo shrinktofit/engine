@@ -23,7 +23,7 @@
                 "--module=system",
                 "--sourcemap",
                 "--out=out",
-                "--split"
+                "physics-ammo"
             ]
         }
     ]
