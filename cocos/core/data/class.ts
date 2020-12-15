@@ -612,7 +612,7 @@ function parseAttributes (constructor: Function, attributes: IAcceptableAttribut
 
     parseSimpleAttribute('formerlySerializedAs', 'string');
 
-    if (EDITOR) {
+    if (EDITOR) { 
         if ('animatable' in attributes) {
             (attrs || initAttrs())[propertyNamePrefix + 'animatable'] = attributes.animatable;
         }
