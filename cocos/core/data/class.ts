@@ -600,7 +600,7 @@ function parseAttributes (constructor: Function, attributes: IAcceptableAttribut
     if (attributes.__noImplicit) {
         (attrs || initAttrs())[propertyNamePrefix + 'serializable'] = attributes.serializable ?? false;
     } else {
-        if (attributes.serializable === false) {
+        if (attributes.serializable === false) { 
             if (DEV && usedInGetter) {
                 errorID(3613, 'serializable', name, propertyName);
             }
