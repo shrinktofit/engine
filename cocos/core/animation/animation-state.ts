@@ -28,18 +28,19 @@
  * @module animation
  */
 
+import { EDITOR } from 'internal:constants';
 import { Node } from '../scene-graph/node';
 import { AnimationClip, IRuntimeCurve } from './animation-clip';
 import { AnimCurve, RatioSampler } from './animation-curve';
 import { createBoundTarget, createBufferedTarget, IBufferedTarget, IBoundTarget } from './bound-target';
 import { Playable } from './playable';
 import { WrapMode, WrapModeMask, WrappedInfo } from './types';
-import { EDITOR } from 'internal:constants';
 import { HierarchyPath, evaluatePath, TargetPath } from './target-path';
 import { BlendStateBuffer, createBlendStateWriter, IBlendStateWriter, IBlendStateWriterHost } from '../../3d/skeletal-animation/skeletal-animation-blending';
 import { legacyCC } from '../global-exports';
 import { ccenum } from '../value-types/enum';
 import { IValueProxyFactory } from './value-proxy';
+import { clamp } from '../math';
 
 /**
  * @en The event type supported by Animation
@@ -92,7 +93,8 @@ export class ICurveInstance {
     constructor (
         runtimeCurve: Omit<IRuntimeCurve, 'sampler'>,
         target: any,
-        boundTarget: IBoundTarget) {
+        boundTarget: IBoundTarget,
+    ) {
         this._curve = runtimeCurve.curve;
         this._curveDetail = runtimeCurve;
 
@@ -112,7 +114,8 @@ export class ICurveInstance {
                 samplerResultCache.from,
                 samplerResultCache.fromRatio,
                 samplerResultCache.to,
-                samplerResultCache.toRatio);
+                samplerResultCache.toRatio,
+            );
         }
         this._setValue(value, weight);
     }
@@ -206,12 +209,11 @@ export class AnimationState extends Playable {
         if (EDITOR && !legacyCC.GAME_VIEW) { return; }
 
         // dynamic change wrapMode will need reset time to 0
-        this.time = 0;
+        this._time = 0;
 
         if (value & WrapModeMask.Loop) {
             this.repeatCount = Infinity;
-        }
-        else {
+        } else {
             this.repeatCount = 1;
         }
     }
@@ -240,9 +242,51 @@ export class AnimationState extends Playable {
         const reverse = (this.wrapMode & WrapModeMask.Reverse) === WrapModeMask.Reverse;
         if (value === Infinity && !shouldWrap && !reverse) {
             this._process = this.simpleProcess;
-        }
-        else {
+        } else {
             this._process = this.process;
+        }
+    }
+
+    /**
+     * @en Gets The accumulated playing time of this animation, in seconds.
+     * @zh 获取动画的累计播放时间，以秒为单位。
+     * @default 0
+     */
+    get time () {
+        return this._time;
+    }
+
+    /**
+     * @en The accumulated playing time of this animation, in seconds.
+     * If the value is less than the animation's duration, the animation is played to that time.
+     * Otherwise, if the value exceeds the animation's duration,
+     * where the animation is played to is decided by
+     * applying current wrap mode to the **absolute value** of that value.
+     * @zh 设置动画的累计播放时间，以秒为单位。
+     * 当该值小于动画的周期，会将动画播放至该时刻；
+     * 否则，动画将播放至该值的绝对值应用于当前的循环方式得到的时刻。
+     */
+    set time (value) {
+        this._time = clamp(value, 0.0, this.duration);
+        this._currentFramePlayed = false;
+
+        if (!EDITOR || legacyCC.GAME_VIEW) {
+            this._lastWrapInfoEvent = null;
+            this._ignoreIndex = InvalidIndex;
+
+            const info = this.getWrappedInfo(this._time, this._wrappedInfo);
+            const direction = info.direction;
+            let frameIndex = this._clip.getEventGroupIndexAtRatio(info.ratio);
+
+            // only ignore when time not on a frame index
+            if (frameIndex < 0) {
+                frameIndex = ~frameIndex - 1;
+
+                // if direction is inverse, then increase index
+                if (direction < 0) { frameIndex += 1; }
+
+                this._ignoreIndex = frameIndex;
+            }
         }
     }
 
@@ -275,13 +319,6 @@ export class AnimationState extends Playable {
      * @default: 1.0
      */
     public speed = 1;
-
-    /**
-     * @en The current time of this animation in seconds.
-     * @zh 动画当前的时间，秒。
-     * @default 0
-     */
-    public time = 0;
 
     /**
      * The weight.
@@ -321,6 +358,7 @@ export class AnimationState extends Playable {
     })[] = [];
     protected _curveLoaded = false;
     protected _ignoreIndex = InvalidIndex;
+    private _time = 0;
     private _blendStateBuffer: BlendStateBuffer | null = null;
     private _blendStateWriters: IBlendStateWriter[] = [];
     private _allowLastFrame = false;
@@ -522,28 +560,13 @@ export class AnimationState extends Playable {
         this._target = target;
     }
 
+    /**
+     * 设置动画的当前时间，等价于 `this.time = time`。
+     * @param time 要设置的时间。
+     * @deprecated Since 3.0. Please directly set `.time` instead.
+     */
     public setTime (time: number) {
-        this._currentFramePlayed = false;
-        this.time = time || 0;
-
-        if (!EDITOR || legacyCC.GAME_VIEW) {
-            this._lastWrapInfoEvent = null;
-            this._ignoreIndex = InvalidIndex;
-
-            const info = this.getWrappedInfo(time, this._wrappedInfo);
-            const direction = info.direction;
-            let frameIndex = this._clip.getEventGroupIndexAtRatio(info.ratio);
-
-            // only ignore when time not on a frame index
-            if (frameIndex < 0) {
-                frameIndex = ~frameIndex - 1;
-
-                // if direction is inverse, then increase index
-                if (direction < 0) { frameIndex += 1; }
-
-                this._ignoreIndex = frameIndex;
-            }
-        }
+        this.time = time;
     }
 
     public update (delta: number) {
@@ -561,9 +584,8 @@ export class AnimationState extends Playable {
 
         // var playPerfectFirstFrame = (this.time === 0);
         if (this._currentFramePlayed) {
-            this.time += (delta * this.speed);
-        }
-        else {
+            this._time += (delta * this.speed);
+        } else {
             this._currentFramePlayed = true;
         }
 
@@ -613,9 +635,8 @@ export class AnimationState extends Playable {
         if (time > duration) {
             const tempTime = time % duration;
             time = tempTime === 0 ? duration : tempTime;
-        }
-        else if (time < 0) {
-            time = time % duration;
+        } else if (time < 0) {
+            time %= duration;
             if (time !== 0) { time += duration; }
         }
 
@@ -645,7 +666,7 @@ export class AnimationState extends Playable {
     }
 
     public sample () {
-        const info = this.getWrappedInfo(this.time, this._wrappedInfo);
+        const info = this.getWrappedInfo(this._time, this._wrappedInfo);
         this._sampleCurves(info.ratio);
         if (!EDITOR || legacyCC.GAME_VIEW) {
             this._sampleEvents(info);
@@ -680,14 +701,25 @@ export class AnimationState extends Playable {
 
     public simpleProcess () {
         const duration = this.duration;
-        let time = this.time % duration;
-        if (time < 0) { time += duration; }
+        let time = this._time;
+        if (time > duration) {
+            time %= duration;
+            if (time === 0) {
+                time = duration;
+            }
+        } else if (time < 0) {
+            time %= duration;
+            if (time !== 0) {
+                time += duration;
+            }
+        }
+
         const ratio = time / duration;
         this._sampleCurves(ratio);
 
         if (!EDITOR || legacyCC.GAME_VIEW) {
             if (this._clip.hasEvents()) {
-                this._sampleEvents(this.getWrappedInfo(this.time, this._wrappedInfo));
+                this._sampleEvents(this.getWrappedInfo(this._time, this._wrappedInfo));
             }
         }
 
@@ -696,7 +728,7 @@ export class AnimationState extends Playable {
                 this._lastIterations = ratio;
             }
 
-            if ((this.time > 0 && this._lastIterations > ratio) || (this.time < 0 && this._lastIterations < ratio)) {
+            if ((this._time > 0 && this._lastIterations > ratio) || (this._time < 0 && this._lastIterations < ratio)) {
                 this.emit(EventType.LASTFRAME, this);
             }
 
@@ -750,7 +782,7 @@ export class AnimationState extends Playable {
             const samplerSharedGroup = this._samplerSharedGroups[iSamplerSharedGroup];
             const sampler = samplerSharedGroup.sampler;
             const { samplerResultCache } = samplerSharedGroup;
-            let index: number = 0;
+            let index = 0;
             let lerpRequired = false;
             if (!sampler) {
                 index = 0;
@@ -935,13 +967,13 @@ function isTargetingTRS (path: TargetPath[]) {
         prs = path[path.length - 1] as string;
     }
     switch (prs) {
-        case 'position':
-        case 'scale':
-        case 'rotation':
-        case 'eulerAngles':
-            return true;
-        default:
-            return false;
+    case 'position':
+    case 'scale':
+    case 'rotation':
+    case 'eulerAngles':
+        return true;
+    default:
+        return false;
     }
 }
 
