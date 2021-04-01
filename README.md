@@ -4,7 +4,7 @@
              alt="Cocos Creator Logo">
     </a>
 </p>
-<p align="center">
+<p align="center">1
     <a href="https://github.com/cocos-creator/engine/stargazers">
         <img src="https://img.shields.io/github/stars/cocos-creator/engine.svg?style=flat-square&colorB=4183c4"
              alt="stars">
