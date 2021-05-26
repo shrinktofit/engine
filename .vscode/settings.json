@@ -11,6 +11,7 @@
     },
     "typescript.preferences.importModuleSpecifier": "relative",
     "typescript.tsdk": "node_modules/typescript/lib",
+    "typescript.tsserver.log": "verbose",
     "eslint.validate": [
         "javascript",
         "typescript"

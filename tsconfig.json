@@ -36,6 +36,18 @@
         "./@types/pal/minigame",
         "./@types/pal/audio",
         "./@types/pal/input"
+      ],
+      "plugins": [
+        {
+          "name": "ts-ls",
+          "importMap": {
+            "scopes": {
+              "./port": {
+                "real:": "./"
+              }
+            }
+          },
+        }
       ]
     },
     "include": [
