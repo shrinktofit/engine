@@ -1,6 +1,6 @@
 
 import { AnimationClip, Node, Vec2 } from '../../cocos/core';
-import { PoseBlend1D, PoseBlend2D, Condition, InvalidTransitionError, VariableNotDefinedError } from '../../cocos/core/animation/animation';
+import { PoseBlend1D, PoseBlend2D, Condition, InvalidTransitionError, VariableNotDefinedError, __getDemoGraphs } from '../../cocos/core/animation/animation';
 import { PoseGraph } from '../../cocos/core/animation/newgen-anim/pose-graph';
 import { createEval } from '../../cocos/core/animation/newgen-anim/create-eval';
 import { VariableTypeMismatchedError } from '../../cocos/core/animation/newgen-anim/errors';
@@ -12,10 +12,12 @@ import gSuccessiveSatisfaction from './graphs/successive-satisfaction';
 import gVariableNotFoundInCondition from './graphs/variable-not-found-in-condition';
 import gVariableNotFoundInPoseBlend from './graphs/variable-not-found-in-pose-blend';
 import gPoseBlendRequiresNumbers from './graphs/pose-blend-requires-numbers';
-import { bindProperty, getPropertyBinding, getPropertyBindingPoints } from '../../cocos/core/animation/newgen-anim/parametric';
+import { getPropertyBindingPoints } from '../../cocos/core/animation/newgen-anim/parametric';
 import { blend1D } from '../../cocos/core/animation/newgen-anim/blend-1d';
 
 describe('NewGen Anim', () => {
+    const demoGraphs = __getDemoGraphs();
+
     describe('Connecting', () => {
         test('Connecting', () => {
             const graph = new PoseGraph();
@@ -89,7 +91,7 @@ describe('NewGen Anim', () => {
         test('Any transition', () => {
             const graphEval = new PoseGraphEval(createGraphFromDescription(gAnyTransition), new Node());
             graphEval.update(0.0);
-            expect(graphEval.getCurrentNodeInfo(0).name).toBe('Node1'); 
+            expect(graphEval.getCurrentNodeInfo(0).name).toBe('Node1');
         });
     });
 
@@ -224,14 +226,14 @@ describe('NewGen Anim', () => {
                 'paramX',
                 'paramY',
             ]));
-            bindProperty(poseBlend2D, 'paramX', 'x');
-            expect(getPropertyBinding(poseBlend2D, 'paramX')).toBe('x');
+            poseBlend2D.bindProperty('paramX', 'x');
+            expect(poseBlend2D.getPropertyBinding('paramX')).toBe('x');
         });
 
         test('Serialization', () => {
             const poseBlend2D = new PoseBlend2D();
-            bindProperty(poseBlend2D, 'paramX', 'x');
-            expect(getPropertyBinding(poseBlend2D, 'paramX')).toBe('x');
+            poseBlend2D.bindProperty('paramX', 'x');
+            expect(poseBlend2D.getPropertyBinding('paramX')).toBe('x');
         });
     });
 });
