@@ -59,7 +59,7 @@ const graphDescMap: Record<string, GraphDescription> = {
     'pose-blend-requires-numbers': {
         vars: [{
             name: 'v',
-            value: 'str',
+            value: false,
         }],
         layers: [{
             graph: {
