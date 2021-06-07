@@ -1,7 +1,7 @@
 export default {
     vars: [{
         name: 'v',
-        value: 'str',
+        value: false,
     }],
     layers: [{
         graph: {

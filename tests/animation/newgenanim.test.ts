@@ -91,7 +91,7 @@ describe('NewGen Anim', () => {
         test('Any transition', () => {
             const graphEval = new PoseGraphEval(createGraphFromDescription(gAnyTransition), new Node());
             graphEval.update(0.0);
-            expect(graphEval.getCurrentNodeInfo(0).name).toBe('Node1'); 
+            expect(graphEval.getCurrentNodeInfo(0).name).toBe('Node1');
         });
     });
 
