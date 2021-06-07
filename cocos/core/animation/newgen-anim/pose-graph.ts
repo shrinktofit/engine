@@ -1,4 +1,5 @@
 import { ccclass, serializable } from 'cc.decorator';
+import { DEBUG } from 'internal:constants';
 import { remove, removeAt, removeIf } from '../../utils/array';
 import { assertIsNonNullable, assertIsTrue } from '../../data/utils/asserts';
 import { Pose, PoseEval, PoseEvalContext } from './pose';
@@ -63,6 +64,7 @@ export class TransitionInternal implements OwnedBy<PoseSubgraph>, Transition {
     [ownerSymbol]: PoseSubgraph | undefined;
 }
 
+@ccclass('cc.animation.PoseSubgraph')
 export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgraph> {
     [ownerSymbol]: Layer | PoseSubgraph | undefined;
 
@@ -249,10 +251,12 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
     }
 }
 
+@ccclass('cc.animation.Layer')
 export class Layer implements OwnedBy<PoseGraph> {
     [ownerSymbol]: PoseGraph | undefined;
 
-    private declare _graph: PoseSubgraph;
+    @serializable
+    private _graph!: PoseSubgraph;
 
     @serializable
     public weight = 1.0;
@@ -280,15 +284,66 @@ export enum LayerBlending {
     additive,
 }
 
+export enum VariableType {
+    NUMBER,
+
+    BOOLEAN,
+}
+
+@ccclass('cc.animation.Variable')
+export class Variable {
+    @serializable
+    private _type!: VariableType;
+
+    @serializable
+    private _value!: Value;
+
+    constructor (type?: VariableType) {
+        if (typeof type === 'undefined') {
+            return;
+        }
+
+        this._type = type;
+        switch (type) {
+        case VariableType.NUMBER:
+            this._value = 0.0;
+            break;
+        case VariableType.BOOLEAN:
+            this._value = false;
+            break;
+        }
+    }
+
+    get type () {
+        return this._type;
+    }
+
+    get value () {
+        return this._value;
+    }
+
+    set value (value) {
+        if (DEBUG) {
+            switch (this._type) {
+            case VariableType.NUMBER:
+                assertIsTrue(typeof value === 'number');
+                break;
+            case VariableType.BOOLEAN:
+                assertIsTrue(typeof value === 'boolean');
+                break;
+            }
+        }
+        this._value = value;
+    }
+}
+
 @ccclass('cc.animation.PoseGraph')
 export class PoseGraph extends Asset {
     @serializable
     private _layers: Layer[] = [];
 
     @serializable
-    private _variables: Record<string, {
-        value: Value;
-    }> = {};
+    private _variables: Record<string, Variable> = {};
 
     constructor () {
         super();
@@ -308,9 +363,11 @@ export class PoseGraph extends Asset {
         return layer;
     }
 
-    public addVariable (name: string, value: Value) {
-        this._variables[name] = {
-            value,
-        };
+    public addVariable (name: string, type: VariableType, value?: Value) {
+        const variable = new Variable(type);
+        if (typeof value !== 'undefined') {
+            variable.value = value;
+        }
+        this._variables[name] = variable;
     }
 }

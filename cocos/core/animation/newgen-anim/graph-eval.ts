@@ -4,7 +4,7 @@ import { PoseEval, PoseEvalContext } from './pose';
 import type { Node } from '../../scene-graph/node';
 import { createEval } from './create-eval';
 import { Value } from './variable';
-import { BindingHost, getPropertyBinding, getPropertyBindingPoints } from './parametric';
+import { BindingHost, getPropertyBindingPoints } from './parametric';
 import { ConditionEval } from './condition';
 import { VariableNotDefinedError } from './errors';
 import { PoseNode } from './pose-node';
@@ -26,7 +26,7 @@ export class PoseGraphEval {
             node: root,
             bind: this._bind.bind(this),
             getParam: (host: BindingHost, name: string) => {
-                const varId = getPropertyBinding(host, name);
+                const varId = host.getPropertyBinding(name);
                 if (!varId) {
                     return undefined;
                 }
@@ -327,7 +327,7 @@ function bindEvalProperties<T extends BindingHost, EvalT> (context: SubGraphEval
         return;
     }
     for (const [bindingPointId, bindingPoint] of Object.entries(propertyBindingPoints)) {
-        const varName = getPropertyBinding(source, bindingPointId);
+        const varName = source.getPropertyBinding(bindingPointId);
         if (varName) {
             context.bind(varName, bindingPoint.notify, [evalObject]);
         }

@@ -105,7 +105,7 @@ export function sampleFreeformDirectional (weights: number[], thresholds: readon
     sampleFreeform(weights, thresholds, value, getGradientBandPolarCoords);
 }
 
-function sampleFreeform (weights: number[], samples: readonly Vec2[], value: Vec2, getGradientBandCoords: GetGradientBandCoords) {
+function sampleFreeform (weights: number[], samples: readonly Vec2[], value: Readonly<Vec2>, getGradientBandCoords: GetGradientBandCoords) {
     weights.fill(0.0);
     const pIpInput = new Vec2(0, 0);
     const pIJ = new Vec2(0, 0);
@@ -136,7 +136,7 @@ function sampleFreeform (weights: number[], samples: readonly Vec2[], value: Vec
     }
 }
 
-function resolveEquation (first: Vec2, second: Vec2, input: Vec2) {
+function resolveEquation (first: Readonly<Vec2>, second: Readonly<Vec2>, input: Readonly<Vec2>) {
     // Let's resolve equation `input = first * t1 + second * t2` for `t1` and `t2`.
     // |x1 x2|   |t1|   |input.x|
     // |     | x |  | = |       |
@@ -163,7 +163,7 @@ function resolveEquation (first: Vec2, second: Vec2, input: Vec2) {
     return { t1, t2 };
 }
 
-type GetGradientBandCoords = (point: Vec2, pI: Vec2, pJ: Vec2, pIpInput: Vec2, pIpJ: Vec2) => void;
+type GetGradientBandCoords = (point: Readonly<Vec2>, pI: Readonly<Vec2>, pJ: Readonly<Vec2>, pIpInput: Vec2, pIpJ: Vec2) => void;
 
 const getGradientBandCartesianCoords: GetGradientBandCoords = (pI, pJ, input, pIpInput, pIpJ) => {
     Vec2.subtract(pIpInput, input, pI);

@@ -1,4 +1,4 @@
-import { serializable } from '../../data/decorators';
+import { ccclass, serializable } from '../../data/decorators';
 import { createEval } from './create-eval';
 import { BindingHost, parametric } from './parametric';
 import type { Value } from './variable';
@@ -14,6 +14,7 @@ enum Operator {
     GREATER_THAN_OR_EQUAL_TO,
 }
 
+@ccclass('cc.animation.Condition')
 export class Condition extends BindingHost {
     public static Operator = Operator;
 
