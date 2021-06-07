@@ -25,6 +25,37 @@ const graphDescMap: Record<string, GraphDescription> = {
         }],
     },
 
+    vars: {
+        vars: [
+            { name: 'foo', value: 1.0 },
+            { name: 'bar', value: false },
+        ],
+        layers: [{
+            graph: {
+                type: 'subgraph',
+                nodes: [{
+                    name: 'Node1',
+                    type: 'pose',
+                }, {
+                    name: 'Node2',
+                    type: 'pose',
+                }],
+                anyTransitions: [{
+                    to: 0,
+                }],
+                transitions: [{
+                    from: 0,
+                    to: 1,
+                    condition: {
+                        lhs: 'foo',
+                        operator: 'EQUAL',
+                        rhs: 2.0,
+                    },
+                }],
+            },
+        }],
+    },
+
     'pose-blend-requires-numbers': {
         vars: [{
             name: 'v',
