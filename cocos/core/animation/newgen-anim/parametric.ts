@@ -1,4 +1,4 @@
-import { serializable } from '../../data/decorators';
+import { ccclass, serializable } from '../../data/decorators';
 import { assertIsTrue } from '../../data/utils/asserts';
 import { warn } from '../../platform/debug';
 
@@ -59,6 +59,7 @@ function createBindingPoint<Value, NotifyArgs extends any[]> (object: unknown, b
 
 const propertyBindingsSymbol = Symbol('[[PropertyBindings]]');
 
+@ccclass('cc.animation.BindingHost')
 export class BindingHost {
     @serializable
     private _bindings: Record<string, string> = {};
@@ -66,22 +67,29 @@ export class BindingHost {
     get [propertyBindingsSymbol] () {
         return this._bindings;
     }
-}
 
-/**
- * Binds variable onto the property binding point of an object.
- * @param object The object to bind.
- * @param bindingPointId The property binding point to bind.
- * @param varName The variable name.
- */
-export function bindProperty (object: BindingHost, bindingPointId: string, varName: string) {
-    const bindingPoint = (object as Partial<BindingPointHost>)[propertyBindingPointsSymbol]?.[bindingPointId];
-    if (!bindingPoint) {
-        warn(`${bindingPointId} is not a binding point.`);
-        return;
+    /**
+     * Binds variable onto the property binding point of this binding host.
+     * @param bindingPointId The property binding point to bind.
+     * @param varName The variable name.
+     */
+    public bindProperty (bindingPointId: string, varName: string) {
+        const bindingPoint = this[propertyBindingPointsSymbol]?.[bindingPointId];
+        if (!bindingPoint) {
+            warn(`${bindingPointId} is not a binding point.`);
+            return;
+        }
+        const bindingMap = this[propertyBindingsSymbol];
+        bindingMap[bindingPointId] = varName;
     }
-    const bindingMap = object[propertyBindingsSymbol];
-    bindingMap[bindingPointId] = varName;
+
+    /**
+     * Gets the property binding on the specified property binding point.
+     * @returns The name of the bounded variable, if one exists.
+     */
+     public getPropertyBinding (bindingPointId: string) {
+        return this[propertyBindingsSymbol][bindingPointId];
+    }
 }
 
 /**
@@ -91,13 +99,4 @@ export function bindProperty (object: BindingHost, bindingPointId: string, varNa
  */
 export function getPropertyBindingPoints (object: unknown): Record<string, PropertyBindingPoint<unknown, unknown[]>> | undefined {
     return (object as Partial<BindingPointHost>)[propertyBindingPointsSymbol];
-}
-
-/**
- * Gets the property binding on the specified property binding point.
- * @param object The object.
- * @returns The name of the bounded variable, if one exists.
- */
-export function getPropertyBinding (object: BindingHost, bindingPointId: string): string | undefined {
-    return object[propertyBindingsSymbol]?.[bindingPointId];
 }

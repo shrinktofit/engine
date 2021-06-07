@@ -3,16 +3,17 @@ import { PoseGraph, Condition, AnimatedPose } from '../../animation';
 import { GraphDescription, MotionDescription, TransitionDescriptionBase, PoseSubGraphDescription, ParametricDescription } from './graph-description';
 import { PoseBlend1D } from '../pose-blend-1d';
 import { PoseBlend2D } from '../pose-blend-2d';
-import { GraphNode, PoseSubgraph } from '../pose-graph';
+import { GraphNode, PoseSubgraph, VariableType } from '../pose-graph';
 import { Pose } from '../pose';
-import { BindingHost, bindProperty } from '../parametric';
+import { BindingHost } from '../parametric';
+import { Value } from '../variable';
 
 export function createGraphFromDescription (graphDescription: GraphDescription) {
     const graph = new PoseGraph();
 
     if (graphDescription.vars) {
         for (const varDesc of graphDescription.vars) {
-            graph.addVariable(varDesc.name, varDesc.value);
+            graph.addVariable(varDesc.name, getVariableTypeFromValue(varDesc.value), varDesc.value);
         }
     }
 
@@ -114,9 +115,17 @@ function createMotion (motionDesc: MotionDescription): Pose {
 
 function createParametric<T extends string | number | boolean> (paramDesc: ParametricDescription<T>, host: BindingHost, bindingPointId: string) {
     if (typeof paramDesc === 'object') {
-        bindProperty(host, bindingPointId, paramDesc.name);
+        host.bindProperty(bindingPointId, paramDesc.name);
         return paramDesc.value;
     } else {
         return paramDesc;
+    }
+}
+
+function getVariableTypeFromValue (value: Value) {
+    switch (true) {
+    case typeof value === 'boolean': return VariableType.BOOLEAN;
+    case typeof value === 'number': return VariableType.NUMBER;
+    default: throw new Error(`Unknown variable type.`);
     }
 }

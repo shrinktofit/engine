@@ -7,6 +7,7 @@ export const outgoingsSymbol = Symbol('[[Outgoing transitions]]');
 
 export const incomingsSymbol = Symbol('[[Incoming transitions]]');
 
+@ccclass('cc.animation.GraphNode')
 export class GraphNode extends BindingHost implements OwnedBy<Layer | PoseSubgraph> {
     declare [ownerSymbol]: Layer | PoseSubgraph | undefined;
 
