@@ -138,11 +138,13 @@ class SubgraphEval {
     constructor (subgraph: PoseSubgraph, context: SubGraphEvalContext) {
         this._layerWeight = context.layerWeight;
 
-        const nodeEvaluators = subgraph.nodes.map((node) => createNodeEval(context, subgraph, node));
+        const nodes = Array.from(subgraph.nodes());
 
-        for (let iNode = 0; iNode < subgraph.nodes.length; ++iNode) {
-            const node = subgraph.nodes[iNode];
-            nodeEvaluators[iNode].outgoingTransitions = createTransitionEval(context, subgraph, node, nodeEvaluators[iNode], nodeEvaluators);
+        const nodeEvaluators = nodes.map((node) => createNodeEval(context, subgraph, node));
+
+        for (let iNode = 0; iNode < nodes.length; ++iNode) {
+            const node = nodes[iNode];
+            nodeEvaluators[iNode].outgoingTransitions = createTransitionEval(context, subgraph, node, nodeEvaluators[iNode], nodeEvaluators, nodes);
         }
 
         this._nodes = new Set(nodeEvaluators);
@@ -291,11 +293,11 @@ function createNodeEval (context: SubGraphEvalContext, graph: PoseSubgraph, node
     }
 }
 
-function createTransitionEval (context: SubGraphEvalContext, graph: PoseSubgraph, node: GraphNode, nodeEval: NodeEval, nodeEvaluators: NodeEval[]) {
+function createTransitionEval (context: SubGraphEvalContext, graph: PoseSubgraph, node: GraphNode, nodeEval: NodeEval, nodeEvaluators: NodeEval[], mappings: GraphNode[]) {
     const outgoingTemplates = graph.getOutgoings(node);
     const outgoingTransitions: TransitionEval[] = [];
     for (const outgoing of outgoingTemplates) {
-        const iOutgoingNode = graph.nodes.findIndex((nodeTemplate) => nodeTemplate === outgoing.to);
+        const iOutgoingNode = mappings.findIndex((nodeTemplate) => nodeTemplate === outgoing.to);
         if (iOutgoingNode < 0) {
             assertIsTrue(false, 'Bad animation data');
         }
