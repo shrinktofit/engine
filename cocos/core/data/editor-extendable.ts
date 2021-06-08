@@ -21,7 +21,7 @@ export function EditorExtendableMixin<T> (Base: new (...args: any[]) => T, class
 /**
  * Class which implements the `EditorExtendableObject` interface.
  */
-export const EditorExtendable = editorExtendableInternal(Object);
+export const EditorExtendable = editorExtendableInternal();
 
 export type EditorExtendable = InstanceType<typeof EditorExtendable>;
 
@@ -43,7 +43,7 @@ function editorExtendableInternal<T> (Base?: (new (...args: any[]) => T), classN
         if (baseName) {
             name = `cc.EditorExtendable/${baseName}`;
         } else {
-            throw new Error(`You should supply a class name to EditorExtendable.`);
+            throw new Error(`You should supply a class name to EditorExtendable when mixin with ${Base.name}.`);
         }
     }
 
