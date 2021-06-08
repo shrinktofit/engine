@@ -99,10 +99,6 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
         throw new Error('Method not implemented.');
     }
 
-    get nodes (): readonly GraphNode[] {
-        return this._nodes;
-    }
-
     get entryNode () {
         return this._entryNode;
     }
@@ -113,6 +109,10 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
 
     get anyNode () {
         return this._anyNode;
+    }
+
+    public nodes (): Iterable<GraphNode> {
+        return this._nodes;
     }
 
     public transitions (): Iterable<Transition> {
