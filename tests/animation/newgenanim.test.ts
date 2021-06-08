@@ -103,7 +103,7 @@ describe('NewGen Anim', () => {
             layerGraph.remove(layerGraph.entryNode);
             layerGraph.remove(layerGraph.existNode);
             layerGraph.remove(layerGraph.anyNode);
-            expect([...layerGraph.nodes]).toEqual(expect.arrayContaining([
+            expect([...layerGraph.nodes()]).toEqual(expect.arrayContaining([
                 layerGraph.entryNode,
                 layerGraph.existNode,
                 layerGraph.anyNode,
