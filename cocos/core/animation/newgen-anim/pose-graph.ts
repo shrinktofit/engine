@@ -115,6 +115,10 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
         return this._anyNode;
     }
 
+    public transitions (): Iterable<Transition> {
+        return this._transitions;
+    }
+
     public getTransition (from: GraphNode, to: GraphNode): Transition | undefined {
         assertsOwnedBy(from, this);
         assertsOwnedBy(to, this);
