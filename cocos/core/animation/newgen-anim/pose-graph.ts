@@ -16,7 +16,7 @@ import { EditorExtendable } from '../../data/editor-extendable';
 
 export { GraphNode };
 
-export interface Transition {
+export interface Transition extends EditorExtendable {
     /**
      * The transition source.
      */
