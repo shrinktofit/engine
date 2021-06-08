@@ -12,6 +12,7 @@ import { createEval } from './create-eval';
 import { PoseNode } from './pose-node';
 import { GraphNode, outgoingsSymbol, incomingsSymbol } from './graph-node';
 import { SkeletonMask } from '../skeleton-mask';
+import { EditorExtendable } from '../../data/editor-extendable';
 
 export { GraphNode };
 
@@ -38,7 +39,7 @@ export interface Transition {
 }
 
 @ccclass('cc.animation.TransitionInternal')
-export class TransitionInternal implements OwnedBy<PoseSubgraph>, Transition {
+export class TransitionInternal extends EditorExtendable implements OwnedBy<PoseSubgraph>, Transition {
     declare [ownerSymbol]: PoseSubgraph | undefined;
 
     @serializable
@@ -57,6 +58,7 @@ export class TransitionInternal implements OwnedBy<PoseSubgraph>, Transition {
      * @internal
      */
     constructor (from: GraphNode, to: GraphNode, condition?: Condition) {
+        super();
         this.from = from;
         this.to = to;
         this.condition = condition ?? null;
@@ -305,6 +307,8 @@ export class Variable {
 
         this._type = type;
         switch (type) {
+        default:
+            break;
         case VariableType.NUMBER:
             this._value = 0.0;
             break;
@@ -325,6 +329,8 @@ export class Variable {
     set value (value) {
         if (DEBUG) {
             switch (this._type) {
+            default:
+                break;
             case VariableType.NUMBER:
                 assertIsTrue(typeof value === 'number');
                 break;
