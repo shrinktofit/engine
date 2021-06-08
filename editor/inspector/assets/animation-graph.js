@@ -2,22 +2,22 @@ exports.template = `
 <section class="asset-animation-graph">
     <ui-section expand class="config" expand-key="animation-graph-layers">
         <ui-label slot="header" value="Layers"></ui-label>
+        <div class="layers">
+        </div>
         <div class="buttons">
             <ui-button class="button add" tooltip="Add Layer">
                 <ui-icon value="add"></ui-icon>
             </ui-button>
         </div>
-        <div class="layers">
-        </div>
     </ui-section>
     <ui-section expand class="config" expand-key="animation-graph-variables">
         <ui-label slot="header" value="Variables"></ui-label>
+        <div class="variables">
+        </div>
         <div class="buttons">
             <ui-button class="button add" tooltip="Add Variable">
                 <ui-icon value="add"></ui-icon>
             </ui-button>
-        </div>
-        <div class="variables">
         </div>
     </ui-section>
 </section>
@@ -36,7 +36,7 @@ exports.style = `
 .asset-animation-graph > .config > .buttons {
     text-align: right;
     margin-top: 5px;
-    margin-bottom: 10px;
+    margin-bottom: 5px;
 }
 
 .asset-animation-graph > .config > .buttons > .button {
@@ -48,10 +48,10 @@ exports.style = `
 .asset-animation-graph > .config > .layers {
     overflow-y: auto;
     max-height: 500px;
-    
 }
 
 .asset-animation-graph > .config > .layers > .layer {
+    margin-top: 5px;
     margin-bottom: 10px;
 }
 
@@ -109,14 +109,13 @@ exports.methods = {
             }
         });
 
-
-        await panel.change('change-layer', panel.activeLayerIndex);
+        await panel.change('editLayer', panel.activeLayerIndex);
 
         Editor.Panel.open('animation-graph');
     },
 
     async addLayer() {
-        await this.change('add-layer');
+        await this.change('addLayer');
         Elements.layers.update.call(this);
     },
 
@@ -180,7 +179,7 @@ const Elements = {
 
             panel.$.layers.innerText = '';
 
-            this.dumpData._layers.value.forEach((layer, layerIndex) => {
+            this.dumpData.layers.forEach((layer, layerIndex) => {
                 const $layer = document.createElement('ui-section');
                 $layer.setAttribute('class', 'config layer');
                 $layer.setAttribute('expand-key', `animation-graph-layers-${layer.name}`);
@@ -211,13 +210,13 @@ const Elements = {
                 $remove.setAttribute('tooltip', 'Remove This Layer');
                 $layer.appendChild($remove);
 
-                $remove.addEventListener('click', () => {
+                $remove.addEventListener('click', (event) => {
                     event.stopPropagation();
                     // 需要加个 dialog 问询
                     panel.removeLayer(layerIndex);
                 });
 
-                layer.value._graph.value._nodes.value.forEach((node, nodeIndex) => {
+                layer.graph.nodes.forEach((node, nodeIndex) => {
                     const $node = document.createElement('ui-section');
                     $node.setAttribute('class', 'node');
                     $layer.appendChild($node);
@@ -229,12 +228,12 @@ const Elements = {
                     const $name = document.createElement('ui-label');
                     $name.setAttribute('class', 'name');
                     $name.setAttribute('slot', 'header');
-                    $name.setAttribute('value', `Node: ${node.name}`);
+                    $name.setAttribute('value', node.name);
                     $node.appendChild($name);
                 });
 
 
-                layer.value._graph.value._transitions.value.forEach((transition, transitionIndex) => {
+                layer.graph.transitions.forEach((transition, transitionIndex) => {
                     const $transition = document.createElement('ui-section');
                     $transition.setAttribute('class', 'transition');
                     $layer.appendChild($transition);
