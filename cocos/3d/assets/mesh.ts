@@ -40,10 +40,12 @@ import { warnID } from '../../core/platform/debug';
 import { RenderingSubMesh } from '../../core/assets';
 import {
     Attribute, Device, Buffer, BufferInfo, AttributeName, BufferUsageBit, Feature, Format,
-    FormatInfos, FormatType, MemoryUsageBit, PrimitiveMode, getTypedArrayConstructor,
+    FormatInfos, FormatType, MemoryUsageBit, PrimitiveMode, getTypedArrayConstructor, FormatInfo,
 } from '../../core/gfx';
-import { Mat4, Quat, Vec3 } from '../../core/math';
-import { Morph, MorphRendering, createMorphRendering } from './morph';
+import { IVec3Like, IVec4Like, Mat4, Quat, Vec3, Vec4 } from '../../core/math';
+import { MorphRendering, createMorphRendering } from './morph';
+import { gfx } from '../../core';
+import { assertIsTrue } from '../../core/data/utils/asserts';
 
 function getIndexStrideCtor (stride: number) {
     switch (stride) {
@@ -155,7 +157,43 @@ export declare namespace Mesh {
          * @en The morph information of the mesh
          * @zh 网格的形变数据
          */
-        morph?: Morph;
+        morph?: {
+            /**
+             * Morph data of each sub-mesh.
+             */
+            subMeshMorphs: ({
+                /**
+                 * Attributes to morph.
+                 */
+                attributes: AttributeName[];
+
+                /**
+                 * Targets.
+                 */
+                targets: {
+                    /**
+                     * Displacement of each target attribute.
+                     */
+                    displacements: Mesh.IBufferView[];
+                }[];
+
+                /**
+                 * Initial weights of each target.
+                 */
+                weights?: number[];
+            } | null)[];
+
+            /**
+             * Common initial weights of each sub-mesh.
+             */
+            weights?: number[];
+
+            /**
+             * Name of each target of each sub-mesh morph.
+             * This field is only meaningful if every sub-mesh has the same number of targets.
+             */
+            targetNames?: string[];
+        };
     }
 
     export interface ICreateInfo {
@@ -176,6 +214,591 @@ export declare namespace Mesh {
 const v3_1 = new Vec3();
 const v3_2 = new Vec3();
 const globalEmptyMeshBuffer = new Uint8Array();
+
+type TypedArrayView = TypedArray;
+
+interface Layout {
+    streams: Array<{
+        attributes: Array<{
+            name: gfx.AttributeName;
+            format: gfx.Format;
+        }>;
+    }>;
+}
+
+interface SubMeshMorph {
+    /**
+     * Attributes to morph.
+     */
+    attributes: AttributeName[];
+
+    /**
+     * Targets.
+     */
+    targets: Array<{
+        displacements: Float32Array[];
+    }>;
+
+    /**
+     * Initial weights of each target.
+     */
+    weights?: number[];
+}
+
+export class SubMesh {
+    get vertexCount () {
+        return this._vertexCount;
+    }
+
+    get primitiveMode () {
+        return this._primitiveMode;
+    }
+
+    set primitiveMode (value) {
+        this._primitiveMode = value;
+    }
+
+    get attributeNames () {
+        return Object.keys(this._attributes);
+    }
+
+    get morph () {
+        return this._morph;
+    }
+
+    set morph (value) {
+        this._morph = value;
+    }
+
+    public hasIndices () {
+        return !!this._indices;
+    }
+
+    public setIndices (indices: SubMesh['_indices']) {
+        this._indices = indices;
+    }
+
+    public hasAttribute (attributeName: string) {
+        return attributeName in this._attributes;
+    }
+
+    public getAttributeFormat (attributeName: string) {
+        return this._attributes[attributeName].format;
+    }
+
+    /**
+     * Creates an attribute view which views the specified attribute.
+     * @param from Index to the start vertex.
+     * @param count Count of vertices to view.
+     * @returns The attribute view.
+     */
+    public viewAttribute (attributeName: string, from?: number, count?: number): VertexAttributeView {
+        const { _attributes: attributes, _vertexCount: myVertexCount } = this;
+
+        from ??= 0;
+        count ??= myVertexCount - from;
+
+        if (!(attributeName in attributes)) {
+            throw new Error(`Nonexisting attribute ${attributeName}`);
+        }
+
+        const attribute = attributes[attributeName];
+        const { data: streamData, stride } = this._streams[attribute.stream];
+        const attributeFormat = attribute.format;
+        const attributeStride = getComponentByteLength(attributeFormat) * FormatInfos[attributeFormat].count;
+        if (attribute.streamOffset === 0 && stride === attributeStride) {
+            return new CompactVertexAttributeView(
+                streamData.buffer,
+                streamData.byteOffset + stride * from,
+                attributeFormat,
+                count,
+            );
+        } else {
+            return new InterleavedVertexAttributeView(
+                streamData.buffer,
+                streamData.byteOffset + stride * from,
+                attribute.streamOffset,
+                stride,
+                attributeFormat,
+                count,
+            );
+        }
+    }
+
+    public readIndices () {
+        if (!this._indices) {
+            return undefined;
+        }
+        return this._indices.slice();
+    }
+
+    /**
+     * Resizes vertex count of specified sub mesh.
+     * @param newVertexCount New vertex count.
+     * @description If resize to a larger size, whole old data is kept;
+     * otherwise only `vertexCount` of attributes is kept.
+     */
+    public resize (newVertexCount: number) {
+        const { _vertexCount: oldVertexCount } = this;
+        const verticesToKeep = Math.min(oldVertexCount, newVertexCount);
+        this._vertexCount = newVertexCount;
+        this._streams.forEach((stream) => {
+            const { data: oldStreamData, stride } = stream;
+            const newStreamData = new ArrayBuffer(stride * newVertexCount);
+            new Uint8Array(newStreamData).set(new Uint8Array(oldStreamData, 0, verticesToKeep * stride));
+        });
+    }
+
+    public rearrange (layout: Layout, vertexCount: number) {
+        const meshAttributes: SubMesh['_attributes'] = {};
+        const streams: SubMesh['_streams'] = layout.streams.map(({ attributes: attributeDescriptions }, streamIndex) => {
+            let stride = 0;
+            attributeDescriptions.forEach(({ name, format }) => {
+                const offset = stride;
+                stride += FormatInfos[format].size;
+                meshAttributes[name] = {
+                    name,
+                    format,
+                    stream: streamIndex,
+                    streamOffset: offset,
+                };
+            });
+            const buffer = new Uint8Array(stride * vertexCount);
+            return {
+                data: buffer,
+                stride,
+            };
+        });
+        this._vertexCount = vertexCount;
+        this._streams = streams;
+        this._attributes = meshAttributes;
+    }
+
+    public createRenderingSubMesh (gfxDevice: gfx.Device): RenderingSubMesh | null {
+        const {
+            _vertexCount: vertexCount,
+            _indices: indices,
+        } = this;
+
+        // Prepare index buffer
+        let indexBufferOpt: Buffer | null = null;
+        if (indices) {
+            const stride = indices.BYTES_PER_ELEMENT;
+            let remoteStride = stride;
+            let remoteSize = indices.length;
+            if (stride === 4 && !gfxDevice.hasFeature(Feature.ELEMENT_INDEX_UINT)) {
+                if (vertexCount >= 65536) {
+                    warnID(10001, vertexCount, 65536);
+                    return null; // Ignore this primitive
+                } else {
+                    remoteStride >>= 1; // Reduce to short.
+                    remoteSize >>= 1;
+                }
+            }
+            const indexBuffer = gfxDevice.createBuffer(new BufferInfo(
+                BufferUsageBit.INDEX,
+                MemoryUsageBit.DEVICE,
+                remoteSize,
+                remoteStride,
+            ));
+            indexBufferOpt = indexBuffer;
+            const localBuffer = stride === remoteStride ? indices : getIndexStrideCtor(remoteStride).from(indices);
+            if (this.loaded) {
+                indexBuffer.update(localBuffer);
+            } else {
+                this.once('load', () => {
+                    indexBuffer.update(localBuffer);
+                });
+            }
+        }
+
+        // Prepare vertex buffers
+        const vertexBuffers = this._streams.map(({ stride, data: streamData }) => {
+            const vertexBuffer = gfxDevice.createBuffer(new BufferInfo(
+                BufferUsageBit.VERTEX,
+                MemoryUsageBit.DEVICE,
+                streamData.byteLength,
+                stride,
+            ));
+            if (this.loaded) {
+                vertexBuffer.update(streamData);
+            } else {
+                this.once('load', () => {
+                    vertexBuffer.update(streamData);
+                });
+            }
+            return vertexBuffer;
+        });
+
+        // Prepare attributes
+        const gfxAttributes = Object.entries(this._attributes).map(([name, attribute]) => {
+            const gfxAttribute = new Attribute(
+                attribute.name,
+                attribute.format,
+                attribute.normalized,
+                attribute.stream,
+                attribute.isInstanced,
+                attribute.location,
+            );
+            return gfxAttribute;
+        });
+
+        const renderingSubMesh = new RenderingSubMesh(
+            vertexBuffers,
+            gfxAttributes,
+            this._primitiveMode,
+            indexBufferOpt,
+        );
+
+        return renderingSubMesh;
+    }
+
+    private _primitiveMode: gfx.PrimitiveMode = gfx.PrimitiveMode.TRIANGLE_LIST;
+    private _indices: Uint8Array | Uint16Array | Uint32Array | null = null;
+    private _streams: Array<{
+        data: Uint8Array;
+        stride: number;
+    }> = [];
+    private _vertexCount = 0;
+    private _attributes: Record<string, {
+        name: gfx.AttributeName;
+        format: gfx.Format;
+        stream: number;
+        streamOffset: number;
+        normalized?: boolean;
+        isInstanced?: boolean;
+        location?: number;
+    }> = {};
+    private _morph: SubMeshMorph | null = null;
+}
+
+export interface VertexAttributeView {
+    /**
+     * Number of vertices this view views.
+     */
+    readonly vertexCount: number;
+
+    /**
+     * Number of component of per attribute.
+     */
+    readonly componentCount: number;
+
+    /**
+     * Creates a sub range which views the same attribute channel.
+     * @param from Index to the start vertex.
+     * @param end Index to the end vertex.
+     * @returns The new view.
+     */
+    subarray(from?: number, end?: number): VertexAttributeView;
+
+    set (view: VertexAttributeView, offset?: number): void;
+
+    /**
+     * Gets specified component of the specified vertex.
+     * @param vertexIndex Index to the vertex.
+     * @param componentIndex Index to the component.
+     * @returns The component's value.
+     */
+    getComponent(vertexIndex: number, componentIndex: number): number;
+
+    /**
+     * Sets specified component of the specified vertex.
+     * @param vertexIndex Index to the vertex.
+     * @param componentIndex Index to the component.
+     * @param value The value being set to the component.
+     */
+    setComponent (vertexIndex: number, componentIndex: number, value: number): void;
+
+    /**
+     * Reads vertices and returns the result into an array.
+     * @param vertexCount Vertex count. If not specified, all vertices would be read.
+     * @param storageConstructor Result array's constructor.
+     */
+    read<
+        TStorageConstructor extends TypedArrayConstructor | ArrayConstructor
+    >(vertexCount?: number, storageConstructor?: TStorageConstructor): InstanceType<TStorageConstructor>;
+
+    /**
+     * Reads vertices into specified array.
+     * @param storage The array.
+     * @param vertexCount Number of vertices to read. If not specified, all vertices would be read.
+     */
+    read<TStorage extends TypedArray | number[]>(storage: TStorage, vertexCount?: number): TStorage;
+
+    /**
+     * Writes vertices.
+     * @param source Attribute data.
+     * @param from Index to the start vertex to write. Defaults to 0.
+     * @param to Index to the end vertex to write. Defaults to the view's count.
+     */
+    write (source: ArrayLike<number>, from?: number, to?: number): void;
+}
+
+class VertexAttributeViewBase {
+    constructor (vertexCount: number, componentCount: number, typedArrayConstructor: TypedArrayConstructor) {
+        this._vertexCount = vertexCount;
+        this._componentCount = componentCount;
+        this._typedArrayConstructor = typedArrayConstructor;
+    }
+
+    get vertexCount () {
+        return this._vertexCount;
+    }
+
+    get componentCount () {
+        return this._componentCount;
+    }
+
+    public getComponent (vertexIndex: number, componentIndex: number): number {
+        throw new Error(`Not implemented`);
+    }
+
+    public setComponent (vertexIndex: number, componentIndex: number, value: number) {
+        throw new Error(`Not implemented`);
+    }
+
+    public set (view: VertexAttributeView, offset?: number) {
+        offset ??= 0;
+
+        const { _vertexCount: myVertexCount, _componentCount: nComponents } = this;
+
+        assertIsTrue(this.componentCount === view.componentCount);
+
+        const nVerticesToCopy = Math.min(view.vertexCount, myVertexCount - offset);
+        for (let iVertex = 0; iVertex < nVerticesToCopy; ++iVertex) {
+            for (let iComponent = 0; iComponent < nComponents; ++iComponent) {
+                const value = view.getComponent(iVertex, iComponent);
+                this.setComponent(offset + iVertex, iComponent, value);
+            }
+        }
+    }
+
+    public read<
+        TStorageConstructor extends TypedArrayConstructor | ArrayConstructor
+    >(vertexCount?: number, storageConstructor?: TStorageConstructor): InstanceType<TStorageConstructor>;
+
+    public read<TStorage extends TypedArray | number[]>(storage: TStorage, vertexCount?: number): TStorage;
+
+    public read (param0: unknown, param1: unknown): unknown {
+        const {
+            _vertexCount: myVertexCount,
+            _typedArrayConstructor: DefaultTypedArrayConstructor,
+            _componentCount: nComponents,
+        } = this;
+
+        let storage: TypedArray | number[];
+        let vertexCount: number;
+        if (typeof param0 === 'object') {
+            // Storage + Vertex count
+            vertexCount = (param1 as number | undefined) ?? myVertexCount;
+            storage = param0 as typeof storage;
+        } else {
+            // Vertex count, Storage constructor
+            vertexCount = (param0 as number | undefined) ?? myVertexCount;
+            if (param1 === Array) {
+                storage = new Array(vertexCount).fill(0);
+            } else {
+                const StorageConstructor = (param1 as TypedArrayConstructor | undefined)
+                    ?? DefaultTypedArrayConstructor;
+                storage = new StorageConstructor(nComponents * vertexCount);
+            }
+        }
+
+        for (let iVertex = 0; iVertex < vertexCount; ++iVertex) {
+            for (let iComponent = 0; iComponent < nComponents; ++iComponent) {
+                storage[nComponents * iVertex + iComponent] = this.getComponent(iVertex, iComponent);
+            }
+        }
+
+        return storage;
+    }
+
+    public write (source: ArrayLike<number>, from?: number, to?: number) {
+        const {
+            _vertexCount: myVertexCount,
+            _typedArrayConstructor: DefaultTypedArrayConstructor,
+            _componentCount: nComponents,
+        } = this;
+
+        from ??= 0;
+        to ??= myVertexCount;
+
+        for (let iVertex = from; iVertex < to; ++iVertex) {
+            for (let iComponent = 0; iComponent < nComponents; ++iComponent) {
+                this.setComponent(iVertex, iComponent, source[nComponents * iVertex + iComponent]);
+            }
+        }
+    }
+
+    protected _vertexCount: number;
+
+    protected _componentCount: number;
+
+    private _typedArrayConstructor: TypedArrayConstructor;
+}
+
+class InterleavedVertexAttributeView extends VertexAttributeViewBase implements VertexAttributeView {
+    constructor (buffer: ArrayBuffer, byteOffset: number, attributeOffset: number, stride: number, format: gfx.Format, count: number) {
+        super(count, FormatInfos[format].count, getTypedArrayConstructor(FormatInfos[format]));
+        this._dataView = new DataView(buffer, byteOffset + attributeOffset, stride * count - attributeOffset);
+        this._vertexCount = count;
+        this._attributeOffset = attributeOffset;
+        this._stride = stride;
+        this._format = format;
+        this._reader = getDataViewReader(FormatInfos[format]);
+        this._writer = getDataViewWriter(FormatInfos[format]);
+        this._componentBytes = getComponentByteLength(format);
+    }
+
+    public getComponent (vertexIndex: number, componentIndex: number) {
+        const {
+            _dataView: dataView,
+            _stride: stride,
+            _componentBytes: componentBytes,
+            _reader: reader,
+        } = this;
+        return reader(
+            dataView,
+            stride * vertexIndex + componentBytes * componentIndex,
+        );
+    }
+
+    public setComponent (vertexIndex: number, componentIndex: number, value: number) {
+        const {
+            _dataView: dataView,
+            _stride: stride,
+            _componentBytes: componentBytes,
+            _writer: writer,
+        } = this;
+        writer(
+            dataView,
+            stride * vertexIndex + componentBytes * componentIndex,
+            value,
+        );
+    }
+
+    public subarray (from?: number, end?: number) {
+        from ??= 0;
+        end ??= this._vertexCount;
+
+        return new InterleavedVertexAttributeView(
+            this._dataView.buffer,
+            (this._dataView.byteOffset - this._attributeOffset) + this._stride * from,
+            this._attributeOffset,
+            this._stride,
+            this._format,
+            end - from,
+        );
+    }
+
+    private _dataView: DataView;
+    private _stride: number;
+    private _attributeOffset: number;
+    private _format: gfx.Format;
+    private _reader: ReturnType<typeof getDataViewReader>;
+    private _writer: ReturnType<typeof getDataViewWriter>;
+    private _componentBytes: number;
+}
+
+class CompactVertexAttributeView extends VertexAttributeViewBase implements VertexAttributeView {
+    constructor (buffer: ArrayBuffer, byteOffset: number, format: gfx.Format, count: number) {
+        super(count, FormatInfos[format].count, getTypedArrayConstructor(FormatInfos[format]));
+        const Constructor = getTypedArrayConstructor(FormatInfos[format]);
+        const components = FormatInfos[format].count;
+        this._array = new Constructor(buffer, byteOffset, components * count);
+        this._vertexCount = count;
+        this._format = format;
+    }
+
+    public getComponent (vertexIndex: number, componentIndex: number) {
+        return this._array[this._componentCount * vertexIndex + componentIndex];
+    }
+
+    public setComponent (vertexIndex: number, componentIndex: number, value: number) {
+        this._array[this._componentCount * vertexIndex + componentIndex] = value;
+    }
+
+    public subarray (from?: number, end?: number) {
+        from ??= 0;
+        end ??= this._vertexCount;
+
+        return new CompactVertexAttributeView(
+            this._array.buffer,
+            this._array.byteOffset + this._array.BYTES_PER_ELEMENT * this._componentCount * from,
+            this._format,
+            end - from,
+        );
+    }
+
+    public set (view: VertexAttributeView, offset?: number) {
+        offset ??= 0;
+        assertIsTrue(this.componentCount === view.componentCount);
+        if (view instanceof CompactVertexAttributeView) {
+            this._array.set(view._array, this._componentCount * offset);
+        } else {
+            super.set(view, offset);
+        }
+    }
+
+    private _array: TypedArray;
+    private _format: gfx.Format;
+}
+
+export class VertexAttributeVec3View {
+    constructor (baseView: VertexAttributeView) {
+        assertIsTrue(baseView.componentCount === 3);
+        this._baseView = baseView;
+    }
+
+    get view () {
+        return this._baseView;
+    }
+
+    public get (vertexIndex: number, out?: Vec3) {
+        out ??= new Vec3();
+        out.x = this._baseView.getComponent(vertexIndex, 0);
+        out.y = this._baseView.getComponent(vertexIndex, 1);
+        out.z = this._baseView.getComponent(vertexIndex, 2);
+        return out;
+    }
+
+    public set (vertexIndex: number, value: Readonly<IVec3Like>) {
+        this._baseView.setComponent(vertexIndex, 0, value.x);
+        this._baseView.setComponent(vertexIndex, 1, value.y);
+        this._baseView.setComponent(vertexIndex, 2, value.z);
+    }
+
+    private _baseView: VertexAttributeView;
+}
+
+export class VertexAttributeVec4View {
+    constructor (baseView: VertexAttributeView) {
+        assertIsTrue(baseView.componentCount === 4);
+        this._baseView = baseView;
+    }
+
+    get view () {
+        return this._baseView;
+    }
+
+    public get (vertexIndex: number, out?: Vec4) {
+        out ??= new Vec4();
+        out.x = this._baseView.getComponent(vertexIndex, 0);
+        out.y = this._baseView.getComponent(vertexIndex, 1);
+        out.z = this._baseView.getComponent(vertexIndex, 2);
+        out.w = this._baseView.getComponent(vertexIndex, 3);
+        return out;
+    }
+
+    public set (vertexIndex: number, value: Readonly<IVec4Like>) {
+        this._baseView.setComponent(vertexIndex, 0, value.x);
+        this._baseView.setComponent(vertexIndex, 1, value.y);
+        this._baseView.setComponent(vertexIndex, 2, value.z);
+        this._baseView.setComponent(vertexIndex, 3, value.w);
+    }
+
+    private _baseView: VertexAttributeView;
+}
 
 /**
  * @en Mesh asset
@@ -200,7 +823,7 @@ export class Mesh extends Asset {
     /**
      * @en The sub meshes count of the mesh.
      * @zh 此网格的子网格数量。
-     * @deprecated Please use [[renderingSubMeshes.length]] instead
+     * @deprecated Please use [[subMeshes.length]] instead.
      */
     get subMeshCount () {
         const renderingMesh = this.renderingSubMeshes;
@@ -208,26 +831,33 @@ export class Mesh extends Asset {
     }
 
     /**
+     * @en The sub meshes of the mesh.
+     * @zh 此网格的子网格。
+     */
+    get subMeshes () {
+        return this._subMeshes;
+    }
+
+    /**
      * @en The minimum position of all vertices in the mesh
      * @zh （各分量都）小于等于此网格任何顶点位置的最大位置。
-     * @deprecated Please use [[struct.minPosition]] instead
      */
     get minPosition () {
-        return this.struct.minPosition;
+        return this._minPosition;
     }
 
     /**
      * @en The maximum position of all vertices in the mesh
      * @zh （各分量都）大于等于此网格任何顶点位置的最大位置。
-     * @deprecated Please use [[struct.maxPosition]] instead
      */
     get maxPosition () {
-        return this.struct.maxPosition;
+        return this._maxPosition;
     }
 
     /**
      * @en The struct of the mesh
      * @zh 此网格的结构。
+     * @deprecated Deprecated.
      */
     get struct () {
         return this._struct;
@@ -236,6 +866,7 @@ export class Mesh extends Asset {
     /**
      * @en The actual data of the mesh
      * @zh 此网格的数据。
+     * @deprecated Deprecated.
      */
     get data () {
         return this._data;
@@ -246,7 +877,7 @@ export class Mesh extends Asset {
      * @zh 此网格的哈希值。
      */
     get hash () {
-    // hashes should already be computed offline, but if not, make one
+        // hashes should already be computed offline, but if not, make one
         if (!this._hash) { this._hash = murmurhash2_32_gc(this._data, 666); }
         return this._hash;
     }
@@ -277,10 +908,32 @@ export class Mesh extends Asset {
     };
 
     @serializable
+    private _subMeshes: SubMesh[] = [];
+
+    @serializable
+    private _minPosition = new Vec3();
+
+    @serializable
+    private _maxPosition = new Vec3();
+
+    @serializable
     private _dataLength = 0;
 
     @serializable
     private _hash = 0;
+
+    /**
+     * Common initial weights of each sub-mesh.
+     */
+    @serializable
+    private _weights?: number[];
+
+    /**
+     * Name of each target of each sub-mesh morph.
+     * This field is only meaningful if every sub-mesh has the same number of targets.
+     */
+    @serializable
+    private _targetNames?: string[];
 
     private _data: Uint8Array = globalEmptyMeshBuffer;
 
@@ -305,84 +958,27 @@ export class Mesh extends Asset {
         this._initialized = true;
 
         if (this._data.byteLength !== this._dataLength) {
-        // In the case of deferred loading, `this._data` is created before
-        // the actual binary buffer is loaded.
+            // In the case of deferred loading, `this._data` is created before
+            // the actual binary buffer is loaded.
             this._data = new Uint8Array(this._dataLength);
             legacyCC.assetManager.postLoadNative(this);
         }
-        const { buffer } = this._data;
         const gfxDevice: Device = legacyCC.director.root.device;
-        const vertexBuffers = this._createVertexBuffers(gfxDevice, buffer);
-        const indexBuffers: Buffer[] = [];
-        const subMeshes: RenderingSubMesh[] = [];
 
-        for (let i = 0; i < this._struct.primitives.length; i++) {
-            const prim = this._struct.primitives[i];
-            if (prim.vertexBundelIndices.length === 0) {
-                continue;
+        this._renderingSubMeshes = [];
+        const renderingSubMeshes = this._renderingSubMeshes;
+        this._subMeshes.forEach((subMesh, subMeshIndex) => {
+            const renderingSubMesh = subMesh.createRenderingSubMesh(gfxDevice);
+            if (!renderingSubMesh) { // Failed to create
+                return;
             }
+            renderingSubMesh.mesh = this;
+            renderingSubMesh.subMeshIdx = subMeshIndex;
+            renderingSubMeshes.push(renderingSubMesh);
+        });
 
-            let indexBuffer: Buffer | null = null;
-            let ib: any = null;
-            if (prim.indexView) {
-                const idxView = prim.indexView;
-
-                let dstStride = idxView.stride;
-                let dstSize = idxView.length;
-                if (dstStride === 4 && !gfxDevice.hasFeature(Feature.ELEMENT_INDEX_UINT)) {
-                    const vertexCount = this._struct.vertexBundles[prim.vertexBundelIndices[0]].view.count;
-                    if (vertexCount >= 65536) {
-                        warnID(10001, vertexCount, 65536);
-                        continue; // Ignore this primitive
-                    } else {
-                        dstStride >>= 1; // Reduce to short.
-                        dstSize >>= 1;
-                    }
-                }
-
-                indexBuffer = gfxDevice.createBuffer(new BufferInfo(
-                    BufferUsageBit.INDEX,
-                    MemoryUsageBit.DEVICE,
-                    dstSize,
-                    dstStride,
-                ));
-                indexBuffers.push(indexBuffer);
-
-                ib = new (getIndexStrideCtor(idxView.stride))(buffer, idxView.offset, idxView.count);
-                if (idxView.stride !== dstStride) {
-                    ib = getIndexStrideCtor(dstStride).from(ib);
-                }
-                if (this.loaded) {
-                    indexBuffer.update(ib);
-                } else {
-                    this.once('load', () => {
-                        indexBuffer!.update(ib);
-                    });
-                }
-            }
-
-            const vbReference = prim.vertexBundelIndices.map((idx) => vertexBuffers[idx]);
-
-            const gfxAttributes: Attribute[] = [];
-            if (prim.vertexBundelIndices.length > 0) {
-                const idx = prim.vertexBundelIndices[0];
-                const vertexBundle = this._struct.vertexBundles[idx];
-                const attrs = vertexBundle.attributes;
-                for (let j = 0; j < attrs.length; ++j) {
-                    const attr = attrs[j];
-                    gfxAttributes[j] = new Attribute(attr.name, attr.format, attr.isInstanced, attr.stream, attr.isInstanced, attr.location);
-                }
-            }
-
-            const subMesh = new RenderingSubMesh(vbReference, gfxAttributes, prim.primitiveMode, indexBuffer);
-            subMesh.mesh = this; subMesh.subMeshIdx = i;
-
-            subMeshes.push(subMesh);
-        }
-
-        this._renderingSubMeshes = subMeshes;
-
-        if (this._struct.morph) {
+        const hasMorphData = this._subMeshes.some((subMesh) => !!subMesh.morph);
+        if (hasMorphData) {
             this.morphRendering = createMorphRendering(this, gfxDevice);
         }
     }
@@ -410,6 +1006,10 @@ export class Mesh extends Asset {
         }
     }
 
+    public hasMorph () {
+        return this.subMeshes.some((subMesh) => !!subMesh.morph);
+    }
+
     /**
      * @en Reset the struct and data of the mesh
      * @zh 重置此网格的结构和数据。
@@ -428,6 +1028,7 @@ export class Mesh extends Asset {
      * @en Reset the mesh with mesh creation information
      * @zh 重置此网格。
      * @param info Mesh creation information including struct and data
+     * @deprecated Deprecated.
      */
     public reset (info: Mesh.ICreateInfo) {
         this.destroyRenderingMesh();
@@ -864,35 +1465,13 @@ export class Mesh extends Asset {
      * the array type will match the data type of the attribute.
      */
     public readAttribute (primitiveIndex: number, attributeName: AttributeName): TypedArray | null {
-        let result: TypedArray | null = null;
-        this._accessAttribute(primitiveIndex, attributeName, (vertexBundle, iAttribute) => {
-            const vertexCount = vertexBundle.view.count;
-            const { format } = vertexBundle.attributes[iAttribute];
-            const StorageConstructor = getTypedArrayConstructor(FormatInfos[format]);
-            if (vertexCount === 0) {
-                return;
-            }
-
-            const inputView = new DataView(
-                this._data.buffer,
-                vertexBundle.view.offset + getOffset(vertexBundle.attributes, iAttribute),
-            );
-
-            const formatInfo = FormatInfos[format];
-            const reader = getReader(inputView, format);
-            if (!StorageConstructor || !reader) {
-                return;
-            }
-            const componentCount = formatInfo.count;
-            const storage = new StorageConstructor(vertexCount * componentCount);
-            const inputStride = vertexBundle.view.stride;
-            for (let iVertex = 0; iVertex < vertexCount; ++iVertex) {
-                for (let iComponent = 0; iComponent < componentCount; ++iComponent) {
-                    storage[componentCount * iVertex + iComponent] = reader(inputStride * iVertex + storage.BYTES_PER_ELEMENT * iComponent);
-                }
-            }
-            result = storage;
-        });
+        const subMesh = this._subMeshes[primitiveIndex];
+        if (!subMesh.hasAttribute(attributeName)) {
+            return null;
+        }
+        const view = subMesh.viewAttribute(attributeName);
+        const result = view.read() as TypedArray;
+        assertIsTrue(ArrayBuffer.isView(result));
         return result;
     }
 
@@ -907,46 +1486,26 @@ export class Mesh extends Asset {
      * @returns Return false if failed to access attribute, return true otherwise.
      */
     public copyAttribute (primitiveIndex: number, attributeName: AttributeName, buffer: ArrayBuffer, stride: number, offset: number) {
-        let written = false;
-        this._accessAttribute(primitiveIndex, attributeName, (vertexBundle, iAttribute) => {
-            const vertexCount = vertexBundle.view.count;
-            if (vertexCount === 0) {
-                written = true;
-                return;
-            }
-            const { format } = vertexBundle.attributes[iAttribute];
+        const subMesh = this._subMeshes[primitiveIndex];
+        if (!subMesh.hasAttribute(attributeName)) {
+            return false;
+        }
 
-            const inputView = new DataView(
-                this._data.buffer,
-                vertexBundle.view.offset + getOffset(vertexBundle.attributes, iAttribute),
-            );
+        const view = subMesh.viewAttribute(attributeName);
+        assertIsTrue(view instanceof InterleavedVertexAttributeView);
 
-            const outputView = new DataView(buffer, offset);
+        // TODO: `VertexAttributeView` should only be called by `SubMesh` to be honest.
+        const outView = new InterleavedVertexAttributeView(
+            buffer,
+            0,
+            offset,
+            stride,
+            subMesh.getAttributeFormat(attributeName),
+            subMesh.vertexCount,
+        );
 
-            const formatInfo = FormatInfos[format];
-
-            const reader = getReader(inputView, format);
-            const writer = getWriter(outputView, format);
-            if (!reader || !writer) {
-                return;
-            }
-
-            const componentCount = formatInfo.count;
-
-            const inputStride = vertexBundle.view.stride;
-            const inputComponentByteLength = getComponentByteLength(format);
-            const outputStride = stride;
-            const outputComponentByteLength = inputComponentByteLength;
-            for (let iVertex = 0; iVertex < vertexCount; ++iVertex) {
-                for (let iComponent = 0; iComponent < componentCount; ++iComponent) {
-                    const inputOffset = inputStride * iVertex + inputComponentByteLength * iComponent;
-                    const outputOffset = outputStride * iVertex + outputComponentByteLength * iComponent;
-                    writer(outputOffset, reader(inputOffset));
-                }
-            }
-            written = true;
-        });
-        return written;
+        outView.set(view as InterleavedVertexAttributeView);
+        return true;
     }
 
     /**
@@ -957,16 +1516,10 @@ export class Mesh extends Asset {
      * the array type will use the corresponding stride size.
      */
     public readIndices (primitiveIndex: number) {
-        if (primitiveIndex >= this._struct.primitives.length) {
+        if (primitiveIndex >= this._subMeshes.length) {
             return null;
         }
-        const primitive = this._struct.primitives[primitiveIndex];
-        if (!primitive.indexView) {
-            return null;
-        }
-        const { stride } = primitive.indexView;
-        const Ctor = stride === 1 ? Uint8Array : (stride === 2 ? Uint16Array : Uint32Array);
-        return new Ctor(this._data.buffer, primitive.indexView.offset, primitive.indexView.count);
+        return this._subMeshes[primitiveIndex].readIndices() ?? null;
     }
 
     /**
@@ -991,47 +1544,6 @@ export class Mesh extends Asset {
             outputArray[i] = reader(primitive.indexView.offset + FormatInfos[indexFormat].size * i);
         }
         return true;
-    }
-
-    private _accessAttribute (
-        primitiveIndex: number,
-        attributeName: AttributeName,
-        accessor: (vertexBundle: Mesh.IVertexBundle, iAttribute: number) => void,
-    ) {
-        if (primitiveIndex >= this._struct.primitives.length) {
-            return;
-        }
-        const primitive = this._struct.primitives[primitiveIndex];
-        for (const vertexBundleIndex of primitive.vertexBundelIndices) {
-            const vertexBundle = this._struct.vertexBundles[vertexBundleIndex];
-            const iAttribute = vertexBundle.attributes.findIndex((a) => a.name === attributeName);
-            if (iAttribute < 0) {
-                continue;
-            }
-            accessor(vertexBundle, iAttribute);
-            break;
-        }
-    }
-
-    private _createVertexBuffers (gfxDevice: Device, data: ArrayBuffer): Buffer[] {
-        return this._struct.vertexBundles.map((vertexBundle) => {
-            const vertexBuffer = gfxDevice.createBuffer(new BufferInfo(
-                BufferUsageBit.VERTEX,
-                MemoryUsageBit.DEVICE,
-                vertexBundle.view.length,
-                vertexBundle.view.stride,
-            ));
-
-            const view = new Uint8Array(data, vertexBundle.view.offset, vertexBundle.view.length);
-            if (this.loaded) {
-                vertexBuffer.update(view);
-            } else {
-                this.once('load', () => {
-                    vertexBuffer.update(view);
-                });
-            }
-            return vertexBuffer;
-        });
     }
 
     public initDefault (uuid?: string) {
@@ -1117,6 +1629,66 @@ function getReader (dataView: DataView, format: Format) {
     return null;
 }
 
+function getDataViewReader (formatInfo: FormatInfo): (dataView: DataView, offset: number) => number {
+    const stride = formatInfo.size / formatInfo.count;
+    switch (formatInfo.type) {
+    case FormatType.UNORM:
+    case FormatType.UINT: switch (stride) {
+    case 1: return (dataView, offset) => dataView.getUint8(offset);
+    case 2: return (dataView, offset) => dataView.getUint16(offset, isLittleEndian);
+    case 4: return (dataView, offset) => dataView.getUint32(offset, isLittleEndian);
+    default: break;
+    }
+        break;
+
+    case FormatType.SNORM:
+    case FormatType.INT: switch (stride) {
+    case 1: return (dataView, offset) => dataView.getInt8(offset);
+    case 2: return (dataView, offset) => dataView.getInt16(offset, isLittleEndian);
+    case 4: return (dataView, offset) => dataView.getInt32(offset, isLittleEndian);
+    default: break;
+    }
+        break;
+
+    case FormatType.FLOAT: {
+        return (dataView, offset) => dataView.getFloat32(offset, isLittleEndian);
+    }
+
+    default:
+    }
+    throw new Error(`Bad format.`);
+}
+
+function getDataViewWriter (formatInfo: FormatInfo): (dataView: DataView, offset: number, value: number) => void {
+    const stride = formatInfo.size / formatInfo.count;
+    switch (formatInfo.type) {
+    case FormatType.UNORM:
+    case FormatType.UINT: switch (stride) {
+    case 1: return (dataView, offset, value) => dataView.setUint8(offset, value);
+    case 2: return (dataView, offset, value) => dataView.setUint16(offset, value, isLittleEndian);
+    case 4: return (dataView, offset, value) => dataView.setUint32(offset, value, isLittleEndian);
+    default: break;
+    }
+        break;
+
+    case FormatType.SNORM:
+    case FormatType.INT: switch (stride) {
+    case 1: return (dataView, offset, value) => dataView.setInt8(offset, value);
+    case 2: return (dataView, offset, value) => dataView.setInt16(offset, value, isLittleEndian);
+    case 4: return (dataView, offset, value) => dataView.setInt32(offset, value, isLittleEndian);
+    default: break;
+    }
+        break;
+
+    case FormatType.FLOAT: {
+        return (dataView, offset, value) => dataView.setFloat32(offset, value, isLittleEndian);
+    }
+
+    default:
+    }
+    throw new Error(`Bad format.`);
+}
+
 function getWriter (dataView: DataView, format: Format) {
     const info = FormatInfos[format];
     const stride = info.size / info.count;
@@ -1165,6 +1737,49 @@ function getWriter (dataView: DataView, format: Format) {
     }
 
     return null;
+}
+
+class BufferJoiner {
+    private _viewOrPaddings: (ArrayBufferView | number)[] = [];
+    private _length = 0;
+
+    get byteLength () {
+        return this._length;
+    }
+
+    public alignAs (align: number) {
+        if (align !== 0) {
+            const remainder = this._length % align;
+            if (remainder !== 0) {
+                const padding = align - remainder;
+                this._viewOrPaddings.push(padding);
+                this._length += padding;
+                return padding;
+            }
+        }
+        return 0;
+    }
+
+    public append (view: ArrayBufferView) {
+        const result = this._length;
+        this._viewOrPaddings.push(view);
+        this._length += view.byteLength;
+        return result;
+    }
+
+    public get () {
+        const result = new Uint8Array(this._length);
+        let counter = 0;
+        this._viewOrPaddings.forEach((viewOrPadding) => {
+            if (typeof viewOrPadding === 'number') {
+                counter += viewOrPadding;
+            } else {
+                result.set(new Uint8Array(viewOrPadding.buffer, viewOrPadding.byteOffset, viewOrPadding.byteLength), counter);
+                counter += viewOrPadding.byteLength;
+            }
+        });
+        return result;
+    }
 }
 
 // function get

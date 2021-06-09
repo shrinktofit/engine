@@ -240,11 +240,7 @@ export class MeshRenderer extends RenderableComponent {
 
     // eslint-disable-next-line func-names
     @visible(function (this: MeshRenderer) {
-        return !!(
-            this.mesh
-            && this.mesh.struct.morph
-            && this.mesh.struct.morph.subMeshMorphs.some((subMeshMorph) => !!subMeshMorph)
-        );
+        return !!this.mesh?.hasMorph();
     })
     @disallowAnimation
     get enableMorph () {
@@ -350,7 +346,7 @@ export class MeshRenderer extends RenderableComponent {
         }
 
         if (this._model) {
-            this._model.createBoundingShape(this._mesh.struct.minPosition, this._mesh.struct.maxPosition);
+            this._model.createBoundingShape(this._mesh.minPosition, this._mesh.maxPosition);
             this._updateModelParams();
             this._onUpdateLightingmap();
         }
@@ -506,20 +502,20 @@ export class MeshRenderer extends RenderableComponent {
         }
 
         if (!this._mesh
-            || !this._mesh.struct.morph
+            || !this._mesh.hasMorph()
             || !this._mesh.morphRendering) {
             return;
         }
 
-        const { morph } = this._mesh.struct;
         this._morphInstance = this._mesh.morphRendering.createInstance();
-        const nSubMeshes = this._mesh.struct.primitives.length;
+        const nSubMeshes = this._mesh.subMeshes.length;
         for (let iSubMesh = 0; iSubMesh < nSubMeshes; ++iSubMesh) {
-            const subMeshMorph = morph.subMeshMorphs[iSubMesh];
+            const subMeshMorph = this._mesh.subMeshes[iSubMesh].morph;
             if (!subMeshMorph) {
                 continue;
             }
-            const initialWeights = subMeshMorph.weights || morph.weights;
+            // TODO: sub meshes' common weights?
+            const initialWeights = subMeshMorph.weights;
             const weights = initialWeights
                 ? initialWeights.slice()
                 : new Array<number>(subMeshMorph.targets.length).fill(0);
