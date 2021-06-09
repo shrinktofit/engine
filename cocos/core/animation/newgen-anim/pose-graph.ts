@@ -13,6 +13,7 @@ import { PoseNode } from './pose-node';
 import { GraphNode, outgoingsSymbol, incomingsSymbol } from './graph-node';
 import { SkeletonMask } from '../skeleton-mask';
 import { EditorExtendable } from '../../data/editor-extendable';
+import { array } from '../../utils/js';
 
 export { GraphNode };
 
@@ -359,7 +360,7 @@ export class PoseGraph extends Asset {
         super();
     }
 
-    get layers (): Iterable<Layer> {
+    get layers (): readonly Layer[] {
         return this._layers;
     }
 
@@ -373,11 +374,19 @@ export class PoseGraph extends Asset {
         return layer;
     }
 
+    public removeLayer (index: number) {
+        array.removeAt(this._layers, index);
+    }
+
     public addVariable (name: string, type: VariableType, value?: Value) {
         const variable = new Variable(type);
         if (typeof value !== 'undefined') {
             variable.value = value;
         }
         this._variables[name] = variable;
+    }
+
+    public removeVariable (name: string) {
+        delete this._variables[name];
     }
 }
