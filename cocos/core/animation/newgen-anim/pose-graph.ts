@@ -14,6 +14,7 @@ import { GraphNode, outgoingsSymbol, incomingsSymbol } from './graph-node';
 import { SkeletonMask } from '../skeleton-mask';
 import { EditorExtendable } from '../../data/editor-extendable';
 import { array } from '../../utils/js';
+import { move } from '../../algorithm/move';
 
 export { GraphNode };
 
@@ -368,14 +369,31 @@ export class PoseGraph extends Asset {
         return Object.entries(this._variables);
     }
 
+    /**
+     * Adds a layer.
+     * @returns The new layer.
+     */
     public addLayer () {
         const layer = new Layer();
         this._layers.push(layer);
         return layer;
     }
 
+    /**
+     * Removes a layer.
+     * @param index Index to the layer to remove.
+     */
     public removeLayer (index: number) {
         array.removeAt(this._layers, index);
+    }
+
+    /**
+     * Adjusts the layer's order.
+     * @param index
+     * @param newIndex
+     */
+    public moveLayer (index: number, newIndex: number) {
+        move(this._layers, index, newIndex);
     }
 
     public addVariable (name: string, type: VariableType, value?: Value) {
