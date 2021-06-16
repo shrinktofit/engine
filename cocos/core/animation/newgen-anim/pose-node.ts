@@ -1,9 +1,10 @@
-import { serializable } from 'cc.decorator';
+import { ccclass, serializable } from 'cc.decorator';
 import { Pose } from './pose';
 import { GraphNode } from './graph-node';
 import { parametric, parametricNum } from './parametric';
 import { PoseNodeEval } from './graph-eval';
 
+@ccclass('cc.animation.PoseNode')
 export class PoseNode extends GraphNode {
     @serializable
     public pose: Pose | null = null;
