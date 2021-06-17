@@ -1,0 +1,45 @@
+{
+  "__type__": "cc.animation.PoseGraph",
+  "_name": "",
+  "_objFlags": 0,
+  "_native": "",
+  "_layers": [
+    {
+      "weight": 1,
+      "mask": null,
+      "blending": 1,
+      "_graph": {
+        "_bindings": {},
+        "name": "Main Layer",
+        "_nodes": [
+          {
+            "_bindings": {},
+            "name": ""
+          },
+          {
+            "_bindings": {},
+            "name": ""
+          },
+          {
+            "_bindings": {},
+            "name": ""
+          }
+        ],
+        "_transitions": [],
+        "_entryNode": {
+          "_bindings": {},
+          "name": ""
+        },
+        "_existNode": {
+          "_bindings": {},
+          "name": ""
+        },
+        "_anyNode": {
+          "_bindings": {},
+          "name": ""
+        }
+      }
+    }
+  ],
+  "_variables": {}
+}
