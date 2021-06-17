@@ -389,8 +389,8 @@ export class PoseGraph extends Asset {
 
     /**
      * Adjusts the layer's order.
-     * @param index
-     * @param newIndex
+     * @param index 
+     * @param newIndex 
      */
     public moveLayer (index: number, newIndex: number) {
         move(this._layers, index, newIndex);

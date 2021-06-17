@@ -87,7 +87,7 @@ export class BindingHost {
      * Gets the property binding on the specified property binding point.
      * @returns The name of the bounded variable, if one exists.
      */
-    public getPropertyBinding (bindingPointId: string) {
+     public getPropertyBinding (bindingPointId: string) {
         return this[propertyBindingsSymbol][bindingPointId];
     }
 }
