@@ -15,6 +15,7 @@ import { SkeletonMask } from '../skeleton-mask';
 import { EditorExtendable } from '../../data/editor-extendable';
 import { array } from '../../utils/js';
 import { move } from '../../algorithm/move';
+import { onAfterDeserializedTag } from '../../data/deserialize-symbols';
 
 export { GraphNode };
 
@@ -95,6 +96,14 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
         this._entryNode = this._addNode(new GraphNode());
         this._existNode = this._addNode(new GraphNode());
         this._anyNode = this._addNode(new GraphNode());
+    }
+
+    public [onAfterDeserializedTag] () {
+        this._nodes.forEach((node) => own(node, this));
+        this._transitions.forEach((transition) => {
+            transition.from[outgoingsSymbol].push(transition);
+            transition.to[incomingsSymbol].push(transition);
+        });
     }
 
     [createEval] (context: PoseEvalContext): PoseEval | null {
@@ -389,8 +398,8 @@ export class PoseGraph extends Asset {
 
     /**
      * Adjusts the layer's order.
-     * @param index 
-     * @param newIndex 
+     * @param index
+     * @param newIndex
      */
     public moveLayer (index: number, newIndex: number) {
         move(this._layers, index, newIndex);
