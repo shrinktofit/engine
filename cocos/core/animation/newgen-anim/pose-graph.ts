@@ -416,4 +416,8 @@ export class PoseGraph extends Asset {
     public removeVariable (name: string) {
         delete this._variables[name];
     }
+
+    public getVariable (name: string) {
+        return this._variables[name];
+    }
 }
