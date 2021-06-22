@@ -113,7 +113,7 @@ class LayerEval {
     }
 
     public update (deltaTime: number) {
-        if (!this._graphEval.existed) {
+        if (!this._graphEval.exited) {
             this._graphEval.update(deltaTime);
         }
     }
@@ -159,8 +159,8 @@ class SubgraphEval {
     /**
      * Indicates if this sub graph reached its exit.
      */
-    get existed () {
-        return this._currentNode.kind === NodeKind.exist;
+    get exited () {
+        return this._currentNode.kind === NodeKind.exit;
     }
 
     /**
@@ -293,11 +293,11 @@ function createNodeEval (context: SubGraphEvalContext, graph: PoseSubgraph, node
     } else {
         const kind = node === graph.entryNode
             ? NodeKind.entry
-            : node === graph.existNode
-                ? NodeKind.exist
+            : node === graph.exitNode
+                ? NodeKind.exit
                 : node === graph.anyNode
                     ? NodeKind.any
-                    : NodeKind.exist;
+                    : NodeKind.exit;
         return new SpecialNodeEval(kind, node.name);
     }
 }
@@ -346,7 +346,7 @@ function bindEvalProperties<T extends BindingHost, EvalT> (context: SubGraphEval
 }
 
 enum NodeKind {
-    entry, exist, any, pose, subgraph,
+    entry, exit, any, pose, subgraph,
 }
 
 export class NodeBaseEval {
@@ -435,7 +435,7 @@ export class SpecialNodeEval extends NodeBaseEval {
         this.kind = kind;
     }
 
-    public readonly kind: NodeKind.entry | NodeKind.exist | NodeKind.any;
+    public readonly kind: NodeKind.entry | NodeKind.exit | NodeKind.any;
 }
 
 export type NodeEval = PoseNodeEval | SubgraphNodeEval | SpecialNodeEval;
