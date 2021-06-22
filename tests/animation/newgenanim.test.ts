@@ -152,11 +152,12 @@ describe('NewGen Anim', () => {
     });
 
     describe('Condition', () => {
+        const emptyContext: Parameters<Condition[typeof createEval]>[0] = { getParam() {} };
         test('Unary', () => {
             const condition = new Condition();
             condition.operator = Condition.Operator.BE_TRUE;
             condition.lhs = false;
-            const conditionEval = condition[createEval]();
+            const conditionEval = condition[createEval](emptyContext);
             expect(conditionEval.eval()).toBe(false);
             conditionEval.setLhs(true);
             expect(conditionEval.eval()).toBe(true);
@@ -167,7 +168,7 @@ describe('NewGen Anim', () => {
             condition.operator = Condition.Operator.GREATER_THAN;
             condition.lhs = 1;
             condition.rhs = 0.5;
-            const conditionEval = condition[createEval]();
+            const conditionEval = condition[createEval](emptyContext);
             expect(conditionEval.eval()).toBe(true);
             conditionEval.setRhs(2.0);
             expect(conditionEval.eval()).toBe(false);

@@ -1,5 +1,6 @@
 import { ccclass, serializable } from '../../data/decorators';
 import { createEval } from './create-eval';
+import { VariableTypeMismatchedError } from './errors';
 import { BindingHost, parametric } from './parametric';
 import type { Value } from './variable';
 
@@ -33,8 +34,12 @@ export class Condition extends BindingHost {
     })
     public rhs: Value | undefined;
 
-    public [createEval] () {
-        const { operator, lhs, rhs } = this;
+    public [createEval] (context: { getParam(host: BindingHost, name: string): unknown; }) {
+        const lhs = context.getParam(this, 'lhs') ?? this.lhs;
+        validateConditionParam(lhs, 'lhs');
+        const rhs = context.getParam(this, 'rhs') ?? this.rhs;
+        validateConditionParam(rhs, 'rhs');
+        const { operator } = this;
         return new ConditionEval(operator, lhs, rhs);
     }
 }
@@ -101,5 +106,12 @@ export class ConditionEval {
             this._result = lhs >= rhs!;
             break;
         }
+    }
+}
+
+export function validateConditionParam (val: unknown, name: string): asserts val is number | boolean {
+    if (typeof val !== 'number' && typeof val !== 'boolean') {
+        // TODO var name?
+        throw new VariableTypeMismatchedError(name, 'number | boolean');
     }
 }

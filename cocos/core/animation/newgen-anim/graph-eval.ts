@@ -107,9 +107,9 @@ class LayerEval {
 
     constructor (layer: Layer, context: LayerContext) {
         this._graphEval = new SubgraphEval(layer.graph, {
-            layerWeight: layer.weight,
             ...context,
         });
+        this._graphEval.setWeight(layer.weight);
     }
 
     public update (deltaTime: number) {
@@ -123,21 +123,18 @@ class LayerEval {
     }
 }
 
-type SubGraphEvalContext = LayerContext & {
-    layerWeight: number;
-};
+type SubGraphEvalContext = LayerContext;
 
 class SubgraphEval {
-    private declare _layerWeight: number;
+    private _weight = 0.0;
     private declare _nodes: Set<NodeEval>;
     private declare _currentNode: NodeEval;
     private _currentTransition: TransitionEval | null = null;
     private _transitionProgress = 0;
     private declare _anyNode: NodeEval;
+    private declare _enterNode: NodeEval;
 
     constructor (subgraph: PoseSubgraph, context: SubGraphEvalContext) {
-        this._layerWeight = context.layerWeight;
-
         const nodes = Array.from(subgraph.nodes());
 
         const nodeEvaluators = nodes.map((node) => createNodeEval(context, subgraph, node));
@@ -150,6 +147,7 @@ class SubgraphEval {
         this._nodes = new Set(nodeEvaluators);
         const entryNode = nodeEvaluators.find((node) => node.kind === NodeKind.entry);
         assertIsNonNullable(entryNode, 'Entry node is missing');
+        this._enterNode = entryNode;
 
         const anyNode = nodeEvaluators.find((node) => node.kind === NodeKind.any);
         assertIsNonNullable(anyNode, 'Any node is missing');
@@ -158,12 +156,38 @@ class SubgraphEval {
         this._currentNode = entryNode;
     }
 
+    /**
+     * Indicates if this sub graph reached its exit.
+     */
     get existed () {
         return this._currentNode.kind === NodeKind.exist;
     }
 
+    /**
+     * Resets this sub graph to its initial state.
+     */
+    public reset () {
+        this._currentNode = this._enterNode;
+        this._currentTransition = null;
+    }
+
+    /**
+     * Sets weight of this sub graph.
+     * @param weight The weight.
+     */
+    public setWeight (weight: number) {
+        this._weight = weight;
+    }
+
     public update (deltaTime: number) {
-        this._consume(deltaTime);
+        let remainDeltaTime = deltaTime;
+        do {
+            const consumed = this._consume(remainDeltaTime);
+            if (!consumed) {
+                break;
+            }
+            remainDeltaTime -= consumed;
+        } while (remainDeltaTime > 0);
     }
 
     public getCurrentNodeInfo () {
@@ -173,57 +197,30 @@ class SubgraphEval {
     }
 
     private _consume (deltaTime: number) {
-        if (this._currentTransition) {
-            const transitionDuration = this._currentTransition.duration;
-            assertIsTrue(transitionDuration >= this._transitionProgress);
-            const remain = transitionDuration - this._transitionProgress;
-            const contrib = Math.min(remain, deltaTime);
-            this._transitionProgress += contrib;
-
-            const progress = this._transitionProgress;
-            const fromNode = this._currentNode;
-            const toNode = this._currentTransition.to;
-            assertIsTrue(fromNode !== toNode);
-            const ratio = Math.min(progress / transitionDuration, 1.0);
-            console.log(`Ratio ${ratio}`);
-            const layerWeight = this._layerWeight;
-            if (fromNode.kind === NodeKind.pose) {
-                fromNode.pose?.setBaseWeight(layerWeight * (1.0 - ratio));
-                fromNode.pose?.update(contrib);
-            }
-            if (toNode.kind === NodeKind.pose) {
-                toNode.pose?.setBaseWeight(layerWeight * ratio);
-                toNode.pose?.update(contrib * this._currentTransition.targetStretch);
-            }
-
-            if (ratio === 1.0) {
-                if (this._currentNode.kind === NodeKind.pose) {
-                    this._currentNode.pose?.inactive();
-                }
-                this._currentNode = this._currentTransition.to;
-                this._currentTransition = null;
-            }
-
-            return contrib;
+        const currentUpdatingConsume = this._updateCurrentTransition(deltaTime);
+        if (currentUpdatingConsume !== 0.0) {
+            return currentUpdatingConsume;
         }
 
-        // Apply transitions
         const currentNode = this._currentNode;
         let satisfiedTransition = this._getSatisfiedTransition(currentNode);
         if (!satisfiedTransition) {
             satisfiedTransition = this._getSatisfiedTransition(this._anyNode);
         }
+
         if (!satisfiedTransition || satisfiedTransition.to === currentNode) {
-            if (currentNode.kind === NodeKind.pose && currentNode.pose) {
-                currentNode.pose.update(deltaTime);
+            // No transition should be taken
+            if (isPoseOrSubgraphNodeEval(currentNode)) {
+                currentNode.update(deltaTime);
             }
         } else {
+            // Apply transitions
             this._currentTransition = satisfiedTransition;
             this._transitionProgress = 0.0;
             const targetNode = satisfiedTransition.to;
-            if (targetNode.kind === NodeKind.pose && targetNode.pose) {
-                targetNode.pose.active();
-                targetNode.pose.setBaseWeight(this._layerWeight);
+            if (isPoseOrSubgraphNodeEval(targetNode)) {
+                targetNode.setWeight(this._weight);
+                targetNode.enter();
             }
             // if (currentNode.kind === NodeKind.pose && currentNode.pose) {
             //     currentNode.pose.inactive();
@@ -232,6 +229,48 @@ class SubgraphEval {
         }
 
         return deltaTime;
+    }
+
+    private _updateCurrentTransition (deltaTime: number) {
+        if (!this._currentTransition) {
+            return 0.0;
+        }
+
+        const transitionDuration = this._currentTransition.duration;
+        assertIsTrue(transitionDuration >= this._transitionProgress);
+        const remain = transitionDuration - this._transitionProgress;
+        const contrib = Math.min(remain, deltaTime);
+        this._transitionProgress += contrib;
+
+        const progress = this._transitionProgress;
+        const fromNode = this._currentNode;
+        const toNode = this._currentTransition.to;
+        assertIsTrue(fromNode !== toNode);
+        const ratio = Math.min(progress / transitionDuration, 1.0);
+        console.log(`Ratio ${ratio}`);
+        const weight = this._weight;
+        if (isPoseOrSubgraphNodeEval(fromNode)) {
+            fromNode.setWeight(weight * (1.0 - ratio));
+            fromNode.update(contrib);
+        }
+        if (isPoseOrSubgraphNodeEval(toNode)) {
+            toNode.setWeight(weight * ratio);
+            toNode.update(contrib * this._currentTransition.targetStretch);
+        }
+
+        if (ratio === 1.0) {
+            if (isPoseOrSubgraphNodeEval(fromNode)) {
+                fromNode.leave();
+            }
+            this._currentNode = toNode;
+            this._currentTransition = null;
+        }
+
+        return contrib;
+    }
+
+    private _selectTransition () {
+
     }
 
     private _getSatisfiedTransition (node: NodeEval): TransitionEval | null {
@@ -247,49 +286,19 @@ class SubgraphEval {
 }
 
 function createNodeEval (context: SubGraphEvalContext, graph: PoseSubgraph, node: GraphNode): NodeEval {
-    const name = node.name;
-    const outgoingTransitions: TransitionEval[] = [];
     if (node instanceof PoseNode) {
-        const poseNodeEval: PoseNodeEval & NodeBaseEval = {
-            name,
-            outgoingTransitions,
-            kind: NodeKind.pose,
-            pose: null,
-            speed: node.speed,
-            startRatio: node.startRatio,
-        };
-        bindEvalProperties(context, node, poseNodeEval);
-        const poseEvalContext: PoseEvalContext = {
-            ...context,
-            speed: node.speed,
-            startRatio: node.startRatio,
-        };
-        const poseEval = node.pose?.[createEval](poseEvalContext) ?? null;
-        if (poseEval && node.pose instanceof BindingHost) {
-            bindEvalProperties(context, node.pose, poseEval);
-        }
-        poseNodeEval.pose = poseEval;
-        return poseNodeEval;
+        return new PoseNodeEval(node, context);
     } else if (node instanceof PoseSubgraph) {
-        const subgraphEval = new SubgraphEval(node, context);
-        return {
-            name,
-            outgoingTransitions,
-            kind: NodeKind.subgraph,
-            subgraphEval,
-        };
+        return new SubgraphNodeEval(node, context);
     } else {
-        return {
-            name,
-            outgoingTransitions,
-            kind: node === graph.entryNode
-                ? NodeKind.entry
-                : node === graph.existNode
-                    ? NodeKind.exist
-                    : node === graph.anyNode
-                        ? NodeKind.any
-                        : NodeKind.exist,
-        };
+        const kind = node === graph.entryNode
+            ? NodeKind.entry
+            : node === graph.existNode
+                ? NodeKind.exist
+                : node === graph.anyNode
+                    ? NodeKind.any
+                    : NodeKind.exist;
+        return new SpecialNodeEval(kind, node.name);
     }
 }
 
@@ -304,15 +313,15 @@ function createTransitionEval (context: SubGraphEvalContext, graph: PoseSubgraph
         const toEval = nodeEvaluators[iOutgoingNode];
         const transitionEval: TransitionEval = {
             to: toEval,
-            condition: outgoing.condition?.[createEval]() ?? null,
+            condition: outgoing.condition?.[createEval](context) ?? null,
             duration: outgoing.duration,
             targetStretch: 1.0,
         };
         if (toEval.kind === NodeKind.pose) {
             const toScaling = 1.0;
-            if (transitionEval.duration !== 0.0 && nodeEval.kind === NodeKind.pose && nodeEval.pose && toEval.pose) {
-                // toScaling = toEval.pose.duration / transitionEval.duration;
-            }
+            // if (transitionEval.duration !== 0.0 && nodeEval.kind === NodeKind.pose && nodeEval.pose && toEval.pose) {
+            //     // toScaling = toEval.pose.duration / transitionEval.duration;
+            // }
             transitionEval.targetStretch = toScaling;
         }
         if (transitionEval.condition && outgoing.condition) {
@@ -340,28 +349,100 @@ enum NodeKind {
     entry, exist, any, pose, subgraph,
 }
 
-interface NodeBaseEval {
-    name: string;
-    outgoingTransitions: TransitionEval[];
+export class NodeBaseEval {
+    constructor (name: string) {
+        this.name = name;
+    }
+
+    public readonly name: string;
+
+    public outgoingTransitions: readonly TransitionEval[] = [];
 }
 
-export interface PoseNodeEval extends NodeBaseEval {
-    kind: NodeKind.pose;
-    pose: PoseEval | null;
-    speed: number;
-    startRatio: number;
+export class PoseNodeEval extends NodeBaseEval {
+    constructor (node: PoseNode, context: SubGraphEvalContext) {
+        super(node.name);
+        this.speed = node.speed;
+        this.startRatio = node.startRatio;
+        bindEvalProperties(context, node, this);
+        const poseEvalContext: PoseEvalContext = {
+            ...context,
+            speed: node.speed,
+            startRatio: node.startRatio,
+        };
+        const poseEval = node.pose?.[createEval](poseEvalContext) ?? null;
+        if (poseEval && node.pose instanceof BindingHost) {
+            bindEvalProperties(context, node.pose, poseEval);
+        }
+        this._pose = poseEval;
+    }
+
+    public readonly kind = NodeKind.pose;
+
+    public speed: number;
+
+    public startRatio: number;
+
+    public setWeight (weight: number) {
+        this._pose?.setBaseWeight(weight);
+    }
+
+    public enter () {
+        this._pose?.active();
+    }
+
+    public leave () {
+        this._pose?.inactive();
+    }
+
+    public update (deltaTime: number) {
+        this._pose?.update(deltaTime);
+    }
+
+    private _pose: PoseEval | null = null;
 }
 
-export interface SubgraphNodeEval extends NodeBaseEval {
-    kind: NodeKind.subgraph;
-    subgraphEval: SubgraphEval;
+export class SubgraphNodeEval extends NodeBaseEval {
+    constructor (node: PoseSubgraph, context: SubGraphEvalContext) {
+        super(node.name);
+        const subgraphEval = new SubgraphEval(node, context);
+        this.subgraphEval = subgraphEval;
+    }
+
+    public readonly kind = NodeKind.subgraph;
+
+    public subgraphEval: SubgraphEval;
+
+    public enter () {
+    }
+
+    public leave () {
+        this.subgraphEval.reset();
+    }
+
+    public setWeight (weight: number) {
+        this.subgraphEval.setWeight(weight);
+    }
+
+    public update (deltaTime: number) {
+        this.subgraphEval.update(deltaTime);
+    }
 }
 
-export interface SpecialNodeEval extends NodeBaseEval {
-    kind: NodeKind.entry | NodeKind.exist | NodeKind.any;
+export class SpecialNodeEval extends NodeBaseEval {
+    constructor (kind: SpecialNodeEval['kind'], name: string) {
+        super(name);
+        this.kind = kind;
+    }
+
+    public readonly kind: NodeKind.entry | NodeKind.exist | NodeKind.any;
 }
 
 export type NodeEval = PoseNodeEval | SubgraphNodeEval | SpecialNodeEval;
+
+function isPoseOrSubgraphNodeEval (nodeEval: NodeEval): nodeEval is (PoseNodeEval | SubgraphNodeEval) {
+    return nodeEval.kind === NodeKind.pose || nodeEval.kind === NodeKind.subgraph;
+}
 
 interface TransitionEval {
     to: NodeEval;
