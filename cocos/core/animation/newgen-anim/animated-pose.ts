@@ -39,6 +39,7 @@ class AnimatedPoseEval implements PoseEval {
     }
 
     public update (deltaTime: number) {
+        globalThis.xx.push([this._state.name, this._state.weight]);
         this._state.update(deltaTime);
     }
 
