@@ -51,7 +51,7 @@ function createSubgraph (subgraph: PoseSubgraph, subgraphDesc: PoseSubGraphDescr
     }
     if (subgraphDesc.exitTransitions) {
         for (const transitionDesc of subgraphDesc.exitTransitions) {
-            createTransition(subgraph, nodes[transitionDesc.from], subgraph.existNode, transitionDesc);
+            createTransition(subgraph, nodes[transitionDesc.from], subgraph.exitNode, transitionDesc);
         }
     }
     if (subgraphDesc.anyTransitions) {

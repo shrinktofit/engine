@@ -83,7 +83,7 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
     private _entryNode: GraphNode;
 
     @serializable
-    private _existNode: GraphNode;
+    private _exitNode: GraphNode;
 
     @serializable
     private _anyNode: GraphNode;
@@ -94,7 +94,7 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
     constructor () {
         super();
         this._entryNode = this._addNode(new GraphNode());
-        this._existNode = this._addNode(new GraphNode());
+        this._exitNode = this._addNode(new GraphNode());
         this._anyNode = this._addNode(new GraphNode());
     }
 
@@ -114,8 +114,8 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
         return this._entryNode;
     }
 
-    get existNode () {
-        return this._existNode;
+    get exitNode () {
+        return this._exitNode;
     }
 
     get anyNode () {
@@ -158,7 +158,7 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
         assertsOwnedBy(node, this);
 
         if (node === this.entryNode
-            || node === this.existNode
+            || node === this.exitNode
             || node === this.anyNode) {
             return;
         }
@@ -185,7 +185,7 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
         if (to === this.anyNode) {
             throw new InvalidTransitionError('to-any');
         }
-        if (from === this.existNode) {
+        if (from === this.exitNode) {
             throw new InvalidTransitionError('from-exit');
         }
 

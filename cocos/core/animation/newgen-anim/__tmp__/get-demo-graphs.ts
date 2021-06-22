@@ -25,7 +25,7 @@ const graphDescMap: Record<string, GraphDescription> = {
         }],
     },
 
-    'vars': {
+    vars: {
         vars: [
             { name: 'foo', value: 1.0 },
             { name: 'bar', value: false },
