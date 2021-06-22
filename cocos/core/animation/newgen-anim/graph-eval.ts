@@ -269,14 +269,15 @@ class SubgraphEval {
         return contrib;
     }
 
-    private _selectTransition () {
-
-    }
-
     private _getSatisfiedTransition (node: NodeEval): TransitionEval | null {
         const { outgoingTransitions } = node;
         for (let iTransition = 0; iTransition < outgoingTransitions.length; ++iTransition) {
             const transition = outgoingTransitions[iTransition];
+            if (node.kind === NodeKind.pose
+                && transition.exitCondition >= 0.0
+                && node.progress < transition.exitCondition) {
+                continue;
+            }
             if (!transition.condition || transition.condition.eval()) {
                 return transition;
             }
@@ -316,6 +317,7 @@ function createTransitionEval (context: SubGraphEvalContext, graph: PoseSubgraph
             condition: outgoing.condition?.[createEval](context) ?? null,
             duration: outgoing.duration,
             targetStretch: 1.0,
+            exitCondition: outgoing.exitCondition,
         };
         if (toEval.kind === NodeKind.pose) {
             const toScaling = 1.0;
@@ -453,6 +455,7 @@ interface TransitionEval {
     duration: number;
     condition: ConditionEval | null;
     targetStretch: number;
+    exitCondition: number;
 }
 
 interface VarRefs {
