@@ -383,6 +383,10 @@ export class PoseNodeEval extends NodeBaseEval {
 
     public startRatio: number;
 
+    get progress () {
+        return this._pose?.progress ?? -1.0;
+    }
+
     public setWeight (weight: number) {
         this._pose?.setBaseWeight(weight);
     }
