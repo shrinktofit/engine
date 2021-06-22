@@ -9,6 +9,9 @@ import { ConditionEval } from './condition';
 import { VariableNotDefinedError } from './errors';
 import { PoseNode } from './pose-node';
 import { SkeletonMask } from '../skeleton-mask';
+import { debug } from '../../platform/debug';
+
+const graphLog = true;
 
 export class PoseGraphEval {
     private _varRefMap: Record<string, VarRefs> = {};
@@ -134,7 +137,11 @@ class SubgraphEval {
     private declare _anyNode: NodeEval;
     private declare _enterNode: NodeEval;
 
+    public declare name: string;
+
     constructor (subgraph: PoseSubgraph, context: SubGraphEvalContext) {
+        this.name = subgraph.name;
+
         const nodes = Array.from(subgraph.nodes());
 
         const nodeEvaluators = nodes.map((node) => createNodeEval(context, subgraph, node));
@@ -203,17 +210,38 @@ class SubgraphEval {
         }
 
         const currentNode = this._currentNode;
-        let satisfiedTransition = this._getSatisfiedTransition(currentNode);
+
+        let satisfiedTransition: TransitionEval | null = null;
+        if (!(currentNode.kind === NodeKind.subgraph && !currentNode.exited)) {
+            // If current node is subgraph,
+            // we should wait for its exiting before we can look for its transitions.
+            satisfiedTransition = this._getSatisfiedTransition(currentNode);
+        }
+
         if (!satisfiedTransition) {
             satisfiedTransition = this._getSatisfiedTransition(this._anyNode);
         }
 
-        if (!satisfiedTransition || satisfiedTransition.to === currentNode) {
-            // No transition should be taken
+        const isValidSelfTransition = () => {
+            if (currentNode.kind === NodeKind.pose) {
+                return false;
+            }
+            if (currentNode.kind === NodeKind.subgraph) {
+                if (currentNode.exited) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        if (!satisfiedTransition || (satisfiedTransition.to === currentNode && !isValidSelfTransition())) {
             if (isPoseOrSubgraphNodeEval(currentNode)) {
                 currentNode.update(deltaTime);
             }
-        } else {
+            return deltaTime;
+        }
+
+        if (satisfiedTransition.to !== currentNode) {
             // Apply transitions
             this._currentTransition = satisfiedTransition;
             this._transitionProgress = 0.0;
@@ -226,6 +254,25 @@ class SubgraphEval {
             //     currentNode.pose.inactive();
             // }
             // this._currentNode = targetNode;
+
+            if (graphLog) {
+                debug(`[Subgraph ${this.name}]: Transition starts: from ${currentNode.name} to ${satisfiedTransition.to.name}.`);
+            }
+
+            return 0.0;
+        }
+
+        // Self transition
+
+        if (currentNode.kind === NodeKind.subgraph) {
+            assertIsTrue(currentNode.exited);
+            currentNode.reenter();
+
+            if (graphLog) {
+                debug(`[Subgraph ${this.name}]: Subgraph ${currentNode.name} reentered.`);
+            }
+
+            currentNode.update(deltaTime);
         }
 
         return deltaTime;
@@ -247,18 +294,21 @@ class SubgraphEval {
         const toNode = this._currentTransition.to;
         assertIsTrue(fromNode !== toNode);
         const ratio = Math.min(progress / transitionDuration, 1.0);
-        console.log(`Ratio ${ratio}`);
+        // console.log(`Ratio ${ratio}`);
+
         const weight = this._weight;
-        if (isPoseOrSubgraphNodeEval(fromNode)) {
+        if (isPoseOrSubgraphNodeEval(fromNode) && isPoseOrSubgraphNodeEval(toNode)) {
             fromNode.setWeight(weight * (1.0 - ratio));
             fromNode.update(contrib);
-        }
-        if (isPoseOrSubgraphNodeEval(toNode)) {
             toNode.setWeight(weight * ratio);
             toNode.update(contrib * this._currentTransition.targetStretch);
         }
 
         if (ratio === 1.0) {
+            if (graphLog) {
+                debug(`[Subgraph ${this.name}]: Transition finished: from ${fromNode.name} to ${toNode.name}.`);
+            }
+
             if (isPoseOrSubgraphNodeEval(fromNode)) {
                 fromNode.leave();
             }
@@ -419,10 +469,18 @@ export class SubgraphNodeEval extends NodeBaseEval {
 
     public subgraphEval: SubgraphEval;
 
+    get exited () {
+        return this.subgraphEval.exited;
+    }
+
     public enter () {
     }
 
     public leave () {
+        this.subgraphEval.reset();
+    }
+
+    public reenter () {
         this.subgraphEval.reset();
     }
 
