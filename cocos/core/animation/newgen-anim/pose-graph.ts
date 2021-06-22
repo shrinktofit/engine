@@ -39,6 +39,8 @@ export interface Transition extends EditorExtendable {
      * The transition condition.
      */
     condition: Condition | null;
+
+    exitCondition: number;
 }
 
 @ccclass('cc.animation.TransitionInternal')
@@ -56,6 +58,9 @@ export class TransitionInternal extends EditorExtendable implements OwnedBy<Pose
 
     @serializable
     public duration = 0.3;
+
+    @serializable
+    public exitCondition = -1;
 
     /**
      * @internal
