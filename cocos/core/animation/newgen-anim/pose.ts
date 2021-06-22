@@ -17,6 +17,10 @@ export interface PoseEvalContext {
 
 export interface PoseEval {
     readonly duration: number;
+    /**
+     * The progress of this animation, or -1 if this is not a animation pose.
+     */
+    readonly progress: number;
     active(): void;
     inactive(): void;
     setBaseWeight (weight: number): void;
