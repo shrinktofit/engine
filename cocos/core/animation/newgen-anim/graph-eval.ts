@@ -184,6 +184,9 @@ class SubgraphEval {
      */
     public setWeight (weight: number) {
         this._weight = weight;
+        if (isPoseOrSubgraphNodeEval(this._currentNode)) {
+            this._currentNode.setWeight(weight);
+        }
     }
 
     public update (deltaTime: number) {
@@ -297,9 +300,11 @@ class SubgraphEval {
         // console.log(`Ratio ${ratio}`);
 
         const weight = this._weight;
-        if (isPoseOrSubgraphNodeEval(fromNode) && isPoseOrSubgraphNodeEval(toNode)) {
+        if (isPoseOrSubgraphNodeEval(fromNode)) {
             fromNode.setWeight(weight * (1.0 - ratio));
             fromNode.update(contrib);
+        }
+        if (isPoseOrSubgraphNodeEval(toNode)) {
             toNode.setWeight(weight * ratio);
             toNode.update(contrib * this._currentTransition.targetStretch);
         }
