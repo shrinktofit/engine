@@ -51,9 +51,11 @@ export class PoseGraphEval {
     }
 
     public update (deltaTime: number) {
+        globalThis.xx = [];
         for (const layerEval of this._layerEvaluations) {
             layerEval.update(deltaTime);
         }
+        console.log(globalThis.xx.map(([name, weight]) => `[${name}: ${weight}]`).join('  '));
     }
 
     public getValue (name: string) {
