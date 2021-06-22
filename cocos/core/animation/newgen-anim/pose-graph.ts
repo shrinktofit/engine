@@ -99,8 +99,11 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
     constructor () {
         super();
         this._entryNode = this._addNode(new GraphNode());
+        this._entryNode.name = 'Entry';
         this._exitNode = this._addNode(new GraphNode());
+        this._exitNode.name = 'Exit';
         this._anyNode = this._addNode(new GraphNode());
+        this._anyNode.name = 'Any';
     }
 
     public [onAfterDeserializedTag] () {
