@@ -26,15 +26,20 @@ class AnimatedPoseEval implements PoseEval {
         this._state.initialize(context.node, undefined, context.mask);
     }
 
+    get progress () {
+        return this._state.time / this.duration;
+    }
+
     public active () {
-        // this._state.play();
+        this._state.play();
     }
 
     public inactive () {
-        // this._state.stop();
+        this._state.stop();
     }
 
     public update (deltaTime: number) {
+        globalThis.xx.push([this._state.name, this._state.weight]);
         this._state.update(deltaTime);
     }
 

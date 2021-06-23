@@ -84,10 +84,32 @@ export class BindingHost {
     }
 
     /**
+     * Unbinds property.
+     * @param bindingPointId The property binding point to bind.
+     */
+    public unbindProperty (bindingPointId: string) {
+        const bindingPoint = this[propertyBindingPointsSymbol]?.[bindingPointId];
+        if (!bindingPoint) {
+            return;
+        }
+        delete this[propertyBindingsSymbol][bindingPointId];
+    }
+
+    /**
+     * Returns if specified variable has property binding.
+     * @param bindingPointId The property binding point to bind.
+     * @param bindingPointId
+     */
+    public hasPropertyBinding (bindingPointId: string) {
+        return !!this[propertyBindingsSymbol][bindingPointId];
+    }
+
+    /**
      * Gets the property binding on the specified property binding point.
+     * @param bindingPointId The property binding point to bind.
      * @returns The name of the bounded variable, if one exists.
      */
-     public getPropertyBinding (bindingPointId: string) {
+    public getPropertyBinding (bindingPointId: string): string {
         return this[propertyBindingsSymbol][bindingPointId];
     }
 }

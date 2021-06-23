@@ -39,6 +39,8 @@ export interface Transition extends EditorExtendable {
      * The transition condition.
      */
     condition: Condition | null;
+
+    exitCondition: number;
 }
 
 @ccclass('cc.animation.TransitionInternal')
@@ -56,6 +58,9 @@ export class TransitionInternal extends EditorExtendable implements OwnedBy<Pose
 
     @serializable
     public duration = 0.3;
+
+    @serializable
+    public exitCondition = -1;
 
     /**
      * @internal
@@ -83,7 +88,7 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
     private _entryNode: GraphNode;
 
     @serializable
-    private _existNode: GraphNode;
+    private _exitNode: GraphNode;
 
     @serializable
     private _anyNode: GraphNode;
@@ -94,8 +99,11 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
     constructor () {
         super();
         this._entryNode = this._addNode(new GraphNode());
-        this._existNode = this._addNode(new GraphNode());
+        this._entryNode.name = 'Entry';
+        this._exitNode = this._addNode(new GraphNode());
+        this._exitNode.name = 'Exit';
         this._anyNode = this._addNode(new GraphNode());
+        this._anyNode.name = 'Any';
     }
 
     public [onAfterDeserializedTag] () {
@@ -114,8 +122,8 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
         return this._entryNode;
     }
 
-    get existNode () {
-        return this._existNode;
+    get exitNode () {
+        return this._exitNode;
     }
 
     get anyNode () {
@@ -158,7 +166,7 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
         assertsOwnedBy(node, this);
 
         if (node === this.entryNode
-            || node === this.existNode
+            || node === this.exitNode
             || node === this.anyNode) {
             return;
         }
@@ -185,7 +193,7 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
         if (to === this.anyNode) {
             throw new InvalidTransitionError('to-any');
         }
-        if (from === this.existNode) {
+        if (from === this.exitNode) {
             throw new InvalidTransitionError('from-exit');
         }
 
@@ -415,5 +423,9 @@ export class PoseGraph extends Asset {
 
     public removeVariable (name: string) {
         delete this._variables[name];
+    }
+
+    public getVariable (name: string) {
+        return this._variables[name];
     }
 }

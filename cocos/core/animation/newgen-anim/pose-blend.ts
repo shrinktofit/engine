@@ -28,6 +28,10 @@ export class PoseBlendEval implements PoseEval {
         this._inputs = [...inputs];
     }
 
+    get progress () {
+        return -1.0;
+    }
+
     public active () {
         this._baseWeight = 1;
         for (let iPose = 0; iPose < this._poseEvaluators.length; ++iPose) {
