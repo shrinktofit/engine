@@ -317,11 +317,14 @@ export enum VariableType {
 
 @ccclass('cc.animation.Variable')
 export class Variable {
+    // TODO: we should not specify type here but due to de-serialization limitation
+    // See: https://github.com/cocos-creator/3d-tasks/issues/7909
     @serializable
-    private _type!: VariableType;
+    private _type: VariableType = VariableType.NUMBER;
 
+    // Same as `_type`
     @serializable
-    private _value!: Value;
+    private _value: Value = 0.0;
 
     constructor (type?: VariableType) {
         if (typeof type === 'undefined') {
