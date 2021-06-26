@@ -58,7 +58,7 @@ export class PoseGraphEval {
         for (const layerEval of this._layerEvaluations) {
             layerEval.update(deltaTime);
         }
-        console.log(`Weights: [${globalThis.xx.map(([name, weight]) => `[${name}: ${weight}]`).join('  ')}]`);
+        // console.log(`Weights: [${globalThis.xx.map(([name, weight]) => `[${name}: ${weight}]`).join('  ')}]`);
         this._blendBuffer.apply();
     }
 

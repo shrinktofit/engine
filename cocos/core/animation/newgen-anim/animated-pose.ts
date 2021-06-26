@@ -31,11 +31,10 @@ class AnimatedPoseEval implements PoseEval {
     }
 
     public active () {
-        // this._state.play();
+        this._state.time = 0.0;
     }
 
     public inactive () {
-        // this._state.stop();
     }
 
     public update (deltaTime: number) {
