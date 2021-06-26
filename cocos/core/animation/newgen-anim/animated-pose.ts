@@ -23,7 +23,7 @@ class AnimatedPoseEval implements PoseEval {
     constructor (context: PoseEvalContext, clip: AnimationClip) {
         this.duration = clip.duration;
         this._state = new AnimationState(clip);
-        this._state.initialize(context.node, undefined, context.mask);
+        this._state.initialize(context.node, undefined, context.blendBuffer, context.mask);
     }
 
     get progress () {
@@ -31,20 +31,24 @@ class AnimatedPoseEval implements PoseEval {
     }
 
     public active () {
-        this._state.play();
+        // this._state.play();
     }
 
     public inactive () {
-        this._state.stop();
+        // this._state.stop();
     }
 
     public update (deltaTime: number) {
         globalThis.xx.push([this._state.name, this._state.weight]);
-        this._state.update(deltaTime);
+        this._state.time += deltaTime;
     }
 
     public setBaseWeight (weight: number) {
         this._weight = weight;
         this._state.weight = this._weight;
+    }
+
+    public sample () {
+        this._state.sample();
     }
 }

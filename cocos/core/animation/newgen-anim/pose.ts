@@ -2,9 +2,12 @@ import { Node } from '../../scene-graph';
 import { SkeletonMask } from '../skeleton-mask';
 import { createEval } from './create-eval';
 import type { BindingHost } from './parametric';
+import type { BlendStateBuffer } from '../../../3d/skeletal-animation/skeletal-animation-blending';
 
 export interface PoseEvalContext {
     node: Node;
+
+    blendBuffer: BlendStateBuffer;
 
     mask?: SkeletonMask;
 
@@ -25,6 +28,7 @@ export interface PoseEval {
     inactive(): void;
     setBaseWeight (weight: number): void;
     update(deltaTime: number): void;
+    sample(): void;
 }
 
 export interface Pose {
