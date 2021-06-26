@@ -155,6 +155,9 @@ class Vec3PropertyBlendState extends PropertyBlendState<Vec3> {
     }
 
     public blend (value: Readonly<Vec3>, weight: number) {
+        if (weight === 0.0) {
+            return;
+        }
         const { blendedValue } = this;
         if (weight === 1.0) {
             Vec3.copy(blendedValue, value);
