@@ -406,12 +406,12 @@ export class AnimationState extends Playable {
         return this._curveLoaded;
     }
 
-    public initialize (root: Node, propertyCurves?: readonly IRuntimeCurve[], mask?: SkeletonMask) {
+    public initialize (root: Node, propertyCurves?: readonly IRuntimeCurve[], blendBuffer?: BlendStateBuffer, mask?: SkeletonMask) {
         if (this._curveLoaded) { return; }
         this._curveLoaded = true;
         this._destroyBlendStateWriters();
         this._samplerSharedGroups.length = 0;
-        this._blendStateBuffer = legacyCC.director.getAnimationManager()?.blendState ?? null;
+        this._blendStateBuffer = blendBuffer ?? legacyCC.director.getAnimationManager()?.blendState ?? null;
         this._targetNode = root;
         const clip = this._clip;
 

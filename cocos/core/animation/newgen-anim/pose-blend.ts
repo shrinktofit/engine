@@ -52,6 +52,10 @@ export class PoseBlendEval implements PoseEval {
         }
     }
 
+    public sample () {
+        
+    }
+
     public setInput (value: number, index: number) {
         this._inputs[index] = value;
         this.doEval();
