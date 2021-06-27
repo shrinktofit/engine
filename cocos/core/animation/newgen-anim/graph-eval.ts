@@ -310,15 +310,22 @@ class SubgraphEval {
 
         const transitionDuration = this._currentTransition.duration;
         assertIsTrue(transitionDuration >= this._transitionProgress);
-        const remain = transitionDuration - this._transitionProgress;
-        const contrib = Math.min(remain, deltaTime);
-        this._transitionProgress += contrib;
+        let contrib = 0.0;
+        let ratio = 0.0;
+        if (transitionDuration <= 0) {
+            contrib = 0.0;
+            ratio = 1.0;
+        } else {
+            const remain = transitionDuration - this._transitionProgress;
+            contrib = Math.min(remain, deltaTime);
+            this._transitionProgress += contrib;
+            const progress = this._transitionProgress;
+            ratio = Math.min(progress / transitionDuration, 1.0);
+        }
 
-        const progress = this._transitionProgress;
         const fromNode = this._currentNode;
         const toNode = this._currentTransition.to;
         assertIsTrue(fromNode !== toNode);
-        const ratio = Math.min(progress / transitionDuration, 1.0);
         // console.log(`Ratio ${ratio}`);
 
         const weight = this._weight;
