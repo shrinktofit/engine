@@ -10,12 +10,14 @@ import { VariableNotDefinedError } from './errors';
 import { PoseNode } from './pose-node';
 import { SkeletonMask } from '../skeleton-mask';
 import { debug } from '../../platform/debug';
+import { BlendStateBuffer } from '../../../3d/skeletal-animation/skeletal-animation-blending';
 
 const graphLog = true;
 
 export class PoseGraphEval {
     private _varRefMap: Record<string, VarRefs> = {};
     private declare _layerEvaluations: LayerEval[];
+    private _blendBuffer = new BlendStateBuffer();
 
     constructor (graph: PoseGraph, root: Node) {
         for (const [name, { value }] of graph.variables) {
@@ -26,6 +28,7 @@ export class PoseGraphEval {
         }
 
         const context: LayerContext = {
+            blendBuffer: this._blendBuffer,
             node: root,
             bind: this._bind.bind(this),
             getParam: (host: BindingHost, name: string) => {
@@ -55,7 +58,8 @@ export class PoseGraphEval {
         for (const layerEval of this._layerEvaluations) {
             layerEval.update(deltaTime);
         }
-        console.log(globalThis.xx.map(([name, weight]) => `[${name}: ${weight}]`).join('  '));
+        // console.log(`Weights: [${globalThis.xx.map(([name, weight]) => `[${name}: ${weight}]`).join('  ')}]`);
+        this._blendBuffer.apply();
     }
 
     public getValue (name: string) {
@@ -100,6 +104,8 @@ export class PoseGraphEval {
 interface LayerContext {
     node: Node;
 
+    blendBuffer: BlendStateBuffer;
+
     mask?: SkeletonMask;
 
     getParam(host: BindingHost, name: string): unknown;
@@ -120,6 +126,7 @@ class LayerEval {
     public update (deltaTime: number) {
         if (!this._graphEval.exited) {
             this._graphEval.update(deltaTime);
+            this._graphEval.sample();
         }
     }
 
@@ -200,6 +207,19 @@ class SubgraphEval {
             }
             remainDeltaTime -= consumed;
         } while (remainDeltaTime > 0);
+    }
+
+    public sample () {
+        const { _currentNode: currentNode } = this;
+        if (isPoseOrSubgraphNodeEval(currentNode)) {
+            currentNode.sample();
+        }
+        if (this._currentTransition) {
+            const { to } = this._currentTransition;
+            if (isPoseOrSubgraphNodeEval(to)) {
+                to.sample();
+            }
+        }
     }
 
     public getCurrentNodeInfo () {
@@ -290,15 +310,22 @@ class SubgraphEval {
 
         const transitionDuration = this._currentTransition.duration;
         assertIsTrue(transitionDuration >= this._transitionProgress);
-        const remain = transitionDuration - this._transitionProgress;
-        const contrib = Math.min(remain, deltaTime);
-        this._transitionProgress += contrib;
+        let contrib = 0.0;
+        let ratio = 0.0;
+        if (transitionDuration <= 0) {
+            contrib = 0.0;
+            ratio = 1.0;
+        } else {
+            const remain = transitionDuration - this._transitionProgress;
+            contrib = Math.min(remain, deltaTime);
+            this._transitionProgress += contrib;
+            const progress = this._transitionProgress;
+            ratio = Math.min(progress / transitionDuration, 1.0);
+        }
 
-        const progress = this._transitionProgress;
         const fromNode = this._currentNode;
         const toNode = this._currentTransition.to;
         assertIsTrue(fromNode !== toNode);
-        const ratio = Math.min(progress / transitionDuration, 1.0);
         // console.log(`Ratio ${ratio}`);
 
         const weight = this._weight;
@@ -462,6 +489,10 @@ export class PoseNodeEval extends NodeBaseEval {
         this._pose?.update(deltaTime);
     }
 
+    public sample () {
+        this._pose?.sample();
+    }
+
     private _pose: PoseEval | null = null;
 }
 
@@ -497,6 +528,10 @@ export class SubgraphNodeEval extends NodeBaseEval {
 
     public update (deltaTime: number) {
         this.subgraphEval.update(deltaTime);
+    }
+
+    public sample () {
+        this.subgraphEval.sample();
     }
 }
 

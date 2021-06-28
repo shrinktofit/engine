@@ -22,11 +22,25 @@ export class PoseBlendDirect implements PoseBlend {
     }
 
     public [createEval] (context: PoseEvalContext) {
-        const myEval = new PoseBlendEval(
+        const myEval = new PoseBlendDirectEval(
             context,
             this._poseAndWeights.map(([pose]) => pose),
-            [],
+            this._poseAndWeights.map(([_, weight]) => weight),
         );
         return myEval;
+    }
+}
+
+class PoseBlendDirectEval extends PoseBlendEval {
+    constructor (...args: ConstructorParameters<typeof PoseBlendEval>) {
+        super(...args);
+        this.doEval();
+    }
+
+    protected eval (weights: number[], inputs: readonly number[]) {
+        const nPoses = weights.length;
+        for (let iPose = 0; iPose < nPoses; ++iPose) {
+            weights[iPose] = inputs[iPose];
+        }
     }
 }

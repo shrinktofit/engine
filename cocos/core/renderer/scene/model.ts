@@ -489,7 +489,7 @@ export class Model {
     private _setInstMatWorldIdx (idx: number) {
         this._instMatWorldIdx = idx;
         if (JSB) {
-            this._nativeObj!.setInstmatWorldIdx(idx);
+            this._nativeObj!.setInstMatWorldIdx(idx);
         }
     }
 
@@ -511,11 +511,11 @@ export class Model {
         attrs.buffer = new Uint8Array(size);
         attrs.views.length = attrs.attributes.length = 0;
         let offset = 0;
-        const nativeViews: ArrayBuffer[] = [];
+        const nativeViews: TypedArray[] = [];
         for (let j = 0; j < attributes.length; j++) {
             const attribute = attributes[j];
             if (!attribute.isInstanced) { continue; }
-            const attr = attrs.attributes[j];
+            const attr = new Attribute();
             attr.format = attribute.format;
             attr.name = attribute.name;
             attr.isNormalized = attribute.isNormalized;
@@ -523,10 +523,11 @@ export class Model {
             attrs.attributes.push(attr);
 
             const info = FormatInfos[attribute.format];
-            const typeViewArray = new (getTypedArrayConstructor(info))(attrs.buffer, offset, info.count);
+
+            const typeViewArray = new (getTypedArrayConstructor(info))(attrs.buffer.buffer, offset, info.count);
             attrs.views.push(typeViewArray);
             if (JSB) {
-                nativeViews.push(typeViewArray.buffer);
+                nativeViews.push(typeViewArray);
             }
             offset += info.size;
         }
