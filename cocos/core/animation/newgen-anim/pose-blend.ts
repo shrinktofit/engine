@@ -33,7 +33,6 @@ export class PoseBlendEval implements PoseEval {
     }
 
     public active () {
-        this._baseWeight = 1;
         for (let iPose = 0; iPose < this._poseEvaluators.length; ++iPose) {
             this._poseEvaluators[iPose]?.active();
         }

@@ -11,8 +11,7 @@ import { PoseNode } from './pose-node';
 import { SkeletonMask } from '../skeleton-mask';
 import { debug } from '../../platform/debug';
 import { BlendStateBuffer } from '../../../3d/skeletal-animation/skeletal-animation-blending';
-
-const graphLog = true;
+import { clearWeightsStats, getWeightsStats, graphDebug, graphDebugGroup, graphDebugGroupEnd, GRAPH_DEBUG_ENABLED } from './graph-debug';
 
 export class PoseGraphEval {
     private _varRefMap: Record<string, VarRefs> = {};
@@ -54,12 +53,18 @@ export class PoseGraphEval {
     }
 
     public update (deltaTime: number) {
-        globalThis.xx = [];
+        graphDebugGroup(`New frame started.`);
+        if (GRAPH_DEBUG_ENABLED) {
+            clearWeightsStats();
+        }
         for (const layerEval of this._layerEvaluations) {
             layerEval.update(deltaTime);
         }
-        // console.log(`Weights: [${globalThis.xx.map(([name, weight]) => `[${name}: ${weight}]`).join('  ')}]`);
+        if (GRAPH_DEBUG_ENABLED) {
+            graphDebug(`Weights: ${getWeightsStats()}`);
+        }
         this._blendBuffer.apply();
+        graphDebugGroupEnd();
     }
 
     public getValue (name: string) {
@@ -199,14 +204,20 @@ class SubgraphEval {
     }
 
     public update (deltaTime: number) {
+        graphDebugGroup(`[Subgraph ${this.name}]: UpdateStart ${deltaTime}s`);
+        let nPass = 0;
         let remainDeltaTime = deltaTime;
         do {
+            graphDebug(`Pass ${nPass++}`);
             const consumed = this._consume(remainDeltaTime);
             if (!consumed) {
                 break;
             }
             remainDeltaTime -= consumed;
+            graphDebug(`Pass end. Consumed ${consumed}s, remain: ${deltaTime}s`);
         } while (remainDeltaTime > 0);
+        graphDebug(`[Subgraph ${this.name}]: UpdateEnd remain ${remainDeltaTime}s`);
+        graphDebugGroupEnd();
     }
 
     public sample () {
@@ -237,7 +248,7 @@ class SubgraphEval {
         const currentNode = this._currentNode;
 
         let satisfiedTransition: TransitionEval | null = null;
-        if (!(currentNode.kind === NodeKind.subgraph && !currentNode.exited)) {
+        if (true) {
             // If current node is subgraph,
             // we should wait for its exiting before we can look for its transitions.
             satisfiedTransition = this._getSatisfiedTransition(currentNode);
@@ -260,6 +271,7 @@ class SubgraphEval {
         };
 
         if (!satisfiedTransition || (satisfiedTransition.to === currentNode && !isValidSelfTransition())) {
+            graphDebug(`[Subgraph ${this.name}]: CurrentNodeUpdate: ${currentNode.name}`);
             if (isPoseOrSubgraphNodeEval(currentNode)) {
                 currentNode.update(deltaTime);
             }
@@ -267,10 +279,15 @@ class SubgraphEval {
         }
 
         if (satisfiedTransition.to !== currentNode) {
+            graphDebugGroup(`[Subgraph ${this.name}]: STARTED ${currentNode.name} -> ${satisfiedTransition.to.name}.`);
+
             // Apply transitions
             this._currentTransition = satisfiedTransition;
             this._transitionProgress = 0.0;
             const targetNode = satisfiedTransition.to;
+            if (targetNode.name === 'MovementPoseNode') {
+                // debugger;
+            }
             if (isPoseOrSubgraphNodeEval(targetNode)) {
                 targetNode.setWeight(this._weight);
                 targetNode.enter();
@@ -280,9 +297,7 @@ class SubgraphEval {
             // }
             // this._currentNode = targetNode;
 
-            if (graphLog) {
-                debug(`[Subgraph ${this.name}]: Transition starts: from ${currentNode.name} to ${satisfiedTransition.to.name}.`);
-            }
+            graphDebugGroupEnd();
 
             return 0.0;
         }
@@ -291,12 +306,8 @@ class SubgraphEval {
 
         if (currentNode.kind === NodeKind.subgraph) {
             assertIsTrue(currentNode.exited);
+            graphDebug(`[Subgraph ${this.name}]: REINTERRED ${currentNode.name} -> ${satisfiedTransition.to.name}.`);
             currentNode.reenter();
-
-            if (graphLog) {
-                debug(`[Subgraph ${this.name}]: Subgraph ${currentNode.name} reentered.`);
-            }
-
             currentNode.update(deltaTime);
         }
 
@@ -326,22 +337,25 @@ class SubgraphEval {
         const fromNode = this._currentNode;
         const toNode = this._currentTransition.to;
         assertIsTrue(fromNode !== toNode);
-        // console.log(`Ratio ${ratio}`);
 
         const weight = this._weight;
+        graphDebugGroup(`[Subgraph ${this.name}]: TransitionUpdate: ${fromNode.name} -> ${toNode.name} with ratio ${ratio} in base weight ${this._weight}.`);
         if (isPoseOrSubgraphNodeEval(fromNode)) {
+            graphDebugGroup(`Update ${fromNode.name}`);
             fromNode.setWeight(weight * (1.0 - ratio));
             fromNode.update(contrib);
+            graphDebugGroupEnd();
         }
         if (isPoseOrSubgraphNodeEval(toNode)) {
+            graphDebugGroup(`Update ${toNode.name}`);
             toNode.setWeight(weight * ratio);
             toNode.update(contrib * this._currentTransition.targetStretch);
+            graphDebugGroupEnd();
         }
+        graphDebugGroupEnd();
 
         if (ratio === 1.0) {
-            if (graphLog) {
-                debug(`[Subgraph ${this.name}]: Transition finished: from ${fromNode.name} to ${toNode.name}.`);
-            }
+            graphDebug(`[Subgraph ${this.name}]: Transition finished:  ${fromNode.name} -> ${toNode.name}.`);
 
             if (isPoseOrSubgraphNodeEval(fromNode)) {
                 fromNode.leave();

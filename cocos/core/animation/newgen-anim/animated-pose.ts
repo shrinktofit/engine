@@ -2,6 +2,7 @@ import { ccclass, type } from '../../data/class-decorator';
 import { AnimationClip } from '../animation-clip';
 import { AnimationState } from '../animation-state';
 import { createEval } from './create-eval';
+import { graphDebug, GRAPH_DEBUG_ENABLED, pushWeight } from './graph-debug';
 import { PoseEvalContext, Pose, PoseEval } from './pose';
 
 @ccclass('cc.animation.AnimatedPose')
@@ -38,16 +39,19 @@ class AnimatedPoseEval implements PoseEval {
     }
 
     public update (deltaTime: number) {
-        globalThis.xx.push([this._state.name, this._state.weight]);
         this._state.time += deltaTime;
     }
 
     public setBaseWeight (weight: number) {
+        if (GRAPH_DEBUG_ENABLED) {
+            graphDebug(`Set state ${this._state.name} weight to ${weight}`);
+        }
         this._weight = weight;
         this._state.weight = this._weight;
     }
 
     public sample () {
+        pushWeight(this._state.name, this._state.weight);
         this._state.sample();
     }
 }
