@@ -224,7 +224,7 @@ class SubgraphEval {
 
             // Update current transition if we're in transition.
             // If currently no transition, we simple fallthrough.
-            const currentUpdatingConsume = this._updateCurrentTransition(deltaTime);
+            const currentUpdatingConsume = this._updateCurrentTransition(remainDeltaTime);
             if (currentUpdatingConsume !== 0.0) {
                 if (GRAPH_DEBUG_ENABLED) {
                     passConsumed = currentUpdatingConsume;
@@ -241,7 +241,7 @@ class SubgraphEval {
             if (!satisfiedTransition) {
                 graphDebug(`[Subgraph ${this.name}]: CurrentNodeUpdate: ${currentNode.name}`);
                 if (isPoseOrSubgraphNodeEval(currentNode)) {
-                    currentNode.update(deltaTime);
+                    currentNode.update(remainDeltaTime);
                 }
                 if (GRAPH_DEBUG_ENABLED) {
                     passConsumed = remainDeltaTime;
