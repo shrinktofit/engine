@@ -12,6 +12,7 @@ import { SkeletonMask } from '../skeleton-mask';
 import { debug } from '../../platform/debug';
 import { BlendStateBuffer } from '../../../3d/skeletal-animation/skeletal-animation-blending';
 import { clearWeightsStats, getWeightsStats, graphDebug, graphDebugGroup, graphDebugGroupEnd, GRAPH_DEBUG_ENABLED } from './graph-debug';
+import { EventHandler } from '../../components/component-event-handler';
 
 export class PoseGraphEval {
     private _varRefMap: Record<string, VarRefs> = {};
@@ -203,20 +204,68 @@ class SubgraphEval {
         }
     }
 
-    public update (deltaTime: number) {
+    public update (deltaTime: Readonly<number>) {
         graphDebugGroup(`[Subgraph ${this.name}]: UpdateStart ${deltaTime}s`);
-        let nPass = 0;
+        const MAX_ITERATIONS = 100;
+        let iterations = 0;
         let remainDeltaTime = deltaTime;
-        do {
-            graphDebug(`Pass ${nPass++}`);
-            const consumed = this._consume(remainDeltaTime);
-            if (!consumed) {
-                break;
+        let passConsumed = 0.0;
+        while (remainDeltaTime > 0.0) {
+            if (iterations !== 0) {
+                graphDebug(`Pass end. Consumed ${passConsumed}s, remain: ${remainDeltaTime}s`);
             }
-            remainDeltaTime -= consumed;
-            graphDebug(`Pass end. Consumed ${consumed}s, remain: ${deltaTime}s`);
-        } while (remainDeltaTime > 0);
-        graphDebug(`[Subgraph ${this.name}]: UpdateEnd remain ${remainDeltaTime}s`);
+            graphDebug(`Pass ${iterations} started.`);
+
+            if (GRAPH_DEBUG_ENABLED) {
+                passConsumed = 0.0;
+            }
+
+            ++iterations;
+
+            // Update current transition if we're in transition.
+            // If currently no transition, we simple fallthrough.
+            const currentUpdatingConsume = this._updateCurrentTransition(deltaTime);
+            if (currentUpdatingConsume !== 0.0) {
+                if (GRAPH_DEBUG_ENABLED) {
+                    passConsumed = currentUpdatingConsume;
+                }
+                remainDeltaTime -= currentUpdatingConsume;
+                continue;
+            }
+
+            const { _currentNode: currentNode } = this;
+
+            const satisfiedTransition = this._searchSatisfiedTransitionForCurrentNode();
+
+            // If no transition satisfied, we update current node.
+            if (!satisfiedTransition) {
+                graphDebug(`[Subgraph ${this.name}]: CurrentNodeUpdate: ${currentNode.name}`);
+                if (isPoseOrSubgraphNodeEval(currentNode)) {
+                    currentNode.update(deltaTime);
+                }
+                if (GRAPH_DEBUG_ENABLED) {
+                    passConsumed = remainDeltaTime;
+                }
+                remainDeltaTime = 0.0;
+                continue;
+            }
+
+            // Transition happened.
+
+            if (satisfiedTransition.to !== currentNode) {
+                this._switchTo(satisfiedTransition);
+            } else if (currentNode.kind === NodeKind.subgraph) {
+                // Self transition
+                assertIsTrue(currentNode.exited);
+                graphDebug(`[Subgraph ${this.name}]: REINTERRED ${currentNode.name} -> ${satisfiedTransition.to.name}.`);
+                currentNode.reenter();
+            }
+
+            // Transition does not consume time piece.
+            continue;
+        }
+
+        graphDebug(`[Subgraph ${this.name}]: UpdateEnd`);
         graphDebugGroupEnd();
     }
 
@@ -237,81 +286,6 @@ class SubgraphEval {
         return {
             name: this._currentNode.name,
         };
-    }
-
-    private _consume (deltaTime: number) {
-        const currentUpdatingConsume = this._updateCurrentTransition(deltaTime);
-        if (currentUpdatingConsume !== 0.0) {
-            return currentUpdatingConsume;
-        }
-
-        const currentNode = this._currentNode;
-
-        let satisfiedTransition: TransitionEval | null = null;
-        if (true) {
-            // If current node is subgraph,
-            // we should wait for its exiting before we can look for its transitions.
-            satisfiedTransition = this._getSatisfiedTransition(currentNode);
-        }
-
-        if (!satisfiedTransition) {
-            satisfiedTransition = this._getSatisfiedTransition(this._anyNode);
-        }
-
-        const isValidSelfTransition = () => {
-            if (currentNode.kind === NodeKind.pose) {
-                return false;
-            }
-            if (currentNode.kind === NodeKind.subgraph) {
-                if (currentNode.exited) {
-                    return true;
-                }
-            }
-            return false;
-        };
-
-        if (!satisfiedTransition || (satisfiedTransition.to === currentNode && !isValidSelfTransition())) {
-            graphDebug(`[Subgraph ${this.name}]: CurrentNodeUpdate: ${currentNode.name}`);
-            if (isPoseOrSubgraphNodeEval(currentNode)) {
-                currentNode.update(deltaTime);
-            }
-            return deltaTime;
-        }
-
-        if (satisfiedTransition.to !== currentNode) {
-            graphDebugGroup(`[Subgraph ${this.name}]: STARTED ${currentNode.name} -> ${satisfiedTransition.to.name}.`);
-
-            // Apply transitions
-            this._currentTransition = satisfiedTransition;
-            this._transitionProgress = 0.0;
-            const targetNode = satisfiedTransition.to;
-            if (targetNode.name === 'MovementPoseNode') {
-                // debugger;
-            }
-            if (isPoseOrSubgraphNodeEval(targetNode)) {
-                targetNode.setWeight(this._weight);
-                targetNode.enter();
-            }
-            // if (currentNode.kind === NodeKind.pose && currentNode.pose) {
-            //     currentNode.pose.inactive();
-            // }
-            // this._currentNode = targetNode;
-
-            graphDebugGroupEnd();
-
-            return 0.0;
-        }
-
-        // Self transition
-
-        if (currentNode.kind === NodeKind.subgraph) {
-            assertIsTrue(currentNode.exited);
-            graphDebug(`[Subgraph ${this.name}]: REINTERRED ${currentNode.name} -> ${satisfiedTransition.to.name}.`);
-            currentNode.reenter();
-            currentNode.update(deltaTime);
-        }
-
-        return deltaTime;
     }
 
     private _updateCurrentTransition (deltaTime: number) {
@@ -357,9 +331,7 @@ class SubgraphEval {
         if (ratio === 1.0) {
             graphDebug(`[Subgraph ${this.name}]: Transition finished:  ${fromNode.name} -> ${toNode.name}.`);
 
-            if (isPoseOrSubgraphNodeEval(fromNode)) {
-                fromNode.leave();
-            }
+            fromNode.exit();
             this._currentNode = toNode;
             this._currentTransition = null;
         }
@@ -367,7 +339,25 @@ class SubgraphEval {
         return contrib;
     }
 
-    private _getSatisfiedTransition (node: NodeEval): TransitionEval | null {
+    private _searchSatisfiedTransitionForCurrentNode () {
+        const currentNode = this._currentNode;
+
+        let satisfiedTransition: TransitionEval | null = null;
+        if (true) {
+            // If current node is subgraph,
+            // we should wait for its exiting before we can look for its transitions.
+            satisfiedTransition = this._getSatisfiedTransition(currentNode, currentNode);
+        }
+
+        if (!satisfiedTransition) {
+            satisfiedTransition = this._getSatisfiedTransition(this._anyNode, currentNode);
+        }
+
+        return satisfiedTransition;
+    }
+
+    private _getSatisfiedTransition (node: NodeEval, realNode: NodeEval): TransitionEval | null {
+        assertIsTrue(node === realNode || node.kind === NodeKind.any);
         const { outgoingTransitions } = node;
         for (let iTransition = 0; iTransition < outgoingTransitions.length; ++iTransition) {
             const transition = outgoingTransitions[iTransition];
@@ -376,11 +366,45 @@ class SubgraphEval {
                 && node.progress < transition.exitCondition) {
                 continue;
             }
-            if (!transition.condition || transition.condition.eval()) {
-                return transition;
+            if (transition.condition && !transition.condition.eval()) {
+                continue;
             }
+            // Decides if it's valid self-transition.
+            if (transition.to === realNode) {
+                assertIsTrue(isPoseOrSubgraphNodeEval(realNode));
+                if (realNode.kind === NodeKind.pose) {
+                    continue;
+                } else if (!realNode.exited) {
+                    continue;
+                }
+            }
+            return transition;
         }
         return null;
+    }
+
+    private _switchTo (transition: TransitionEval) {
+        const { _currentNode: currentNode } = this;
+
+        graphDebugGroup(`[Subgraph ${this.name}]: STARTED ${currentNode.name} -> ${transition.to.name}.`);
+
+        // Apply transitions
+        this._currentTransition = transition;
+        this._transitionProgress = 0.0;
+        const targetNode = transition.to;
+        if (targetNode.name === 'MovementPoseNode') {
+            // debugger;
+        }
+        if (isPoseOrSubgraphNodeEval(targetNode)) {
+            targetNode.setWeight(this._weight);
+        }
+        targetNode.enter();
+        // if (currentNode.kind === NodeKind.pose && currentNode.pose) {
+        //     currentNode.pose.inactive();
+        // }
+        // this._currentNode = targetNode;
+
+        graphDebugGroupEnd();
     }
 }
 
@@ -397,7 +421,7 @@ function createNodeEval (context: SubGraphEvalContext, graph: PoseSubgraph, node
                 : node === graph.anyNode
                     ? NodeKind.any
                     : NodeKind.exit;
-        return new SpecialNodeEval(kind, node.name);
+        return new SpecialNodeEval(node, kind, node.name);
     }
 }
 
@@ -450,18 +474,32 @@ enum NodeKind {
 }
 
 export class NodeBaseEval {
-    constructor (name: string) {
-        this.name = name;
+    constructor (node: GraphNode) {
+        this.name = node.name;
+        this._onEnter = node.onEnter;
+        this._onExit = node.onExit;
     }
 
     public readonly name: string;
 
     public outgoingTransitions: readonly TransitionEval[] = [];
+
+    private _onEnter: EventHandler | null;
+
+    private _onExit: EventHandler | null;
+
+    public enter () {
+        this._onEnter?.emit([]);
+    }
+
+    public exit () {
+        this._onExit?.emit([]);
+    }
 }
 
 export class PoseNodeEval extends NodeBaseEval {
     constructor (node: PoseNode, context: SubGraphEvalContext) {
-        super(node.name);
+        super(node);
         this.speed = node.speed;
         this.startRatio = node.startRatio;
         bindEvalProperties(context, node, this);
@@ -492,10 +530,12 @@ export class PoseNodeEval extends NodeBaseEval {
     }
 
     public enter () {
+        super.enter();
         this._pose?.active();
     }
 
-    public leave () {
+    public exit () {
+        super.exit();
         this._pose?.inactive();
     }
 
@@ -512,7 +552,7 @@ export class PoseNodeEval extends NodeBaseEval {
 
 export class SubgraphNodeEval extends NodeBaseEval {
     constructor (node: PoseSubgraph, context: SubGraphEvalContext) {
-        super(node.name);
+        super(node);
         const subgraphEval = new SubgraphEval(node, context);
         this.subgraphEval = subgraphEval;
     }
@@ -526,13 +566,17 @@ export class SubgraphNodeEval extends NodeBaseEval {
     }
 
     public enter () {
+        super.enter();
     }
 
-    public leave () {
+    public exit () {
+        super.exit();
         this.subgraphEval.reset();
     }
 
     public reenter () {
+        super.exit();
+        super.enter();
         this.subgraphEval.reset();
     }
 
@@ -550,8 +594,8 @@ export class SubgraphNodeEval extends NodeBaseEval {
 }
 
 export class SpecialNodeEval extends NodeBaseEval {
-    constructor (kind: SpecialNodeEval['kind'], name: string) {
-        super(name);
+    constructor (node: GraphNode, kind: SpecialNodeEval['kind'], name: string) {
+        super(node);
         this.kind = kind;
     }
 
