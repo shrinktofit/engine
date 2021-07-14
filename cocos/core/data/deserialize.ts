@@ -39,9 +39,10 @@ import { deserializeDynamic, parseUuidDependenciesDynamic } from './deserialize-
 import { Asset } from '../assets/asset';
 
 import { deserializeTag } from './custom-serializable';
-import type { CCON } from './ccon';
+import { CCON } from './ccon';
 import { reportMissingClass as defaultReportMissingClass } from './report-missing-class';
-import type { CompiledDeserializeFn } from './deserialize-dynamic';
+import type { SerializedData, CompiledDeserializeFn } from './deserialize-dynamic';
+import { assertIsTrue } from './utils/asserts';
 
 /** **************************************************************************
  * BUILT-IN TYPES / CONSTAINTS
@@ -134,23 +135,23 @@ function serializeBuiltinValueTypes (obj: ValueType): IValueTypeData | null {
     }
 }
 
-// // TODO: Used for Data.TypedArray.
-// const TypedArrays = [
-//     Float32Array,
-//     Float64Array,
-//
-//     Int8Array,
-//     Int16Array,
-//     Int32Array,
-//
-//     Uint8Array,
-//     Uint16Array,
-//     Uint32Array,
-//
-//     Uint8ClampedArray,
-//     // BigInt64Array,
-//     // BigUint64Array,
-// ];
+const TypedArrays = [
+    Float32Array,
+    Float64Array,
+
+    Uint8Array,
+    Uint16Array,
+    Uint32Array,
+
+    Uint8ClampedArray,
+
+    Int8Array,
+    Int16Array,
+    Int32Array,
+
+    // BigInt64Array,
+    // BigUint64Array,
+];
 
 /** **************************************************************************
  * TYPE DECLARATIONS
@@ -231,12 +232,6 @@ const enum DataTypeID {
     // Common TypedArray for legacyCC.Node only. Never be null.
     TRS,
 
-    // // From the point of view of simplified implementation,
-    // // it is not supported to deserialize TypedArray that is initialized to null in the constructor.
-    // // Also, the length of TypedArray cannot be changed.
-    // // Developers will rarely manually assign a null.
-    // TypedArray,
-
     // ValueType without default value (in arrays, dictionaries).
     // Developers will rarely manually assign a null.
     ValueType,
@@ -253,6 +248,9 @@ const enum DataTypeID {
     // (The editor doesn't seem to have a good way of stopping arrays of unequal types either)
     Array,
 
+    TypedArray,
+    TypedArrayRef,
+
     ARRAY_LENGTH,
 }
 
@@ -262,7 +260,7 @@ export declare namespace deserialize.Internal {
 }
 
 interface DataTypes {
-    [DataTypeID.SimpleType]: number | string | boolean | null | object;
+    [DataTypeID.SimpleType]: number | string | boolean | null | unknown;
     [DataTypeID.InstanceRef]: InstanceBnotReverseIndex;
     [DataTypeID.Array_InstanceRef]: DataTypes[DataTypeID.InstanceRef][];
     [DataTypeID.Array_AssetRefByInnerObj]: DataTypes[DataTypeID.AssetRefByInnerObj][];
@@ -270,21 +268,25 @@ interface DataTypes {
     [DataTypeID.ValueTypeCreated]: IValueTypeData;
     [DataTypeID.AssetRefByInnerObj]: number;
     [DataTypeID.TRS]: ITRSData;
-    // [DataTypeID.TypedArray]: Array<InstanceOrReverseIndex>;
     [DataTypeID.ValueType]: IValueTypeData;
     [DataTypeID.Array_Class]: DataTypes[DataTypeID.Class][];
     [DataTypeID.CustomizedClass]: ICustomObjectData;
     [DataTypeID.Dict]: IDictData;
     [DataTypeID.Array]: IArrayData;
+    [DataTypeID.TypedArray]: ITypedArrayData;
+    [DataTypeID.TypedArrayRef]: ITypedArrayRefData;
 }
 
-type PrimitiveObjectTypeID = (
+// Objects that may need to be referenced
+type ObjectTypeID = (
     DataTypeID.SimpleType | // SimpleType also includes any pure JSON object
     DataTypeID.Array |
     DataTypeID.Array_Class |
     DataTypeID.Array_AssetRefByInnerObj |
     DataTypeID.Array_InstanceRef |
-    DataTypeID.Dict
+    DataTypeID.Dict |
+    DataTypeID.TypedArray |
+    DataTypeID.TypedArrayRef
 );
 
 type AdvancedTypeID = Exclude<DataTypeID, DataTypeID.SimpleType>;
@@ -294,10 +296,11 @@ type AnyData = DataTypes[keyof DataTypes];
 
 type AdvancedData = DataTypes[Exclude<keyof DataTypes, DataTypeID.SimpleType>];
 
-type OtherObjectData = ICustomObjectDataContent | Exclude<DataTypes[PrimitiveObjectTypeID], (number|string|boolean|null)>;
+// CustomizedClass or Object
+type OtherObjectData = ICustomObjectDataContent | Exclude<DataTypes[ObjectTypeID], (number|string|boolean|null)>;
 
-// class Index of DataTypeID.CustomizedClass or PrimitiveObjectTypeID
-type OtherObjectTypeID = Bnot<number, PrimitiveObjectTypeID>;
+// class Index of CustomizedClass, or object type
+type OtherObjectTypeID = Bnot<number, ObjectTypeID>;
 
 type Ctor<T> = new() => T;
 // Includes normal CCClass and fast defined class
@@ -409,14 +412,21 @@ export declare namespace deserialize.Internal {
     export type ITRSData_ = ITRSData;
     export type IDictData_ = IDictData;
     export type IArrayData_ = IArrayData;
+    export type ITypedArrayData_ = ITypedArrayData;
+    export type ITypedArrayRefData_ = ITypedArrayRefData;
 }
 
-// const TYPEDARRAY_TYPE = 0;
-// const TYPEDARRAY_ELEMENTS = 1;
-// interface ITypedArrayData extends Array<number|number[]> {
-//     [TYPEDARRAY_TYPE]: number,
-//     [TYPEDARRAY_ELEMENTS]: number[],
-// }
+// The last number represents type index of TypedArrays
+type ITypedArrayData = number[];
+
+const TYPEDARRAY_REF_TYPE_INDEX = 0;
+const TYPEDARRAY_REF_BUF_OFFSET = 1;
+const TYPEDARRAY_REF_BUF_LENGTH = 2;
+interface ITypedArrayRefData extends Array<number> {
+    [TYPEDARRAY_REF_TYPE_INDEX]: number, // index of TypedArrays
+    [TYPEDARRAY_REF_BUF_OFFSET]: number,
+    [TYPEDARRAY_REF_BUF_LENGTH]: number,
+}
 
 const enum Refs {
     EACH_RECORD_LENGTH = 3,
@@ -514,7 +524,10 @@ type ClassFinder = (type: string) => AnyCtor;
 interface IOptions extends Partial<ICustomHandler> {
     classFinder?: ClassFinder;
     reportMissingClass: deserialize.ReportMissingClass;
-    _version?: number;
+}
+interface IContext {
+    _version: number;
+    _mainBinChunk: Uint8Array | null;
 }
 interface ICustomClass {
     [deserializeTag]?: (content: any, context: ICustomHandler) => void;
@@ -778,16 +791,22 @@ function parseArray (data: IFileData, owner: any, key: string, value: IArrayData
     }
 }
 
-// function parseTypedArray (data: IFileData, owner: any, key: string, value: ITypedArrayData) {
-//     let val: ValueType = new TypedArrays[value[TYPEDARRAY_TYPE]]();
-//     BuiltinValueTypeSetters[value[VALUETYPE_SETTER]](val, value);
-//     // obj = new window[serialized.ctor](array.length);
-//     // for (let i = 0; i < array.length; ++i) {
-//     //     obj[i] = array[i];
-//     // }
-//     // return obj;
-//     owner[key] = val;
-// }
+function parseTypedArray (data: IFileData, owner: any, key: string, value: ITypedArrayData) {
+    const Type = TypedArrays[value[value.length - 1]];
+    value.length -= 1;
+    owner[key] = Type.from(value);
+}
+
+function parseTypedArrayRef (data: IFileData, owner: any, key: string, value: ITypedArrayRefData) {
+    const Type = TypedArrays[value[TYPEDARRAY_REF_TYPE_INDEX]];
+    const chunk = (data[File.Context] as IContext)._mainBinChunk!;
+    const obj = new Type(
+        chunk.buffer,
+        chunk.byteOffset + value[TYPEDARRAY_REF_BUF_OFFSET],
+        value[TYPEDARRAY_REF_BUF_LENGTH],
+    );
+    owner[key] = obj;
+}
 
 const ASSIGNMENTS: {
     [K in keyof DataTypes]?: ParseFunction<DataTypes[K]>;
@@ -805,7 +824,8 @@ ASSIGNMENTS[DataTypeID.Array_Class] = genArrayParser(parseClass);
 ASSIGNMENTS[DataTypeID.CustomizedClass] = parseCustomClass;
 ASSIGNMENTS[DataTypeID.Dict] = parseDict;
 ASSIGNMENTS[DataTypeID.Array] = parseArray;
-// ASSIGNMENTS[DataTypeID.TypedArray] = parseTypedArray;
+ASSIGNMENTS[DataTypeID.TypedArray] = parseTypedArray;
+ASSIGNMENTS[DataTypeID.TypedArrayRef] = parseTypedArrayRef;
 
 function parseInstances (data: IFileData): RootInstanceIndex {
     const instances = data[File.Instances];
@@ -841,7 +861,7 @@ function parseInstances (data: IFileData): RootInstanceIndex {
         } else {
             // Other
 
-            type = (~type) as PrimitiveObjectTypeID;
+            type = (~type) as ObjectTypeID;
             const op = ASSIGNMENTS[type];
             op(data, instances, insIndex, eachData);
         }
@@ -896,7 +916,7 @@ function doLookupClass (classFinder, type: string, container: any[], index: numb
     container[index] = klass;
 }
 
-function lookupClasses (data: IPackedFileData, silent: boolean, customFinder: ClassFinder | undefined, reportMissingClass: deserialize.ReportMissingClass) {
+function lookupClasses (data: IPackedFileData | IFileData, silent: boolean, customFinder: ClassFinder | undefined, reportMissingClass: deserialize.ReportMissingClass) {
     const classFinder = customFinder || js._getClassById;
     const classes = data[File.SharedClasses];
     for (let i = 0; i < classes.length; ++i) {
@@ -963,7 +983,7 @@ function parseResult (data: IFileData) {
     }
 }
 
-export function isCompiledJson (json: unknown): boolean {
+export function isCompiledJson (json: unknown): json is (IFileData | IPackedFileData) {
     if (Array.isArray(json)) {
         const version = json[0];
         // array[0] will not be a number in the editor version
@@ -971,6 +991,48 @@ export function isCompiledJson (json: unknown): boolean {
     } else {
         return false;
     }
+}
+
+function deserializeCompiled (data: IFileData, mainBinChunk: Uint8Array | null, details: Details | any, options: IOptions | any): unknown {
+    let version = data[File.Version];
+    let preprocessed = false;
+    if (typeof version === 'object') {
+        preprocessed = version.preprocessed;
+        version = version.version;
+    }
+    if (version < SUPPORT_MIN_FORMAT_VERSION) {
+        throw new Error(getError(5304, version));
+    }
+    (options as IContext)._version = version;
+    (options as IContext)._mainBinChunk = mainBinChunk;
+    options.result = details;
+    data[File.Context] = options;
+
+    if (!preprocessed) {
+        lookupClasses(data, false, options.classFinder, options.reportMissingClass ?? deserialize.reportMissingClass);
+        cacheMasks(data);
+    }
+
+    legacyCC.game._isCloning = true;
+    const instances = data[File.Instances];
+    const rootIndex = parseInstances(data);
+    legacyCC.game._isCloning = false;
+
+    if (data[File.Refs]) {
+        dereference(data[File.Refs] as IRefs, instances, data[File.SharedStrings]);
+    }
+
+    parseResult(data);
+
+    if (JSB) {
+        // invoke hooks
+        for (let i = 0; i < instances.length; ++i) {
+            // try invoking hook on every element regardless of whether the last one is rootIndex
+            instances[i]?.onAfterDeserialize_JSB?.();
+        }
+    }
+
+    return instances[rootIndex];
 }
 
 /**
@@ -981,64 +1043,34 @@ export function isCompiledJson (json: unknown): boolean {
  * @en Deserializes a previously serialized object to reconstruct it to the original.
  * @zh 将序列化后的对象进行反序列化以使其复原。
  *
- * @param data Serialized data.
+ * @param data Serialized data or CCON object.
  * @param details - Additional loading result.
  * @param options Deserialization Options.
  * @return The original object.
  */
-export function deserialize (data: IFileData | string | CCON | any, details: Details | any, options?: IOptions | any): unknown {
+export function deserialize (data: IFileData | SerializedData | CCON | string, details: Details | any, options?: IOptions | any): unknown {
+    let mainBinChunk: Uint8Array = null!;
     if (typeof data === 'string') {
-        data = JSON.parse(data);
+        data = JSON.parse(data) as SerializedData;
+    } else if (data instanceof CCON) {
+        if (data.chunks.length > 0) {
+            assertIsTrue(data.chunks.length === 1);
+            mainBinChunk = data.chunks[0];
+        }
+        data = data.document as IFileData;
     }
 
     const borrowDetails = !details;
     details = details || Details.pool.get();
+    details.init();
+
+    options = options || {};
+
     let res;
-
     if (!BUILD && !(PREVIEW && isCompiledJson(data))) {
-        res = deserializeDynamic(data, details, options);
+        res = deserializeDynamic(data, mainBinChunk, details, options);
     } else {
-        details.init(data);
-        options = options || {};
-
-        let version = data[File.Version];
-        let preprocessed = false;
-        if (typeof version === 'object') {
-            preprocessed = version.preprocessed;
-            version = version.version;
-        }
-        if (version < SUPPORT_MIN_FORMAT_VERSION) {
-            throw new Error(getError(5304, version));
-        }
-        options._version = version;
-        options.result = details;
-        data[File.Context] = options;
-
-        if (!preprocessed) {
-            lookupClasses(data, false, options.classFinder, options.reportMissingClass ?? deserialize.reportMissingClass);
-            cacheMasks(data);
-        }
-
-        legacyCC.game._isCloning = true;
-        const instances = data[File.Instances];
-        const rootIndex = parseInstances(data);
-        legacyCC.game._isCloning = false;
-
-        if (data[File.Refs]) {
-            dereference(data[File.Refs] as IRefs, instances, data[File.SharedStrings]);
-        }
-
-        parseResult(data);
-
-        if (JSB) {
-            // invoke hooks
-            for (let i = 0; i < instances.length; ++i) {
-                // try invoking hook on every element regardless of whether the last one is rootIndex
-                instances[i]?.onAfterDeserialize_JSB?.();
-            }
-        }
-
-        res = instances[rootIndex];
+        res = deserializeCompiled(data as IFileData, mainBinChunk, details, options);
     }
 
     if (borrowDetails) {
@@ -1113,12 +1145,13 @@ export function hasNativeDep (data: IFileData): boolean {
 }
 
 function getDependUuidList (json: IFileData): string[] {
-    const sharedUuids = json[File.SharedUuids];
-    return json[File.DependUuidIndices].map((index) => sharedUuids[index]);
+    assertIsTrue(hasNativeDep(json));
+    const sharedUuids = json[File.SharedUuids] as SharedString[];
+    return (json[File.DependUuidIndices] as StringIndex[]).map((index) => sharedUuids[index]);
 }
 
 export function parseUuidDependencies (serialized: unknown) {
-    if (!DEV || isCompiledJson(serialized as object)) {
+    if (!DEV || isCompiledJson(serialized)) {
         return getDependUuidList(serialized as IFileData);
     } else {
         return parseUuidDependenciesDynamic(serialized);
@@ -1158,6 +1191,7 @@ if (EDITOR || TEST) {
     };
     deserialize._BuiltinValueTypes = BuiltinValueTypes;
     deserialize._serializeBuiltinValueTypes = serializeBuiltinValueTypes;
+    deserialize._TypedArrays = TypedArrays;
 }
 
 if (TEST) {

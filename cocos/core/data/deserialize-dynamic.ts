@@ -41,9 +41,6 @@ import { Platform } from '../../../pal/system-info/enum-type';
 import { sys } from '../platform/sys';
 import { CustomSerializable, DeserializationContext, deserializeTag, SerializationContext, SerializationInput } from './custom-serializable';
 import type { deserialize, CCClassConstructor } from './deserialize';
-import { CCON } from './ccon';
-import { assertIsTrue } from './utils/asserts';
-import { reportMissingClass as defaultReportMissingClass } from './report-missing-class';
 
 function compileObjectTypeJit (
     sources: string[],
@@ -362,7 +359,7 @@ type NotTypeTag = FooName<string, '__type__'>;
 
 type NotKnownTypeTag = FooName<string, 'TypedArray' | 'TypedArrayRef'>;
 
-type SerializedData = SerializedObject | SerializedObject[];
+export type SerializedData = SerializedObject | SerializedObject[];
 
 class DeserializerPool extends js.Pool<_Deserializer> {
     constructor () {
@@ -437,21 +434,11 @@ class _Deserializer {
         this._onDereferenced = null!;
     }
 
-    public deserialize (serializedData: SerializedData | CCON) {
-        let jsonObj: SerializedData;
-        if (serializedData instanceof CCON) {
-            jsonObj = serializedData.document as SerializedData;
-            if (serializedData.chunks.length > 0) {
-                assertIsTrue(serializedData.chunks.length === 1);
-                this._mainBinChunk = serializedData.chunks[0];
-            }
-        } else {
-            jsonObj = serializedData;
-        }
+    public deserialize (serializedData: SerializedData, mainBinChunk: Uint8Array | null) {
+        this._mainBinChunk = mainBinChunk!;
+        this._serializedData = serializedData;
 
-        this._serializedData = jsonObj;
-
-        const serializedRootObject = Array.isArray(jsonObj) ? jsonObj[0] : jsonObj;
+        const serializedRootObject = Array.isArray(serializedData) ? serializedData[0] : serializedData;
 
         if (EDITOR || TEST) {
             this.deserializedData = this._deserializeObject(serializedRootObject, 0, this.deserializedList, `${0}`);
@@ -797,14 +784,13 @@ class _Deserializer {
     }
 }
 
-export function deserializeDynamic (data: SerializedData | CCON, details: Details, options?: {
+export function deserializeDynamic (data: SerializedData, mainBinChunk: Uint8Array | null, details: Details, options: {
     classFinder?: ClassFinder;
     ignoreEditorOnly?: boolean;
     createAssetRefs?: boolean;
     customEnv?: unknown;
     reportMissingClass?: ReportMissingClass;
 }) {
-    options = options || {};
     const classFinder = options.classFinder || js._getClassById;
     const createAssetRefs = options.createAssetRefs || sys.platform === Platform.EDITOR_CORE;
     const customEnv = options.customEnv;
@@ -813,12 +799,10 @@ export function deserializeDynamic (data: SerializedData | CCON, details: Detail
 
     // var oldJson = JSON.stringify(data, null, 2);
 
-    details.init();
-
     const deserializer = _Deserializer.pool.get(details, classFinder, reportMissingClass, customEnv, ignoreEditorOnly);
 
     legacyCC.game._isCloning = true;
-    const res = deserializer.deserialize(data);
+    const res = deserializer.deserialize(data, mainBinChunk);
     legacyCC.game._isCloning = false;
 
     _Deserializer.pool.put(deserializer);
