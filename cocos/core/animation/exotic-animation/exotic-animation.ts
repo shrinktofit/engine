@@ -6,6 +6,7 @@ import { clamp, lerp, Quat, Vec3 } from '../../math';
 import { error } from '../../platform/debug';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
 import { Binder, RuntimeBinding, TrackBinding, TrackPath } from '../tracks/track';
+import '../compression/bitwise-compression';
 
 const SPLIT_METHOD_ENABLED = TEST || EDITOR;
 
