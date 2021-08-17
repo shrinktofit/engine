@@ -28,7 +28,7 @@
  * @hidden
  */
 
-import { DEBUG, JSB } from 'internal:constants';
+import { DEBUG } from 'internal:constants';
 import { NativeBufferPool } from './native-pools';
 
 const contains = (a: number[], t: number) => {
@@ -183,18 +183,14 @@ class BufferPool<P extends PoolType, E extends BufferManifest> implements IMemor
         const bufferViews = this._hasUint32 ? this._uint32BufferViews : this._float32BufferViews;
         bufferViews[chunk][entry].fill(0);
         this._freeLists[chunk].push(entry);
-        // free
-        if (this._freeLists[chunk].length === this._entriesPerChunk && this._freeLists.length > 1) {
-            this._freeLists.splice(chunk, 1);
-            this._arrayBuffers.splice(chunk, 1);
-        }
     }
 }
 
 export enum PoolType {
     // buffers
     NODE,
-    PASS
+    PASS,
+    AABB
 }
 
 export const NULL_HANDLE = 0 as unknown as IHandle<any>;
@@ -203,21 +199,19 @@ export type NodeHandle = IHandle<PoolType.NODE>;
 
 export enum NodeView {
     DIRTY_FLAG,
-    FLAGS_CHANGED,
     LAYER,
     WORLD_SCALE,        // Vec3
-    WORLD_POSITION = 6, // Vec3
-    WORLD_ROTATION = 9, // Quat
-    WORLD_MATRIX = 13,  // Mat4
-    LOCAL_SCALE = 29,   // Vec3
-    LOCAL_POSITION = 32, // Vec3
-    LOCAL_ROTATION = 35, // Quat
-    COUNT = 39
+    WORLD_POSITION = 5, // Vec3
+    WORLD_ROTATION = 8, // Quat
+    WORLD_MATRIX = 12,  // Mat4
+    LOCAL_SCALE = 28,   // Vec3
+    LOCAL_POSITION = 31, // Vec3
+    LOCAL_ROTATION = 34, // Quat
+    COUNT = 38
 }
 
 const NodeViewDataType: BufferDataTypeManifest<typeof NodeView> = {
     [NodeView.DIRTY_FLAG]: BufferDataType.UINT32,
-    [NodeView.FLAGS_CHANGED]: BufferDataType.UINT32,
     [NodeView.LAYER]: BufferDataType.UINT32,
     [NodeView.WORLD_SCALE]: BufferDataType.FLOAT32,
     [NodeView.WORLD_POSITION]: BufferDataType.FLOAT32,
@@ -230,8 +224,7 @@ const NodeViewDataType: BufferDataTypeManifest<typeof NodeView> = {
 };
 
 const NodeViewDataMembers: BufferDataMembersManifest<typeof NodeView> = {
-    [NodeView.DIRTY_FLAG]: NodeView.FLAGS_CHANGED - NodeView.DIRTY_FLAG,
-    [NodeView.FLAGS_CHANGED]: NodeView.LAYER - NodeView.FLAGS_CHANGED,
+    [NodeView.DIRTY_FLAG]: NodeView.LAYER - NodeView.DIRTY_FLAG,
     [NodeView.LAYER]: NodeView.WORLD_SCALE - NodeView.LAYER,
     [NodeView.WORLD_SCALE]: NodeView.WORLD_POSITION - NodeView.WORLD_SCALE,
     [NodeView.WORLD_POSITION]: NodeView.WORLD_ROTATION - NodeView.WORLD_POSITION,
@@ -281,3 +274,25 @@ const PassViewDataMembers: BufferDataMembersManifest<typeof PassView> = {
 };
 
 export const PassPool = new BufferPool<PoolType.PASS, typeof PassView>(PoolType.PASS, PassViewDataType, PassViewDataMembers, PassView);
+
+export type AABBHandle = IHandle<PoolType.AABB>;
+
+export enum AABBView {
+    CENTER, // Vec3
+    HALFEXTENTS = 3, // Vec3
+    COUNT = 6
+}
+
+const AABBViewDataType: BufferDataTypeManifest<typeof AABBView> = {
+    [AABBView.CENTER]: BufferDataType.FLOAT32,
+    [AABBView.HALFEXTENTS]: BufferDataType.FLOAT32,
+    [AABBView.COUNT]: BufferDataType.NEVER,
+};
+
+const AABBViewDataMembers: BufferDataMembersManifest<typeof AABBView> = {
+    [AABBView.CENTER]: AABBView.HALFEXTENTS - AABBView.CENTER,
+    [AABBView.HALFEXTENTS]: AABBView.COUNT - AABBView.HALFEXTENTS,
+    [AABBView.COUNT]: 1,
+};
+
+export const AABBPool = new BufferPool<PoolType.AABB, typeof AABBView>(PoolType.AABB, AABBViewDataType, AABBViewDataMembers, AABBView);

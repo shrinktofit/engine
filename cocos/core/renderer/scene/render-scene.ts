@@ -114,6 +114,15 @@ export class RenderScene {
     }
 
     public update (stamp: number) {
+        if (JSB) {
+            const nativeBatches: NativeDrawBatch2D[]  = [];
+            for (let i = 0, len = this._batches.length; i < len; ++i) {
+                nativeBatches.push(this._batches[i].native);
+            }
+            this._nativeObj!.updateBatches(nativeBatches);
+            this._nativeObj!.update(stamp);
+            return;
+        }
         const mainLight = this._mainLight;
         if (mainLight) {
             mainLight.update();
@@ -178,10 +187,10 @@ export class RenderScene {
         this._cameras.splice(0);
     }
 
-    public setMainLight (dl: DirectionalLight) {
+    public setMainLight (dl: DirectionalLight | null) {
         this._mainLight = dl;
         if (JSB) {
-            this._nativeObj!.setMainLight(dl.native);
+            this._nativeObj!.setMainLight(dl ? dl.native : null);
         }
     }
 
@@ -193,7 +202,9 @@ export class RenderScene {
                 if (this._mainLight.node) { // trigger update
                     this._mainLight.node.hasChangedFlags |= TransformBit.ROTATION;
                 }
+                return;
             }
+            this.setMainLight(null);
         }
     }
 
@@ -282,6 +293,9 @@ export class RenderScene {
             case ModelType.SKINNING:
                 this._nativeObj!.addSkinningModel(m.native);
                 break;
+            case ModelType.BAKED_SKINNING:
+                this._nativeObj!.addBakedSkinningModel(m.native);
+                break;
             case ModelType.DEFAULT:
             default:
                 this._nativeObj!.addModel(m.native);
@@ -295,7 +309,7 @@ export class RenderScene {
                 model.detachFromScene();
                 this._models.splice(i, 1);
                 if (JSB) {
-                    this._nativeObj!.removeModel(model.native);
+                    this._nativeObj!.removeModel(i);
                 }
                 return;
             }

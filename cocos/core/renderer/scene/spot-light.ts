@@ -41,6 +41,10 @@ export class SpotLight extends Light {
 
     protected _range = 5.0;
 
+    /**
+     * @en Cached uniform variables.
+     * @zh 缓存下来的 uniform 变量。
+     */
     protected _spotAngle: number = Math.cos(Math.PI / 6);
 
     protected _pos: Vec3;
@@ -49,6 +53,10 @@ export class SpotLight extends Light {
 
     protected _frustum: Frustum;
 
+    /**
+     * @en User-specified full-angle radians.
+     * @zh 用户指定的全角弧度。
+     */
     protected _angle = 0;
 
     protected _needUpdate = false;
@@ -61,6 +69,13 @@ export class SpotLight extends Light {
 
     protected _init (): void {
         super._init();
+        if (JSB) {
+            const nativeSpotLight = this._nativeObj! as NativeSpotLight;
+            nativeSpotLight.setAABB(this._aabb.native);
+            nativeSpotLight.setFrustum(this._frustum);
+            nativeSpotLight.setDirection(this._dir);
+            nativeSpotLight.setPosition(this._pos);
+        }
     }
 
     protected _destroy (): void {
@@ -71,16 +86,6 @@ export class SpotLight extends Light {
         this._dir.set(dir);
         if (JSB) {
             (this._nativeObj! as NativeSpotLight).setDirection(dir);
-        }
-    }
-
-    protected _update (): void {
-        if (JSB) {
-            const nativeSpotLight = this._nativeObj! as NativeSpotLight;
-            nativeSpotLight.setFrustum(this._frustum);
-            nativeSpotLight.setAABB(this._aabb);
-            nativeSpotLight.setDirection(this._dir);
-            nativeSpotLight.setPosition(this._pos);
         }
     }
 
@@ -127,10 +132,12 @@ export class SpotLight extends Light {
         return this._dir;
     }
 
+    // 获取 cache 下来的 cos(angle / 2) 属性值，uniform 里需要
     get spotAngle () {
         return this._spotAngle;
     }
 
+    // 设置用户指定的全角弧度，同时计算 cache 下来的 cos(angle / 2) 属性值，uniform 里需要。
     set spotAngle (val: number) {
         this._angle = val;
         this._spotAngle = Math.cos(val * 0.5);
@@ -202,8 +209,6 @@ export class SpotLight extends Light {
             this._frustum.update(_matViewProj, _matViewProjInv);
 
             this._needUpdate = false;
-
-            this._update();
         }
     }
 }

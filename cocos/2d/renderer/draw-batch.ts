@@ -127,6 +127,7 @@ export class DrawBatch2D {
         this.isStatic = false;
         this.useLocalData = null;
         this.visFlags = UI_VIS_FLAG;
+        this.renderScene = null;
     }
 
     // object version
@@ -161,7 +162,7 @@ export class DrawBatch2D {
                 // @ts-expect-error hack for UI use pass object
                 passInUse._initPassFromTarget(mtlPass, dss, bs, hashFactor);
 
-                this._shaders[i] = passInUse.getShaderVariant()!;
+                this._shaders[i] = passInUse.getShaderVariant(patches)!;
 
                 dirty = true;
             }

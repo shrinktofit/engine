@@ -175,7 +175,6 @@ export class Pass {
 
     // internal resources
     protected _rootBuffer: Buffer | null = null;
-    protected _rootBufferDirty = false;
     protected _buffers: Buffer[] = [];
     protected _descriptorSet: DescriptorSet = null!;
     protected _pipelineLayout: PipelineLayout = null!;
@@ -214,6 +213,8 @@ export class Pass {
     protected declare _nativeDynamicStates: Uint32Array;
     protected declare _nativeHash: Uint32Array;
     protected declare _nativeObj: NativePass | null;
+
+    private  _rootBufferDirty = false;
 
     get native (): NativePass {
         return this._nativeObj!;
@@ -364,7 +365,7 @@ export class Pass {
         console.warn('base pass cannot override states, please use pass instance instead.');
     }
 
-    private _setRootBufferDirty (val: boolean) {
+    protected _setRootBufferDirty (val: boolean) {
         this._rootBufferDirty = val;
         if (JSB) {
             this._nativeObj!.setRootBufferDirty(val);
@@ -432,9 +433,7 @@ export class Pass {
             this._rootBuffer = null;
         }
 
-        // textures are reused
-        this._descriptorSet = null!;
-
+        this._descriptorSet.destroy();
         this._rs.destroy();
         this._dss.destroy();
         this._bs.destroy();
@@ -609,14 +608,17 @@ export class Pass {
         }
     }
 
-    private _setNativeState (bs: BlendState, dss: DepthStencilState, rs: RasterizerState, ds: DescriptorSet) {
+    private _setState (bs: BlendState, dss: DepthStencilState, rs: RasterizerState, ds: DescriptorSet) {
         this._bs = bs;
         this._dss = dss;
         this._rs = rs;
         this._descriptorSet = ds;
 
         if (JSB) {
-            this._nativeObj!.setState(this._bs.native, this._dss.native, this._rs.native, ds);
+            this._nativeObj!.blendState = bs.native;
+            this._nativeObj!.depthStencilState = dss.native;
+            this._nativeObj!.rasterizerState = rs.native;
+            this._nativeObj!.descriptorSet = ds;
         }
     }
 
@@ -642,7 +644,7 @@ export class Pass {
         _dsInfo.layout = programLib.getDescriptorSetLayout(this._device, info.program);
         this._descriptorSet = this._device.createDescriptorSet(_dsInfo);
         // pipeline state
-        this._setNativeState(this._bs, this._dss, this._rs, this._descriptorSet);
+        this._setState(this._bs, this._dss, this._rs, this._descriptorSet);
 
         // calculate total size required
         const blocks = this._shaderInfo.blocks;
@@ -747,7 +749,7 @@ export class Pass {
         this._setPrimitive(target.primitive);
         this._setDynamicState(target.dynamicStates);
 
-        this._setNativeState(bs, dss, target.rasterizerState, target.descriptorSet);
+        this._setState(bs, dss, target.rasterizerState, target.descriptorSet);
         this._passIndex = target.passIndex;
         this._propertyIndex = target.propertyIndex;
         this._programName = target.program;

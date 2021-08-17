@@ -35,12 +35,16 @@ export class Condition extends BindingHost {
     public rhs: Value | undefined;
 
     public [createEval] (context: { getParam(host: BindingHost, name: string): unknown; }) {
-        const lhs = context.getParam(this, 'lhs') ?? this.lhs;
-        validateConditionParam(lhs, 'lhs');
-        const rhs = context.getParam(this, 'rhs') ?? this.rhs;
-        validateConditionParam(rhs, 'rhs');
         const { operator } = this;
-        return new ConditionEval(operator, lhs, rhs);
+        const lhs = context.getParam(this, 'lhs') ?? this.lhs;
+        const rhs = context.getParam(this, 'rhs') ?? this.rhs;
+        if (operator === Operator.BE_TRUE || operator === Operator.NOT) {
+            validateConditionParamBoolean(lhs, 'lhs');
+        } else {
+            validateConditionParamNumber(lhs, 'lhs');
+            validateConditionParamNumber(rhs, 'rhs');
+        }
+        return new ConditionEval(operator, lhs, rhs as Value | undefined);
     }
 }
 
@@ -109,9 +113,16 @@ export class ConditionEval {
     }
 }
 
-export function validateConditionParam (val: unknown, name: string): asserts val is number | boolean {
-    if (typeof val !== 'number' && typeof val !== 'boolean') {
+export function validateConditionParamNumber (val: unknown, name: string): asserts val is number {
+    if (typeof val !== 'number') {
         // TODO var name?
-        throw new VariableTypeMismatchedError(name, 'number | boolean');
+        throw new VariableTypeMismatchedError(name, 'number');
+    }
+}
+
+export function validateConditionParamBoolean (val: unknown, name: string): asserts val is boolean {
+    if (typeof val !== 'boolean') {
+        // TODO var name?
+        throw new VariableTypeMismatchedError(name, 'boolean');
     }
 }

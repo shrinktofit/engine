@@ -39,8 +39,10 @@ export function assertIsNonNullable<T> (expr: T, message?: string): asserts expr
  * @param expr Testing expression.
  * @param message Optional message.
  */
-export function assertIsTrue<T> (expr: T, message?: string): asserts expr {
+export function assertIsTrue (expr: unknown, message?: string): asserts expr {
     if (DEBUG && !expr) {
+        // eslint-disable-next-line no-debugger
+        debugger;
         throw new Error(`Assertion failed: ${message ?? '<no-message>'}`);
     }
 }
