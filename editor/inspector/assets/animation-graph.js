@@ -1,7 +1,7 @@
 exports.template = `
 <section class="asset-animation-graph">
     <ui-button class="open">
-        <ui-label slot="label" value="i18n:ENGINE.assets.animationGraph.openEditor"></ui-label>
+        <ui-label value="i18n:ENGINE.assets.animationGraph.openEditor"></ui-label>
     </ui-button>
     <ui-label class="tip" value="i18n:ENGINE.assets.animationGraph.invalidMultiple"></ui-label>
 </section>
