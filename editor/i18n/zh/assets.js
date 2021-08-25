@@ -307,6 +307,7 @@ module.exports = {
             'illegal-inspector-url': "Inspector的路径不合法",
         },
         animationGraph: {
+            invalidMultiple: '不支持多选编辑',
             openEditor: '在动画图编辑器里打开并编辑',
         },
     },

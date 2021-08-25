@@ -311,6 +311,7 @@ module.exports = {
             'illegal-inspector-url': "Inspector's URL is not valid",
         },
         animationGraph: {
+            invalidMultiple: 'Not support multiple selections',
             openEditor: 'Open and edit in animation graph editor panel',
         },
     },
