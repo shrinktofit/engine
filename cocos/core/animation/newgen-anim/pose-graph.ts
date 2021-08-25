@@ -70,7 +70,7 @@ class PoseTransition extends Transition {
     public duration = 0.3;
 
     @serializable
-    public exitCondition = -1;
+    public exitCondition = 1.0;
 }
 
 type PoseTransitionView = Omit<PoseTransition, 'from' | 'to'> & {
