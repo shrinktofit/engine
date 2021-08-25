@@ -306,5 +306,8 @@ module.exports = {
             'fail-to-load-custom-inspector': 'material: 自定义 effect {effect} 的 inspector 加载失败',
             'illegal-inspector-url': "Inspector的路径不合法",
         },
+        animationGraph: {
+            openEditor: '在动画图编辑器里打开并编辑',
+        },
     },
 };

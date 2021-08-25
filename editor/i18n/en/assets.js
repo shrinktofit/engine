@@ -31,8 +31,7 @@ module.exports = {
             wrapModeTTip: 'Wrap Mode T',
             faceSize: {
                 name: 'Face Size',
-                title:
-                    'Size of each cube face. If not specified, or specified as 0, the default size, which is the nearest power of two to (image.width)/4, is used.',
+                title: 'Size of each cube face. If not specified, or specified as 0, the default size, which is the nearest power of two to (image.width)/4, is used.',
             },
         },
         javascript: {
@@ -165,8 +164,7 @@ module.exports = {
                     },
                     require: {
                         name: 'Required',
-                        title:
-                            'Import tangents that are contained in the model file, or calculated if not contained and texture coordinates exist.',
+                        title: 'Import tangents that are contained in the model file, or calculated if not contained and texture coordinates exist.',
                     },
                     recalculate: {
                         name: 'Recalculate',
@@ -199,8 +197,7 @@ module.exports = {
                 },
                 materialDumpDir: {
                     name: 'Material dump directory',
-                    title:
-                        'The directory to dump the materials.\nDefault to a direct sub-folder named `Materials_${model-file-base-name}` under current path.',
+                    title: 'The directory to dump the materials.\nDefault to a direct sub-folder named `Materials_${model-file-base-name}` under current path.',
                 },
                 useVertexColors: {
                     name: 'Use vertex colors',
@@ -312,6 +309,9 @@ module.exports = {
         material: {
             'fail-to-load-custom-inspector': 'material: fail to load custom inspector of {effect}',
             'illegal-inspector-url': "Inspector's URL is not valid",
+        },
+        animationGraph: {
+            openEditor: 'Open and edit in animation graph editor panel',
         },
     },
 };
