@@ -18,13 +18,14 @@ export class AnimatedPose implements Pose {
 class AnimatedPoseEval implements PoseEval {
     private declare _state: AnimationState;
     private _weight = 1.0;
+    private _nextUpdateTime = 0.0;
 
     public declare readonly duration: number;
 
     constructor (context: PoseEvalContext, clip: AnimationClip) {
         this.duration = clip.duration;
         this._state = new AnimationState(clip);
-        this._state.initialize(context.node, context.blendBuffer);
+        this._state.initialize(context.node, context.blendBuffer, {});
     }
 
     get progress () {
@@ -39,6 +40,7 @@ class AnimatedPoseEval implements PoseEval {
     }
 
     public update (deltaTime: number) {
+        this._nextUpdateTime = deltaTime;
         this._state.time += deltaTime;
     }
 
@@ -52,6 +54,7 @@ class AnimatedPoseEval implements PoseEval {
 
     public sample () {
         pushWeight(this._state.name, this._state.weight);
-        this._state.sample();
+        this._state.sample(this._nextUpdateTime);
+        this._nextUpdateTime = 0.0;
     }
 }

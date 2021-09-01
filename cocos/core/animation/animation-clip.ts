@@ -52,6 +52,7 @@ import { ObjectTrack } from './tracks/object-track';
 import type { ExoticAnimation } from './exotic-animation/exotic-animation';
 import './exotic-animation/exotic-animation';
 import { array } from '../utils/js';
+import { BlendStateWriter } from '../../3d/skeletal-animation/skeletal-animation-blending';
 
 export declare namespace AnimationClip {
     export interface IEvent {
@@ -216,6 +217,13 @@ export class AnimationClip extends Asset {
         };
     }
 
+    /**
+     * The nodes to which the root motion should be applied.
+     * @internal This is an internal slot. Never use it in your code.
+     */
+    @serializable
+    public rootMotionNodes: string[] = [];
+
     get [exoticAnimationTag] () {
         return this._exoticAnimation;
     }
@@ -307,17 +315,24 @@ export class AnimationClip extends Asset {
             target,
         } = context;
 
+        const poseOutput = this.enableTrsBlending ? context.pose : undefined;
+
         const binder: Binder = (binding: TrackBinding) => {
             const trackTarget = binding.createRuntimeBinding(
                 target,
-                this.enableTrsBlending ? context.pose : undefined,
+                poseOutput,
                 false,
             );
             // TODO: warning
             return trackTarget ?? undefined;
         };
 
-        return this._createEvalWithBinder(target, binder, context.rootMotion);
+        return this._createEvalWithBinder(
+            target,
+            binder,
+            poseOutput,
+            context.rootMotion,
+        );
     }
 
     public destroy () {
@@ -373,10 +388,15 @@ export class AnimationClip extends Asset {
                 return undefined;
             }
 
-            return createBoneTransformBinding(jointFrame, trsPath.property);
+            return jointFrame.createBinding(trsPath.property);
         };
 
-        const evaluator = this._createEvalWithBinder(undefined, binder, undefined);
+        const evaluator = this._createEvalWithBinder(
+            undefined,
+            binder,
+            undefined,
+            undefined,
+        );
 
         for (let iFrame = 0; iFrame < frames; ++iFrame) {
             const time = start + step * iFrame;
@@ -573,7 +593,12 @@ export class AnimationClip extends Asset {
         eventGroups: [],
     };
 
-    private _createEvalWithBinder (target: unknown, binder: Binder, rootMotionOptions: RootMotionOptions | undefined) {
+    private _createEvalWithBinder (
+        target: unknown,
+        binder: Binder,
+        poseOutput: PoseOutput | undefined,
+        rootMotionOptions: RootMotionOptions | undefined,
+    ) {
         if (this._legacyDataDirty) {
             this._legacyDataDirty = false;
             this.syncLegacyData();
@@ -585,6 +610,7 @@ export class AnimationClip extends Asset {
             rootMotionEvaluation = this._createRootMotionEvaluation(
                 target,
                 rootMotionOptions,
+                poseOutput,
                 rootMotionTrackExcludes,
             );
         }
@@ -611,7 +637,10 @@ export class AnimationClip extends Asset {
         }
 
         if (this._exoticAnimation) {
-            exoticAnimationEvaluator = this._exoticAnimation.createEvaluator(binder);
+            exoticAnimationEvaluator = this._exoticAnimation.createEvaluator(
+                binder,
+                rootMotionOptions ? this.rootMotionNodes : undefined,
+            );
         }
 
         const evaluation = new AnimationClipEvaluation(
@@ -626,31 +655,45 @@ export class AnimationClip extends Asset {
     private _createRootMotionEvaluation (
         target: unknown,
         rootMotionOptions: RootMotionOptions,
+        poseOutput: PoseOutput | undefined,
         rootMotionTrackExcludes: Track[],
-    ) {
+    ): RootMotionEvaluation | undefined {
         if (!(target instanceof Node)) {
             errorID(3920);
             return undefined;
         }
 
-        const rootBonePath = this._searchForRootBonePath();
-        if (!rootBonePath) {
-            warnID(3923);
-            return undefined;
-        }
-
-        const rootBone = target.getChildByPath(rootBonePath);
-        if (!rootBone) {
-            warnID(3924);
-            return undefined;
-        }
-
         // const { } = rootMotionOptions;
 
-        const boneTransform = new BoneTransform();
-        const rootMotionsTrackEvaluations: TrackEvalStatus[] = [];
-        const { _tracks: tracks } = this;
+        const {
+            _tracks: tracks,
+            _exoticAnimation: exoticAnimation,
+            rootMotionNodes,
+        } = this;
+
         const nTracks = tracks.length;
+        const rootMotionEvalMap: Record<string, RootMotionNodeEvaluation> = {};
+
+        const getOrCreateNodeMotionEval = (path: string) => {
+            if (!rootMotionNodes.includes(path)) {
+                return undefined;
+            }
+            let rootMotionEval = rootMotionEvalMap[path];
+            if (!rootMotionEval) {
+                const node = target.getChildByPath(path);
+                if (!node) {
+                    warnID(3923);
+                    return undefined;
+                }
+                rootMotionEval = rootMotionEvalMap[path] = new RootMotionNodeEvaluation(
+                    node,
+                    this._duration,
+                    poseOutput,
+                );
+            }
+            return rootMotionEval;
+        };
+
         for (let iTrack = 0; iTrack < nTracks; ++iTrack) {
             const track = tracks[iTrack];
             const { [trackBindingTag]: trackBinding } = track;
@@ -658,30 +701,46 @@ export class AnimationClip extends Asset {
             if (!trsPath) {
                 continue;
             }
-            const bonePath = trsPath.node;
-            if (bonePath !== rootBonePath) {
+            const nodeMotionEval = getOrCreateNodeMotionEval(trsPath.node);
+            if (!nodeMotionEval) {
                 continue;
             }
+            const runtimeBinding = nodeMotionEval.createBinding(trsPath.property);
             rootMotionTrackExcludes.push(track);
-            const property = trsPath.property;
-            const trackTarget = createBoneTransformBinding(boneTransform, property);
-            if (!trackTarget) {
-                continue;
-            }
-            const trackEval = track[createEvalSymbol](trackTarget);
-            rootMotionsTrackEvaluations.push({
-                binding: trackTarget,
-                trackEval,
+            const trackEval = track[createEvalSymbol](runtimeBinding);
+            nodeMotionEval.addMicrotask({
+                evaluate: (time) => {
+                    const value = trackEval.evaluate(time, runtimeBinding);
+                    runtimeBinding.setValue(value);
+                },
             });
         }
-        const rootMotionEvaluation = new RootMotionEvaluation(
-            rootBone,
-            this._duration,
-            boneTransform,
-            rootMotionsTrackEvaluations,
-        );
 
-        return rootMotionEvaluation;
+        if (exoticAnimation) {
+            const nRootMotionNodes = rootMotionNodes.length;
+            for (let iRootMotionNode = 0; iRootMotionNode < nRootMotionNodes; ++iRootMotionNode) {
+                const path = rootMotionNodes[iRootMotionNode];
+                const nodeMotionEval = getOrCreateNodeMotionEval(path);
+                if (!nodeMotionEval) {
+                    continue;
+                }
+                const rootMotionNodeExoticEval = exoticAnimation.createNodeEvaluator(
+                    path,
+                    (property: TrsTrackPath[1]) => nodeMotionEval.createBinding(property),
+                );
+                if (rootMotionNodeExoticEval) {
+                    nodeMotionEval.addMicrotask({
+                        evaluate: (time) => {
+                            rootMotionNodeExoticEval.evaluate(time);
+                        },
+                    });
+                }
+            }
+        }
+
+        return new RootMotionEvaluation(
+            Object.values(rootMotionEvalMap),
+        );
     }
 
     private _searchForRootBonePath () {
@@ -784,7 +843,7 @@ interface TrackEvalStatus {
     trackEval: TrackEval;
 }
 
-interface AnimationClipEvalContext {
+export interface AnimationClipEvalContext {
     /**
      * The output pose.
      */
@@ -821,6 +880,10 @@ class AnimationClipEvaluation {
         this._rootMotionEvaluation = rootMotionEvaluation;
     }
 
+    get rootMotionEnabled () {
+        return !!this._rootMotionEvaluation;
+    }
+
     /**
      * Evaluates this animation.
      * @param time The time.
@@ -843,6 +906,13 @@ class AnimationClipEvaluation {
         }
     }
 
+    public evaluateRootMotionImmediately (time: number) {
+        const { _rootMotionEvaluation: rootMotionEvaluation } = this;
+        if (rootMotionEvaluation) {
+            rootMotionEvaluation.evaluateAt(time);
+        }
+    }
+
     /**
      * Gets the root bone motion.
      * @param startTime Start time.
@@ -860,18 +930,100 @@ class AnimationClipEvaluation {
     private _rootMotionEvaluation: RootMotionEvaluation | undefined = undefined;
 }
 
-class BoneTransform {
+class TrsTransform {
     public position = new Vec3();
     public scale = new Vec3(1.0, 1.0, 1.0);
     public rotation = new Quat();
     public eulerAngles = new Vec3();
 
-    public getTransform (out: Mat4) {
-        Mat4.fromRTS(out, this.rotation, this.position, this.scale);
+    public createBinding (property: TrsTrackPath[1]) {
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        const boneTransform = this;
+        switch (property) {
+        default:
+            assertIsTrue(false);
+            // fallthrough
+        case 'position':
+            return {
+                setValue (value: Vec3) {
+                    Vec3.copy(boneTransform.position, value);
+                },
+            };
+        case 'rotation':
+            return {
+                setValue (value: Quat) {
+                    Quat.copy(boneTransform.rotation, value);
+                },
+            };
+        case 'scale':
+            return {
+                setValue (value: Vec3) {
+                    Vec3.copy(boneTransform.scale, value);
+                },
+            };
+        case 'eulerAngles':
+            return {
+                setValue (value: Vec3) {
+                    Vec3.copy(boneTransform.eulerAngles, value);
+                },
+            };
+        }
+    }
+
+    public identity () {
+        Vec3.copy(this.position, Vec3.ZERO);
+        Quat.copy(this.rotation, Quat.IDENTITY);
+        Vec3.copy(this.scale, Vec3.ONE);
+        Vec3.copy(this.eulerAngles, Vec3.ZERO);
+        return this;
+    }
+
+    public set (source: TrsTransform) {
+        Vec3.copy(this.position, source.position);
+        Quat.copy(this.rotation, source.rotation);
+        Vec3.copy(this.scale, source.scale);
+        Vec3.copy(this.eulerAngles, source.eulerAngles);
+        return this;
+    }
+
+    public relative (from: TrsTransform, to: TrsTransform) {
+        Vec3.subtract(this.position, to.position, from.position);
+        Quat.multiply(this.rotation, Quat.invert(this.rotation, from.rotation), to.rotation);
+        Vec3.divide(this.scale, to.scale, from.scale);
+        Vec3.subtract(this.eulerAngles, to.eulerAngles, from.eulerAngles);
+        return this;
+    }
+
+    public accumulate (source: TrsTransform) {
+        Vec3.add(this.position, this.position, source.position);
+        Quat.multiply(this.rotation, this.rotation, source.rotation);
+        Vec3.multiply(this.scale, this.scale, source.scale);
+        Vec3.add(this.eulerAngles, this.eulerAngles, source.eulerAngles);
+        return this;
+    }
+
+    public accumulateRelative (from: TrsTransform, to: TrsTransform) {
+        this.accumulate(
+            motionTransformCache.relative(from, to),
+        );
+    }
+
+    public applyAsMotion (node: Node) {
+        const {
+            position: positionMotion,
+            rotation: rotationMotion,
+            scale: scaleMotion,
+        } = this;
+
+        Vec3.add(positionMotion, node.position, positionMotion);
+        Quat.multiply(rotationMotion, node.rotation, rotationMotion);
+        Vec3.multiply(scaleMotion, node.scale, scaleMotion);
     }
 }
 
-class BoneGlobalTransform extends BoneTransform {
+const motionAcc = new Vec3();
+
+class BoneGlobalTransform extends TrsTransform {
     public parent: BoneGlobalTransform | null = null;
 
     public get globalTransform (): Readonly<Mat4> {
@@ -894,55 +1046,87 @@ class BoneGlobalTransform extends BoneTransform {
     private _transform = new Mat4();
 }
 
-const motionTransformCache = new Mat4();
+const motionTransformCache = new TrsTransform();
 
 class RootMotionEvaluation {
+    /**
+     *
+     * @param _nodeEvaluations Usually we only got one.
+     */
     constructor (
-        private _rootBone: Node,
-        private _duration: number,
-        private _boneTransform: BoneTransform,
-        private _trackEvalStatuses: TrackEvalStatus[],
+        private _nodeEvaluations: RootMotionNodeEvaluation[],
     ) {
 
     }
 
-    public evaluate (time: number, motionLength: number) {
-        const motionTransform = this._calcMotionTransform(time, motionLength, this._motionTransformCache);
-
-        const {
-            _translationMotionCache: translationMotion,
-            _rotationMotionCache: rotationMotion,
-            _scaleMotionCache: scaleMotion,
-            _rootBone: rootBone,
-        } = this;
-
-        Mat4.toRTS(motionTransform, rotationMotion, translationMotion, scaleMotion);
-
-        Vec3.add(translationMotion, translationMotion, rootBone.position);
-        rootBone.setPosition(translationMotion);
-
-        Quat.multiply(rotationMotion, rotationMotion, rootBone.rotation);
-        rootBone.setRotation(rotationMotion);
-
-        Vec3.multiply(scaleMotion, scaleMotion, rootBone.scale);
-        rootBone.setScale(scaleMotion);
+    public evaluateAt (time: number) {
+        const { _nodeEvaluations: nodeEvaluations } = this;
+        const nNodeEvaluations = nodeEvaluations.length;
+        for (let iNodeEvaluation = 0; iNodeEvaluation < nNodeEvaluations; ++iNodeEvaluation) {
+            nodeEvaluations[iNodeEvaluation].evaluateAt(time);
+        }
     }
 
-    private _calcMotionTransform (time: number, motionLength: number, outTransform: Mat4) {
+    public evaluate (time: number, motionLength: number) {
+        const { _nodeEvaluations: nodeEvaluations } = this;
+        const nNodeEvaluations = nodeEvaluations.length;
+        for (let iNodeEvaluation = 0; iNodeEvaluation < nNodeEvaluations; ++iNodeEvaluation) {
+            nodeEvaluations[iNodeEvaluation].evaluate(time, motionLength);
+        }
+    }
+}
+
+interface RootMotionEvalMicrotask {
+    evaluate(time: number): void;
+}
+
+class RootMotionNodeEvaluation {
+    constructor (
+        private _rootNode: Node,
+        private _duration: number,
+        private _poseOutput: PoseOutput | undefined,
+    ) {
+        if (_poseOutput) {
+            this._positionOutput = _poseOutput.createPoseWriter(_rootNode, 'position', false) as unknown as any;
+            this._rotationOutput = _poseOutput.createPoseWriter(_rootNode, 'rotation', false) as unknown as any;
+            this._scaleOutput = _poseOutput.createPoseWriter(_rootNode, 'scale', false) as unknown as any;
+            this._eulerAngleOutput = _poseOutput.createPoseWriter(_rootNode, 'eulerAngles', false) as unknown as any;
+        }
+    }
+
+    public createBinding (property: TrsTrackPath[1]): RuntimeBinding {
+        return this._boneTransform.createBinding(property);
+    }
+
+    public addMicrotask (microTask: RootMotionEvalMicrotask) {
+        this._microTasks.push(microTask);
+    }
+
+    public evaluateAt (time: number) {
+        const motionTransform = this._evaluateAt(time, this._motionTransformCache);
+        this._applyToNode(motionTransform);
+    }
+
+    public evaluate (time: number, motionLength: number) {
+        const motionTransform = this._calcMotionTransform(
+            time,
+            motionLength,
+            this._motionTransformCache,
+        );
+        motionTransform.applyAsMotion(this._rootNode);
+        this._applyToNode(motionTransform);
+    }
+
+    private _calcMotionTransform (time: number, motionLength: number, outTransform: TrsTransform) {
         const { _duration: duration } = this;
         const remainLength = duration - time;
         assertIsTrue(remainLength >= 0);
         const startTransform = this._evaluateAt(time, this._startTransformCache);
         if (motionLength < remainLength) {
             const endTransform = this._evaluateAt(time + motionLength, this._endTransformCache);
-            relativeTransform(outTransform, startTransform, endTransform);
+            outTransform.relative(startTransform, endTransform);
         } else {
-            Mat4.identity(outTransform);
-
-            const accumulateMotionTransform = (from: Mat4, to: Mat4) => {
-                relativeTransform(motionTransformCache, from, to);
-                Mat4.multiply(outTransform, outTransform, motionTransformCache);
-            };
+            outTransform.identity();
 
             const diff = motionLength - remainLength;
             const repeatCount = Math.floor(diff / duration);
@@ -952,80 +1136,87 @@ class RootMotionEvaluation {
             const endTransform = this._evaluateAt(lastRemainTime, this._endTransformCache);
 
             // Start -> Clip End
-            accumulateMotionTransform(startTransform, clipEndTransform);
+            outTransform.accumulateRelative(startTransform, clipEndTransform);
 
             // Whole clip x Repeat Count
-            relativeTransform(motionTransformCache, clipStartTransform, clipEndTransform);
+            const wholeTransform = motionTransformCache.relative(clipStartTransform, clipEndTransform);
             for (let i = 0; i < repeatCount; ++i) {
-                Mat4.multiply(outTransform, outTransform, motionTransformCache);
+                outTransform.accumulate(wholeTransform);
             }
 
             // Clip Start -> End
-            accumulateMotionTransform(clipStartTransform, endTransform);
+            outTransform.accumulateRelative(clipStartTransform, endTransform);
         }
         return outTransform;
     }
 
-    private _evaluateAt (time: number, outTransform: Mat4) {
+    private _evaluateAt (time: number, out: TrsTransform) {
         const {
-            _trackEvalStatuses: trackEvalStatuses,
+            _microTasks: microTasks,
+            _boneTransform: boneTransform,
         } = this;
 
-        const nTrackEvalStatuses = trackEvalStatuses.length;
-        for (let iTrackEvalStatus = 0; iTrackEvalStatus < nTrackEvalStatuses; ++iTrackEvalStatus) {
-            const { trackEval, binding } = trackEvalStatuses[iTrackEvalStatus];
-            const value = trackEval.evaluate(time, binding);
-            binding.setValue(value);
+        const nMicroTasks = microTasks.length;
+        for (let iMicroTask = 0; iMicroTask < nMicroTasks; ++iMicroTask) {
+            const microTask = microTasks[iMicroTask];
+            microTask.evaluate(time);
         }
 
-        this._boneTransform.getTransform(outTransform);
-        return outTransform;
+        out.set(boneTransform);
+        return out;
     }
 
-    private _initialTransformCache = new Mat4();
-    private _clipEndTransformCache = new Mat4();
-    private _startTransformCache = new Mat4();
-    private _endTransformCache = new Mat4();
-    private _motionTransformCache = new Mat4();
-    private _translationMotionCache = new Vec3();
-    private _rotationMotionCache = new Quat();
-    private _scaleMotionCache = new Vec3();
-}
+    private _applyToNode (transform: TrsTransform) {
+        const {
+            position,
+            rotation,
+            scale,
+            eulerAngles,
+        } = transform;
+        const {
+            _positionOutput: positionOutput,
+            _rotationOutput: rotationOutput,
+            _scaleOutput: scaleOutput,
+            _eulerAngleOutput: eulerAnglesOutput,
+            _rootNode: node,
+        } = this;
 
-function relativeTransform (out: Mat4, from: Mat4, to: Mat4) {
-    Mat4.invert(out, from);
-    Mat4.multiply(out, to, out);
-}
+        if (positionOutput) {
+            positionOutput.setValue(position);
+        } else {
+            node.setPosition(position);
+        }
 
-function createBoneTransformBinding (boneTransform: BoneTransform, property: TrsTrackPath[1]) {
-    switch (property) {
-    default:
-        return undefined;
-    case 'position':
-        return {
-            setValue (value: Vec3) {
-                Vec3.copy(boneTransform.position, value);
-            },
-        };
-    case 'rotation':
-        return {
-            setValue (value: Quat) {
-                Quat.copy(boneTransform.rotation, value);
-            },
-        };
-    case 'scale':
-        return {
-            setValue (value: Vec3) {
-                Vec3.copy(boneTransform.scale, value);
-            },
-        };
-    case 'eulerAngles':
-        return {
-            setValue (value: Vec3) {
-                Vec3.copy(boneTransform.eulerAngles, value);
-            },
-        };
+        if (rotationOutput) {
+            rotationOutput.setValue(rotation);
+        } else {
+            node.setRotation(rotation);
+        }
+
+        if (scaleOutput) {
+            scaleOutput.setValue(scale);
+        } else {
+            node.setScale(scale);
+        }
+
+        if (eulerAnglesOutput) {
+            eulerAnglesOutput.setValue(eulerAngles);
+        } else {
+            node.setRotationFromEuler(eulerAngles);
+        }
     }
+
+    private _positionOutput: BlendStateWriter<'position'> | null = null;
+    private _rotationOutput: BlendStateWriter<'rotation'> | null = null;
+    private _scaleOutput: BlendStateWriter<'scale'> | null = null;
+    private _eulerAngleOutput: BlendStateWriter<'eulerAngles'> | null = null;
+    private _boneTransform: TrsTransform = new TrsTransform();
+    private _microTasks: RootMotionEvalMicrotask[] = [];
+    private _initialTransformCache = new TrsTransform();
+    private _clipEndTransformCache = new TrsTransform();
+    private _startTransformCache = new TrsTransform();
+    private _endTransformCache = new TrsTransform();
+    private _motionTransformCache = new TrsTransform();
 }
 
 // #region Events

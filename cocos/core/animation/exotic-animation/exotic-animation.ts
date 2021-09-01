@@ -1,11 +1,11 @@
 import { EDITOR, TEST } from 'internal:constants';
 import { binarySearchEpsilon } from '../../algorithm/binary-search';
 import { ccclass, serializable } from '../../data/decorators';
-import { assertIsTrue } from '../../data/utils/asserts';
+import { assertIsNonNullable, assertIsTrue } from '../../data/utils/asserts';
 import { clamp, lerp, Quat, Vec3 } from '../../math';
 import { error } from '../../platform/debug';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
-import { Binder, RuntimeBinding, TrackBinding, TrackPath } from '../tracks/track';
+import { Binder, RuntimeBinding, TrackBinding, TrackPath, TrsTrackPath } from '../tracks/track';
 
 const SPLIT_METHOD_ENABLED = TEST || EDITOR;
 
@@ -23,8 +23,25 @@ function throwIfSplitMethodIsNotValid (): never {
  */
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}ExoticAnimation`)
 export class ExoticAnimation {
-    public createEvaluator (binder: Binder) {
-        return new ExoticTrsAnimationEvaluator(this._nodeAnimations, binder);
+    public createEvaluator (binder: Binder, excludes?: string[]) {
+        const nodeAnimations = excludes
+            ? this._nodeAnimations.filter((nodeAnimation) => !excludes.includes(nodeAnimation.path))
+            : this._nodeAnimations;
+        return new ExoticTrsAnimationEvaluator(nodeAnimations, binder);
+    }
+
+    public createNodeEvaluator (path: string, binder: (property: TrsTrackPath[1]) => RuntimeBinding) {
+        const nodeAnimation = this._nodeAnimations.find((nodeAnimation) => nodeAnimation.path === path);
+        if (!nodeAnimation) {
+            return undefined;
+        }
+        const binder_ = (binding: TrackBinding) => {
+            const trsPath = binding.parseTrsPath();
+            assertIsNonNullable(trsPath);
+            assertIsTrue(trsPath.node === path);
+            return binder(trsPath.property);
+        };
+        return nodeAnimation.createEvaluator(binder_);
     }
 
     public addNodeAnimation (path: string) {
@@ -47,6 +64,13 @@ export class ExoticAnimation {
         const newAnimation = new ExoticAnimation();
         newAnimation._nodeAnimations = this._nodeAnimations.map((nodeAnimation) => nodeAnimation.split(from, to, splitInfoCache));
         return newAnimation;
+    }
+
+    /**
+     * @internal
+     */
+    public getNodeAnimation (path: string) {
+        return this._nodeAnimations.find((nodeAnimation) => nodeAnimation.path === path);
     }
 
     /**
@@ -109,6 +133,30 @@ class ExoticNodeAnimation {
             newAnimation._scale = splitVec3Track(scale, from, to, splitInfoCache);
         }
         return newAnimation;
+    }
+
+    public constant (
+        positionValue: Readonly<Vec3>,
+        rotationValue: Readonly<Quat>,
+        scaleValue: Readonly<Vec3>,
+    ) {
+        const {
+            _position: position,
+            _rotation: rotation,
+            _scale: scale,
+        } = this;
+        if (position) {
+            position.times = new Float32Array([0.0]);
+            position.values = new ExoticVec3TrackValues(new Float32Array([positionValue.x, positionValue.y, positionValue.z]));
+        }
+        if (rotation) {
+            rotation.times = new Float32Array([0.0]);
+            rotation.values = new ExoticQuatTrackValues(new Float32Array([rotationValue.x, rotationValue.y, rotationValue.z, rotationValue.w]));
+        }
+        if (scale) {
+            scale.times = new Float32Array([0.0]);
+            scale.values = new ExoticVec3TrackValues(new Float32Array([scaleValue.x, scaleValue.y, scaleValue.z]));
+        }
     }
 
     get path () {

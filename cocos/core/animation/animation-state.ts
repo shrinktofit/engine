@@ -30,7 +30,7 @@
 
 import { EDITOR } from 'internal:constants';
 import { Node } from '../scene-graph/node';
-import { AnimationClip } from './animation-clip';
+import { AnimationClip, AnimationClipEvalContext } from './animation-clip';
 import { Playable } from './playable';
 import { WrapMode, WrapModeMask, WrappedInfo } from './types';
 import { legacyCC } from '../global-exports';
@@ -303,6 +303,12 @@ export class AnimationState extends Playable {
      */
     protected _doNotCreateEval = false;
 
+    /**
+     * Previous time sampled, in normalized range([0, duration]).
+     * NaN means never sampled.
+     */
+    private _previousTime = NaN;
+
     constructor (clip: AnimationClip, name = '') {
         super();
         this._clip = clip;
@@ -324,7 +330,7 @@ export class AnimationState extends Playable {
         return this._curveLoaded;
     }
 
-    public initialize (root: Node, blendStateBuffer?: BlendStateBuffer, mask?: SkeletonMask) {
+    public initialize (root: Node, blendStateBuffer?: BlendStateBuffer, rootMotion?: AnimationClipEvalContext['rootMotion']) {
         if (this._curveLoaded) { return; }
         this._curveLoaded = true;
         if (this._poseOutput) {
@@ -361,6 +367,7 @@ export class AnimationState extends Playable {
             this._clipEval = clip.createEvaluator({
                 target: root,
                 pose: this._poseOutput ?? undefined,
+                rootMotion,
             });
         }
 
@@ -476,12 +483,16 @@ export class AnimationState extends Playable {
             this._currentFramePlayed = true;
         }
 
-        this._process();
+        if (this._useSimpleProcess) {
+            this.simpleProcess(delta);
+        } else {
+            this.process(delta);
+        }
     }
 
-    public sample () {
+    public sample (deltaTime = 0.0) {
         const info = this.getWrappedInfo(this.time, this._wrappedInfo);
-        this._sampleCurves(info.time);
+        this._sampleCurves(info.time, deltaTime);
         if (!EDITOR || legacyCC.GAME_VIEW) {
             this._sampleEvents(info);
         }
@@ -512,27 +523,29 @@ export class AnimationState extends Playable {
         this.emit(EventType.PAUSE, this);
     }
 
-    protected _sampleCurves (time: number) {
+    protected _sampleCurves (time: number, deltaTime: number) {
         const { _poseOutput: poseOutput, _clipEval: clipEval } = this;
         if (poseOutput) {
             poseOutput.weight = this.weight;
         }
         if (clipEval) {
             clipEval.evaluate(time);
+            if (clipEval.rootMotionEnabled) {
+                const { _previousTime: previousTime } = this;
+                if (Number.isNaN(previousTime)) {
+                    clipEval.evaluateRootMotionImmediately(time);
+                } else {
+                    clipEval.evaluateRootMotion(previousTime, deltaTime);
+                }
+            }
         }
+        // Update previous time for next motion evaluation.
+        this._previousTime = time;
     }
 
-    private _process () {
-        if (this._useSimpleProcess) {
-            this.simpleProcess();
-        } else {
-            this.process();
-        }
-    }
-
-    private process () {
+    private process (deltaTime: number) {
         // sample
-        const info = this.sample();
+        const info = this.sample(deltaTime);
 
         if (this._allowLastFrame) {
             let lastInfo;
@@ -555,7 +568,7 @@ export class AnimationState extends Playable {
         }
     }
 
-    private simpleProcess () {
+    private simpleProcess (deltaTime: number) {
         const playbackStart = this._playbackRange.min;
         const playbackDuration = this._playbackDuration;
 
@@ -563,7 +576,8 @@ export class AnimationState extends Playable {
         if (time < 0.0) { time += playbackDuration; }
         const realTime = playbackStart + time;
         const ratio = realTime * this._invDuration;
-        this._sampleCurves(playbackStart + time);
+        const timeClamped = playbackStart + time;
+        this._sampleCurves(timeClamped, deltaTime);
 
         if (!EDITOR || legacyCC.GAME_VIEW) {
             this._sampleEvents(this.getWrappedInfo(this.time, this._wrappedInfo));

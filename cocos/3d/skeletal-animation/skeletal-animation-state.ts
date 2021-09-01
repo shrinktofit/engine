@@ -75,7 +75,7 @@ export class SkeletalAnimationState extends AnimationState {
         this._animInfoMgr = legacyCC.director.root.dataPoolManager.jointAnimationInfo;
     }
 
-    public initialize (root: Node) {
+    public initialize (root: Node, ...args: any[]) {
         if (this._curveLoaded) { return; }
         this._comps.length = 0;
         const comps = root.getComponentsInChildren(SkinnedMeshRenderer);
@@ -88,7 +88,7 @@ export class SkeletalAnimationState extends AnimationState {
         this._parent = root.getComponent('cc.SkeletalAnimation') as SkeletalAnimation;
         const baked = this._parent.useBakedAnimation;
         this._doNotCreateEval = baked;
-        super.initialize(root);
+        super.initialize(root, ...args);
         this._curvesInited = !baked;
         const { frames, samples } = SkelAnimDataHub.getOrExtract(this.clip);
         this._frames = frames - 1;

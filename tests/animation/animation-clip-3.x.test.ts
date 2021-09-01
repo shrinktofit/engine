@@ -2,6 +2,7 @@ import { Node, RealKeyframeValue, Vec3 } from '../../cocos/core';
 import { ColorTrack, RealTrack, SizeTrack, TrackPath, VectorTrack } from '../../cocos/core/animation/animation';
 import { AnimationClip, searchForRootBonePathSymbol } from '../../cocos/core/animation/animation-clip';
 import { TargetPath } from '../../cocos/core/animation/target-path';
+import '../utils/matcher-deep-close-to';
 
 describe('Animation Clip', () => {
     describe('Evaluation', () => {
@@ -62,10 +63,11 @@ describe('Animation Clip', () => {
         });
 
         describe('Root motion', () => {
-            const clip = new AnimationClip();
-            clip.duration = 1.0;
-
             const rootJointName = 'RootJoint';
+
+            const clip = new AnimationClip();
+            clip.rootMotionNodes = [rootJointName];
+            clip.duration = 1.0;
 
             const rootBoneTranslationTrack = new VectorTrack();
             {
@@ -120,6 +122,36 @@ describe('Animation Clip', () => {
                 dummyRootJointNode.setPosition(0.0, 0.0, 0.0);
                 evaluation.evaluateRootMotion(0.5, 3.2);
                 expect(Vec3.equals(dummyRootJointNode.position, new Vec3(1.4))).toBe(true);
+            });
+
+            test('Contiguous', () => {
+                dummyRootJointNode.setPosition(0.0, 0.0, 0.0);
+
+                const deltaTimeSequence: ReadonlyArray<[number, number, number]> = [
+                    [0, 0.0, 0.4],
+                    [0, 0.5, 0.5],
+                    [0, 0.55, 0.55],
+                    [0, 0.8, 0.8],
+                    [1, 0.1, 0.8],
+                    [1, 0.5, 0.9],
+                ];
+
+                let time = 0.0;
+                let timeAcc = 0.0;
+                const resultSequence = deltaTimeSequence.map(([currentPass, currentTime], callIndex) => {
+                    const currentTimeAcc = clip.duration * currentPass + currentTime;
+                    if (callIndex === 0) {
+                        evaluation.evaluateRootMotionImmediately(currentTimeAcc);
+                    } else {
+                        const deltaTime = currentTimeAcc - timeAcc;
+                        evaluation.evaluateRootMotion(time, deltaTime);
+                    }
+                    time = currentTime;
+                    timeAcc = currentTimeAcc;
+                    return dummyRootJointNode.position.x;
+                });
+
+                expect(resultSequence).toBeDeepCloseTo(deltaTimeSequence.map(([, , expected]) => expected), 5);
             });
         });
     });
