@@ -524,10 +524,11 @@ function createTransitionEval (
             assertIsTrue(false, 'Bad animation data');
         }
         const toEval = nodeEvaluators[iOutgoingNode];
+        const { conditions } = outgoing;
         const transitionEval: TransitionEval = {
             pose: isPoseTransition(outgoing),
             to: toEval,
-            conditions: outgoing.conditions.map((condition) => condition[createEval](context)),
+            conditions: Array.from(conditions).map((condition) => condition[createEval](context)),
             duration: isPoseTransition(outgoing) ? outgoing.duration : 0.0,
             targetStretch: 1.0,
             exitConditionEnabled: isPoseTransition(outgoing) ? outgoing.exitConditionEnabled : false,

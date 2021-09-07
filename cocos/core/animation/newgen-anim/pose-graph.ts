@@ -17,6 +17,7 @@ import { array } from '../../utils/js';
 import { move } from '../../algorithm/move';
 import { onAfterDeserializedTag } from '../../data/deserialize-symbols';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
+import { BinaryCondition, TriggerCondition, UnaryCondition } from '.';
 
 export { GraphNode };
 
@@ -39,22 +40,46 @@ class Transition extends EditorExtendable implements OwnedBy<PoseSubgraph>, Tran
     /**
      * The transition condition.
      */
-    @serializable
-    public conditions: Condition[] = [];
+    get conditions (): Iterable<Condition> {
+        return this._conditions;
+    }
 
     /**
      * @internal
      */
-    constructor (from: GraphNode, to: GraphNode, conditions?: Condition[]) {
+    constructor (from: GraphNode, to: GraphNode) {
         super();
         this.from = from;
         this.to = to;
-        if (conditions) {
-            this.conditions = conditions;
-        }
+    }
+
+    public addUnaryCondition (operator: UnaryCondition.Operator, operand: boolean): UnaryCondition {
+        const condition = new UnaryCondition();
+        condition.operator = operator;
+        condition.operand = operand;
+        this._conditions.push(condition);
+        return condition;
+    }
+
+    public addBinaryCondition (operator: BinaryCondition.Operator, lhs: number, rhs: number): BinaryCondition {
+        const condition = new BinaryCondition();
+        condition.operator = operator;
+        condition.lhs = lhs;
+        condition.rhs = rhs;
+        this._conditions.push(condition);
+        return condition;
+    }
+
+    public addTriggerCondition (): TriggerCondition {
+        const condition = new TriggerCondition();
+        this._conditions.push(condition);
+        return condition;
     }
 
     [ownerSymbol]: PoseSubgraph | undefined;
+
+    @serializable
+    private _conditions: Condition[] = [];
 }
 
 type TransitionView = Omit<Transition, 'from' | 'to'> & {
@@ -252,7 +277,7 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
      * @param to Target node.
      * @param condition The transition condition.
      */
-    public connect (from: PoseNode, to: GraphNode, conditions?: Condition[]): PoseTransitionView;
+    public connect (from: PoseNode, to: GraphNode): PoseTransitionView;
 
     /**
      * Connect two nodes.
@@ -263,9 +288,9 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
      * - the target node is entry or any, or
      * - the source node is exit.
      */
-    public connect (from: GraphNode, to: GraphNode, conditions?: Condition[]): TransitionView;
+    public connect (from: GraphNode, to: GraphNode): TransitionView;
 
-    public connect (from: GraphNode, to: GraphNode, conditions?: Condition[]): TransitionView {
+    public connect (from: GraphNode, to: GraphNode): TransitionView {
         assertsOwnedBy(from, this);
         assertsOwnedBy(to, this);
 
@@ -282,8 +307,8 @@ export class PoseSubgraph extends GraphNode implements OwnedBy<Layer | PoseSubgr
         this.disconnect(from, to);
 
         const transition = from instanceof PoseNode
-            ? new PoseTransition(from, to, conditions)
-            : new Transition(from, to, conditions);
+            ? new PoseTransition(from, to)
+            : new Transition(from, to);
 
         own(transition, this);
         this._transitions.push(transition);

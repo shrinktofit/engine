@@ -76,31 +76,35 @@ function createSubgraph (subgraph: PoseSubgraph, subgraphDesc: PoseSubGraphDescr
 }
 
 function createTransition (graph: PoseSubgraph, from: GraphNode, to: GraphNode, transitionDesc: TransitionDescriptionBase) {
-    let condition: Condition | undefined;
-    const conditions = transitionDesc.conditions?.map((conditionDesc) => {
+    const transition = graph.connect(from, to);
+    transitionDesc.conditions?.forEach((conditionDesc) => {
         switch (conditionDesc.type) {
         default:
             throw new Error(`Unknown condition type.`);
         case 'unary': {
-            const condition = new UnaryCondition();
-            condition.operator = UnaryCondition.Operator[conditionDesc.type];
-            condition.operand = createParametric(conditionDesc.operand, condition, 'operand');
+            const condition = transition.addUnaryCondition(
+                UnaryCondition.Operator[conditionDesc.type],
+                getParametricValue(conditionDesc.operand) as boolean,
+            );
+            tryBindParametric(conditionDesc.operand, condition, 'operand');
             return condition;
         }
         case 'binary': {
-            const condition = new BinaryCondition();
-            condition.operator = BinaryCondition.Operator[conditionDesc.type];
-            condition.lhs = createParametric(conditionDesc.lhs, condition, 'lhs');
-            condition.rhs = createParametric(conditionDesc.rhs, condition, 'rhs');
+            const condition = transition.addBinaryCondition(
+                BinaryCondition.Operator[conditionDesc.type],
+                getParametricValue(conditionDesc.lhs) as number,
+                getParametricValue(conditionDesc.rhs) as number,
+            );
+            tryBindParametric(conditionDesc.lhs, condition, 'lhs');
+            tryBindParametric(conditionDesc.rhs, condition, 'rhs');
             return condition;
         }
         case 'trigger': {
-            const condition = new TriggerCondition();
+            const condition = transition.addTriggerCondition();
             return condition;
         }
         }
     });
-    const transition = graph.connect(from, to, conditions);
     return transition;
 }
 
@@ -147,6 +151,20 @@ function createMotion (motionDesc: MotionDescription): Pose {
         motion.paramX = createParametric(motionDesc.blender.values[0], motion, 'paramX');
         motion.paramY = createParametric(motionDesc.blender.values[1], motion, 'paramY');
         return motion;
+    }
+}
+
+function getParametricValue<T extends Value> (paramDesc: ParametricDescription<T>) {
+    if (typeof paramDesc === 'object') {
+        return paramDesc.value;
+    } else {
+        return paramDesc;
+    }
+}
+
+function tryBindParametric<T extends Value> (paramDesc: ParametricDescription<T>, host: BindingHost, bindingPointId: string) {
+    if (typeof paramDesc === 'object') {
+        host.bindProperty(bindingPointId, paramDesc.name);
     }
 }
 

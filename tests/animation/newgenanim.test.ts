@@ -179,7 +179,19 @@ describe('NewGen Anim', () => {
         });
 
         describe('Condition', () => {
-            function createPoseGraphForConditionTest(conditions: Condition[]) {
+            function createPoseGraphForConditionTest(conditions: Array<{
+                type: 'unary';
+                operator: UnaryCondition.Operator;
+                operand: boolean;
+            } | {
+                type: 'binary';
+                operator: BinaryCondition.Operator;
+                lhs: number;
+                rhs: number;
+            } | {
+                type: 'trigger';
+                operator: undefined;
+            }>) {
                 const poseGraph = new PoseGraph();
                 const layer = poseGraph.addLayer();
                 const graph = layer.graph;
@@ -188,9 +200,24 @@ describe('NewGen Anim', () => {
                 const node2 = graph.addPoseNode();
                 node2.name = 'TruthyBranchNode';
                 graph.connect(graph.entryNode, node1);
-                const transition = graph.connect(node1, node2, conditions);
+                const transition = graph.connect(node1, node2);
                 transition.duration = 0.0;
                 transition.exitConditionEnabled = false;
+                for (const condition of conditions) {
+                    switch (condition.type) {
+                        default:
+                            break;
+                        case 'unary':
+                            transition.addUnaryCondition(condition.operator, condition.operand);
+                            break;
+                        case 'binary':
+                            transition.addBinaryCondition(condition.operator, condition.lhs, condition.rhs);
+                            break;
+                        case 'trigger':
+                            transition.addTriggerCondition();
+                            break;
+                    }
+                }
                 return poseGraph;
             }
 
@@ -212,7 +239,11 @@ describe('NewGen Anim', () => {
                     const condition = new UnaryCondition();
                     condition.operator = op;
                     condition.operand = input;
-                    const graph = createPoseGraphForConditionTest([condition]);
+                    const graph = createPoseGraphForConditionTest([{
+                        type: 'unary',
+                        operator: op,
+                        operand: input,
+                    }]);
                     const graphEval = new PoseGraphEval(graph, new Node());
                     graphEval.update(0.0);
                     if (output) {
@@ -262,7 +293,12 @@ describe('NewGen Anim', () => {
                     condition.operator = op;
                     condition.lhs = lhs;
                     condition.rhs = rhs;
-                    const graph = createPoseGraphForConditionTest([condition]);
+                    const graph = createPoseGraphForConditionTest([{
+                        type: 'binary',
+                        operator: op,
+                        lhs,
+                        rhs,
+                    }]);
                     const graphEval = new PoseGraphEval(graph, new Node());
                     graphEval.update(0.0);
                     if (output) {
@@ -274,8 +310,6 @@ describe('NewGen Anim', () => {
             });
 
             test(`Trigger condition`, () => {
-                const condition = new TriggerCondition();
-                condition.bindProperty('trigger', 'theTrigger');
                 const poseGraph = new PoseGraph();
                 const layer = poseGraph.addLayer();
                 const graph = layer.graph;
@@ -286,12 +320,14 @@ describe('NewGen Anim', () => {
                 const node3 = graph.addPoseNode();
                 node3.name = 'ExtraNode';
                 graph.connect(graph.entryNode, node1);
-                const transition = graph.connect(node1, node2, [condition]);
+                const transition = graph.connect(node1, node2);
                 transition.duration = 0.0;
                 transition.exitConditionEnabled = false;
-                const transition2 = graph.connect(node2, node3, [condition]);
+                transition.addTriggerCondition().bindProperty('trigger', 'theTrigger');
+                const transition2 = graph.connect(node2, node3);
                 transition2.duration = 0.0;
                 transition2.exitConditionEnabled = false;
+                transition2.addTriggerCondition().bindProperty('trigger', 'theTrigger');
 
                 poseGraph.addVariable('theTrigger', VariableType.TRIGGER);
 
