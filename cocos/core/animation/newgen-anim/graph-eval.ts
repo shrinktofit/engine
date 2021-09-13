@@ -176,7 +176,7 @@ class LayerEval {
     private declare _graphEval: SubgraphEval;
 
     constructor (layer: Layer, context: LayerContext) {
-        this._graphEval = new SubgraphEval(layer.graph, {
+        this._graphEval = new SubgraphEval(layer.graph, null, {
             ...context,
         });
         this._graphEval.setWeight(layer.weight);
@@ -223,11 +223,19 @@ const emptyPoseIterable: Iterable<PoseStatus> = Object.freeze({
 
 type SubGraphEvalContext = LayerContext;
 
+/**
+ * A subgraph may have a current node, or haven't due to:
+ * - the subgraph is empty;
+ * - the subgraph isn't empty, but no transitions emitted from entry;
+ * - there are transitions emitted from entry, but non of them are satisfied.
+ */
 class SubgraphEval {
+    private declare _parentSubgraph: SubgraphEval | null;
     private _weight = 0.0;
     private declare _nodes: Set<NodeEval>;
     private declare _currentNode: NodeEval;
     private _currentTransition: TransitionEval | null = null;
+    private _currentTransitionToNode: PoseNodeEval | null = null;
     private _transitionProgress = 0;
     private declare _anyNode: NodeEval;
     private declare _enterNode: NodeEval;
@@ -235,12 +243,13 @@ class SubgraphEval {
 
     public declare name: string;
 
-    constructor (subgraph: PoseSubgraph, context: SubGraphEvalContext) {
+    constructor (subgraph: PoseSubgraph, parent: SubgraphEval | null, context: SubGraphEvalContext) {
         this.name = subgraph.name;
+        this._parentSubgraph = parent;
 
         const nodes = Array.from(subgraph.nodes());
 
-        const nodeEvaluators = nodes.map((node) => createNodeEval(context, subgraph, node));
+        const nodeEvaluators = nodes.map((node) => createNodeEval(this, context, subgraph, node));
 
         for (let iNode = 0; iNode < nodes.length; ++iNode) {
             const node = nodes[iNode];
@@ -279,6 +288,21 @@ class SubgraphEval {
         assertIsTrue(transition.to !== this._currentNode);
         this._switchTo(transition);
         this._updateCurrentTransition(0.0);
+    }
+
+    public getCurrentPoseNode (): PoseNodeEval | null {
+        const {
+            _currentNode: currentNode,
+            _currentTransition: currentTransition,
+        } = this;
+        assertIsTrue(!currentTransition);
+        if (currentNode.kind === NodeKind.subgraph) {
+            return currentNode.subgraphEval.getCurrentPoseNode();
+        } else if (currentNode.kind === NodeKind.pose) {
+            return currentNode;
+        } else {
+            return null;
+        }
     }
 
     /**
@@ -356,7 +380,11 @@ class SubgraphEval {
 
             const { _currentNode: currentNode } = this;
 
-            const transitionMatch = this._matchCurrentNodeTransition(remainTimePiece);
+            // If current node is subgraph, transitions are happened after it exited.
+            let transitionMatch: TransitionMatch | null = null;
+            if (!(currentNode.kind === NodeKind.subgraph && !currentNode.exited)) {
+                transitionMatch = this._matchCurrentNodeTransition(remainTimePiece);
+            }
 
             // If no transition matched, we update current node.
             if (!transitionMatch) {
@@ -477,14 +505,14 @@ class SubgraphEval {
     public getNextPoses (): Iterable<PoseStatus> {
         const { _currentTransition: currentTransition } = this;
         if (currentTransition) {
-            const { to } = currentTransition;
-            if (to.kind === NodeKind.pose) {
+            const {
+                _currentTransitionToNode: to,
+            } = this;
+            if (to) {
                 const iterator = to.getPoses();
                 return {
                     [Symbol.iterator]: () => iterator,
                 };
-            } else if (to.kind === NodeKind.subgraph) {
-                return to.subgraphEval.getCurrentPoses();
             } else {
                 return emptyPoseIterable;
             }
@@ -507,7 +535,6 @@ class SubgraphEval {
 
         const {
             duration: transitionDuration,
-            to: toNode,
         } = currentTransition;
 
         assertIsTrue(transitionDuration >= this._transitionProgress);
@@ -525,11 +552,14 @@ class SubgraphEval {
         }
 
         const fromNode = this._currentNode;
+        const toNode = this._currentTransitionToNode;
         assertIsTrue(fromNode !== toNode);
+
+        const toNodeName = toNode?.name ?? '<Empty>';
 
         const weight = this._weight;
         graphDebugGroup(
-            `[Subgraph ${this.name}]: TransitionUpdate: ${fromNode.name} -> ${toNode.name}`
+            `[Subgraph ${this.name}]: TransitionUpdate: ${fromNode.name} -> ${toNodeName}`
             + `with ratio ${ratio} in base weight ${this._weight}.`,
         );
         if (fromNode.kind === NodeKind.pose) {
@@ -538,26 +568,23 @@ class SubgraphEval {
             fromNode.update(contrib);
             graphDebugGroupEnd();
         }
-        if (isPoseOrSubgraphNodeEval(toNode)) {
+
+        if (toNode) {
             graphDebugGroup(`Update ${toNode.name}`);
             toNode.setWeight(weight * ratio);
             const stretchedTime = contrib * currentTransition.targetStretch;
-            if (toNode.kind === NodeKind.pose) {
-                toNode.update(stretchedTime);
-            } else {
-                assertIsTrue(toNode.kind === NodeKind.subgraph);
-                toNode.transitionUpdate(stretchedTime);
-            }
+            toNode.update(stretchedTime);
             graphDebugGroupEnd();
         }
         graphDebugGroupEnd();
 
         if (ratio === 1.0) {
-            graphDebug(`[Subgraph ${this.name}]: Transition finished:  ${fromNode.name} -> ${toNode.name}.`);
+            graphDebug(`[Subgraph ${this.name}]: Transition finished:  ${fromNode.name} -> ${toNodeName}.`);
 
             fromNode.exit();
-            this._currentNode = toNode;
+            this._currentNode = currentTransition.to;
             this._currentTransition = null;
+            this._currentTransitionToNode = null;
         }
 
         return contrib;
@@ -571,11 +598,6 @@ class SubgraphEval {
      */
     private _matchCurrentNodeTransition (deltaTime: Readonly<number>) {
         const currentNode = this._currentNode;
-
-        // If current node is subgraph, transitions are happened after it exited.
-        if (currentNode.kind === NodeKind.subgraph && !currentNode.exited) {
-            return null;
-        }
 
         let minDeltaTimeRequired = Infinity;
         let transitionRequiringMinDeltaTime: TransitionEval | null = null;
@@ -640,8 +662,8 @@ class SubgraphEval {
 
             // Handle empty condition case.
             if (nConditions === 0) {
-                if (node.kind === NodeKind.entry) {
-                    // This kind of transition is definitely chosen.
+                if (node.kind === NodeKind.entry || node.kind === NodeKind.subgraph) {
+                    // These kinds of transition is definitely chosen.
                     return result.set(transition, 0.0);
                 }
                 if (!transition.exitConditionEnabled) {
@@ -715,18 +737,24 @@ class SubgraphEval {
         // Apply transitions
         this._currentTransition = transition;
         this._transitionProgress = 0.0;
+        this._currentTransitionToNode = null;
         const targetNode = transition.to;
-        if (targetNode.name === 'MovementPoseNode') {
-            // debugger;
+        if (targetNode.kind === NodeKind.exit) {
+            const { _parentSubgraph: parent } = this;
+            if (parent) {
+                const parentTransitionMatch = parent._matchCurrentNodeTransition(0.0);
+                if (parentTransitionMatch) {
+                    this._currentTransitionToNode = enterAndGetTargetPoseNode(
+                        parentTransitionMatch.transition.to,
+                    );
+                }
+            }
+        } else {
+            if (isPoseOrSubgraphNodeEval(targetNode)) {
+                targetNode.setWeight(this._weight);
+            }
+            this._currentTransitionToNode = enterAndGetTargetPoseNode(targetNode);
         }
-        if (isPoseOrSubgraphNodeEval(targetNode)) {
-            targetNode.setWeight(this._weight);
-        }
-        targetNode.enter();
-        // if (currentNode.kind === NodeKind.pose && currentNode.pose) {
-        //     currentNode.pose.inactive();
-        // }
-        // this._currentNode = targetNode;
 
         graphDebugGroupEnd();
     }
@@ -735,6 +763,16 @@ class SubgraphEval {
         const { _triggerReset: triggerResetFn } = this;
         triggerResetFn(name);
     }
+}
+
+function enterAndGetTargetPoseNode (node: NodeEval) {
+    node.enter();
+    const targetPoseNode = node.kind === NodeKind.pose
+        ? node
+        : node.kind === NodeKind.subgraph
+            ? node.subgraphEval.getCurrentPoseNode()
+            : null;
+    return targetPoseNode;
 }
 
 interface TransitionMatch {
@@ -767,11 +805,11 @@ const transitionMatchCacheRegular = new TransitionMatchCache();
 
 const transitionMatchCacheAny = new TransitionMatchCache();
 
-function createNodeEval (context: SubGraphEvalContext, graph: PoseSubgraph, node: GraphNode): NodeEval {
+function createNodeEval (parent: SubgraphEval, context: SubGraphEvalContext, graph: PoseSubgraph, node: GraphNode): NodeEval {
     if (node instanceof PoseNode) {
         return new PoseNodeEval(node, context);
     } else if (node instanceof PoseSubgraph) {
-        return new SubgraphNodeEval(node, context);
+        return new SubgraphNodeEval(node, parent, context);
     } else {
         const kind = node === graph.entryNode
             ? NodeKind.entry
@@ -910,6 +948,7 @@ export class PoseNodeEval extends NodeBaseEval {
     public enter () {
         super.enter();
         this._pose?.active();
+        return this;
     }
 
     public exit () {
@@ -933,9 +972,9 @@ export class PoseNodeEval extends NodeBaseEval {
 }
 
 export class SubgraphNodeEval extends NodeBaseEval {
-    constructor (node: PoseSubgraph, context: SubGraphEvalContext) {
+    constructor (node: PoseSubgraph, parent: SubgraphEval | null, context: SubGraphEvalContext) {
         super(node);
-        const subgraphEval = new SubgraphEval(node, context);
+        const subgraphEval = new SubgraphEval(node, parent, context);
         this.subgraphEval = subgraphEval;
     }
 
@@ -949,7 +988,7 @@ export class SubgraphNodeEval extends NodeBaseEval {
 
     public enter () {
         super.enter();
-        this.subgraphEval.enter();
+        return this.subgraphEval.enter();
     }
 
     public exit () {
