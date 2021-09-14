@@ -1,7 +1,7 @@
 
 import { AnimationClip, Node, Vec2, Vec3, warnID } from '../../cocos/core';
 import { PoseBlend1D, PoseBlend2D, Condition, InvalidTransitionError, VariableNotDefinedError, __getDemoGraphs, AnimatedPose, PoseBlendDirect, VectorTrack } from '../../cocos/core/animation/animation';
-import { LayerBlending, PoseGraph, PoseSubgraph, VariableType } from '../../cocos/core/animation/newgen-anim/pose-graph';
+import { LayerBlending, PoseGraph, PoseSubgraph, VariableType, Transition } from '../../cocos/core/animation/newgen-anim/pose-graph';
 import { createEval } from '../../cocos/core/animation/newgen-anim/create-eval';
 import { VariableTypeMismatchedError } from '../../cocos/core/animation/newgen-anim/errors';
 import { PoseGraphEval, PoseNodeStats, PoseStatus } from '../../cocos/core/animation/newgen-anim/graph-eval';
@@ -641,6 +641,68 @@ describe('NewGen Anim', () => {
                 });
                 expect(graphEval.getValue('theTrigger')).toBe(false);
             });
+        });
+
+        test('All triggers along the transition path should be reset', () => {
+            const poseGraph = new PoseGraph();
+            const layer = poseGraph.addLayer();
+            const graph = layer.graph;
+
+            const subgraph1 = graph.addSubgraph();
+            subgraph1.name = 'Subgraph1';
+
+            const subgraph1_1 = subgraph1.addSubgraph();
+            subgraph1_1.name = 'Subgraph1_1';
+
+            const subgraph1_2 = subgraph1.addSubgraph();
+            subgraph1_2.name = 'Subgraph1_2';
+
+            const subgraph1_2PoseNode = subgraph1_2.addPoseNode();
+            subgraph1_2PoseNode.name = 'Subgraph1_2PoseNode';
+
+            let nTriggers = 0;
+
+            const addTriggerCondition = (transition: Transition) => {
+                const [condition] = transition.conditions = [new TriggerCondition()];
+                condition.bindProperty('trigger', `trigger${nTriggers}`);
+                poseGraph.addVariable(`trigger${nTriggers}`, VariableType.TRIGGER);
+                ++nTriggers;
+            };
+
+            addTriggerCondition(
+                subgraph1_2.connect(subgraph1_2.entryNode, subgraph1_2PoseNode),
+            );
+
+            addTriggerCondition(
+                subgraph1.connect(subgraph1.entryNode, subgraph1_1),
+            );
+
+            subgraph1_1.connect(subgraph1_1.entryNode, subgraph1_1.exitNode);
+
+            addTriggerCondition(
+                subgraph1.connect(subgraph1_1, subgraph1_2),
+            );
+
+            addTriggerCondition(
+                graph.connect(graph.entryNode, subgraph1),
+            );
+
+            const graphEval = new PoseGraphEval(poseGraph, new Node());
+
+            graphEval.update(0.0);
+            expectPoseGraphEvalStatusLayer0(graphEval, { currentNode: null });
+
+            for (let i = 0; i < nTriggers; ++i) {
+                graphEval.setValue(`trigger${i}`, true);
+            }
+            graphEval.update(0.0);
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                currentNode: {
+                    __DEBUG_ID__: 'Subgraph1_2PoseNode',
+                },
+            });
+            const triggerStates = Array.from({ length: nTriggers }, (_, iTrigger) => graphEval.getValue(`trigger${iTrigger}`));
+            expect(triggerStates).toStrictEqual(new Array(nTriggers).fill(false));
         });
     });
 

@@ -1,3 +1,4 @@
+import { DEBUG } from 'internal:constants';
 import { PoseGraph, Layer, PoseSubgraph, GraphNode, Transition, isPoseTransition } from './pose-graph';
 import { assertIsTrue, assertIsNonNullable } from '../../data/utils/asserts';
 import { PoseEval, PoseEvalContext } from './pose';
@@ -244,8 +245,9 @@ class LayerEval {
     }
 
     public getCurrentTransition (transitionStatus: TransitionStatus): boolean {
-        const { _currentTransition: currentTransition } = this;
-        if (currentTransition) {
+        const { _currentTransitionPath: currentTransitionPath } = this;
+        if (currentTransitionPath.length !== 0) {
+            const currentTransition = currentTransitionPath[0];
             transitionStatus.duration = currentTransition.duration;
             transitionStatus.time = this._transitionProgress;
             return true;
@@ -261,11 +263,12 @@ class LayerEval {
     }
 
     public getNextPoses (): Iterable<PoseStatus> {
-        assertIsTrue(this._currentTransition, 'There is no transition currently in layer.');
-        const {
-            _currentTransitionToNode: to,
-        } = this;
-        return to?.getPoses() ?? emptyPoseIterable;
+        const { _currentTransitionPath: currentTransitionPath } = this;
+        const nCurrentTransitionPath = currentTransitionPath.length;
+        assertIsTrue(nCurrentTransitionPath > 0, 'There is no transition currently in layer.');
+        const to = currentTransitionPath[nCurrentTransitionPath - 1].to;
+        assertIsTrue(to.kind === NodeKind.pose);
+        return to.getPoses() ?? emptyPoseIterable;
     }
 
     private _weight: number;
@@ -273,9 +276,8 @@ class LayerEval {
     private _topLevelEntry: NodeEval;
     private _topLevelExit: NodeEval;
     private _currentNode: NodeEval;
-    private _currentTransition: TransitionEval | null = null;
     private _currentTransitionToNode: PoseNodeEval | null = null;
-    private _currentTransitionPath: NodeEval[] = [];
+    private _currentTransitionPath: TransitionEval[] = [];
     private _transitionProgress = 0;
     private declare _triggerReset: TriggerResetFn;
 
@@ -305,6 +307,14 @@ class LayerEval {
                 return new SpecialNodeEval(node, kind, node.name);
             }
         });
+
+        if (DEBUG) {
+            for (const nodeEval of nodeEvaluations) {
+                if (nodeEval.kind !== 'subgraph') {
+                    nodeEval.__DEBUG_ID__ = `${nodeEval.name}(from ${graph.name})`;
+                }
+            }
+        }
 
         for (let iNode = 0; iNode < nodes.length; ++iNode) {
             const node = nodes[iNode];
@@ -430,7 +440,7 @@ class LayerEval {
 
             // Update current transition if we're in transition.
             // If currently no transition, we simple fallthrough.
-            if (this._currentTransition) {
+            if (this._currentTransitionPath.length > 0) {
                 const currentUpdatingConsume = this._updateCurrentTransition(remainTimePiece);
                 if (GRAPH_DEBUG_ENABLED) {
                     passConsumed = currentUpdatingConsume;
@@ -439,7 +449,7 @@ class LayerEval {
                 if (this._currentNode.kind === NodeKind.exit) {
                     break;
                 }
-                if (!this._currentTransition) {
+                if (this._currentTransitionPath.length === 0) {
                     // If the update invocation finished the transition,
                     // We force restart the iteration
                     continueNextIterationForce = true;
@@ -631,40 +641,50 @@ class LayerEval {
 
         graphDebugGroup(`[Subgraph ${this.name}]: STARTED ${currentNode.name} -> ${transition.to.name}.`);
 
-        let realTargetNode = transition.to;
+        // TODO: what if the first is entry(ie. not pose)?
+        // TODO: what if two of the path use same trigger?
+        let currentTransition = transition;
         const { _currentTransitionPath: currentTransitionPath } = this;
-        for (; realTargetNode.kind !== NodeKind.pose;) {
-            currentTransitionPath.push(realTargetNode);
+        for (; ;) {
+            currentTransitionPath.push(currentTransition);
+            const { to } = currentTransition;
+            if (to.kind === NodeKind.pose) {
+                break;
+            }
             const transitionMatch = this._matchTransition(
-                realTargetNode,
-                realTargetNode,
+                to,
+                to,
                 0.0,
                 transitionMatchCache,
             );
             if (!transitionMatch) {
                 break;
             }
-            realTargetNode = transitionMatch.transition.to;
+            currentTransition = transitionMatch.transition;
         }
 
+        const realTargetNode = currentTransition.to;
         if (realTargetNode.kind !== NodeKind.pose) {
             // We ran into a exit/entry node.
+            // TODO: what about triggers?
             currentTransitionPath.length = 0;
             return;
         }
 
         // Reset triggers
-        const { triggers } = transition;
-        if (triggers) {
-            const nTriggers = triggers.length;
-            for (let iTrigger = 0; iTrigger < nTriggers; ++iTrigger) {
-                const trigger = triggers[iTrigger];
-                this._resetTrigger(trigger);
+        const nTransitions = currentTransitionPath.length;
+        for (let iTransition = 0; iTransition < nTransitions; ++iTransition) {
+            const { triggers } = currentTransitionPath[iTransition];
+            if (triggers) {
+                const nTriggers = triggers.length;
+                for (let iTrigger = 0; iTrigger < nTriggers; ++iTrigger) {
+                    const trigger = triggers[iTrigger];
+                    this._resetTrigger(trigger);
+                }
             }
         }
 
         // Apply transitions
-        this._currentTransition = transition;
         this._transitionProgress = 0.0;
         this._currentTransitionToNode = realTargetNode;
         realTargetNode.setWeight(this._weight);
@@ -680,12 +700,14 @@ class LayerEval {
      */
     private _updateCurrentTransition (deltaTime: number) {
         const {
-            _currentTransition: currentTransition,
+            _currentTransitionPath: currentTransitionPath,
             _currentTransitionToNode: currentTransitionToNode,
         } = this;
 
-        assertIsNonNullable(currentTransition);
+        assertIsNonNullable(currentTransitionPath.length > 0);
         assertIsNonNullable(currentTransitionToNode);
+
+        const currentTransition = currentTransitionPath[0];
 
         const {
             duration: transitionDuration,
@@ -739,19 +761,18 @@ class LayerEval {
             graphDebug(`[Subgraph ${this.name}]: Transition finished:  ${fromNode.name} -> ${toNodeName}.`);
 
             fromNode.exit();
-            const { _currentTransitionPath: passNodes } = this;
-            const nPassNodes = passNodes.length;
-            for (let iPassNode = 0; iPassNode < nPassNodes; ++iPassNode) {
-                const passNode = passNodes[iPassNode];
-                if (passNode.kind === NodeKind.exit) {
-                    passNode.exit();
-                } else if (passNode.kind === NodeKind.entry) {
-                    passNode.enter();
+            const { _currentTransitionPath: transitions } = this;
+            const nTransition = transitions.length;
+            for (let iTransition = 0; iTransition < nTransition; ++iTransition) {
+                const { to } = transitions[iTransition];
+                if (to.kind === NodeKind.exit) {
+                    to.exit();
+                } else if (to.kind === NodeKind.entry) {
+                    to.enter();
                 }
             }
             toNode.exit();
             this._currentNode = toNode;
-            this._currentTransition = null;
             this._currentTransitionToNode = null;
             this._currentTransitionPath.length = 0;
         }
@@ -876,6 +897,8 @@ enum NodeKind {
 }
 
 export class NodeBaseEval {
+    public declare __DEBUG_ID__?: string;
+
     public declare subgraph: SubgraphInfo;
 
     constructor (node: GraphNode) {
