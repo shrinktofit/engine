@@ -17,6 +17,8 @@ export class AnimatedPose implements Pose {
 }
 
 class AnimatedPoseEval implements PoseEval {
+    public declare __DEBUG__ID__?: string;
+
     private declare _state: AnimationState;
     private _weight = 1.0;
 
@@ -42,6 +44,7 @@ class AnimatedPoseEval implements PoseEval {
                     return {
                         done: false,
                         value: {
+                            __DEBUG_ID__: this.__DEBUG__ID__,
                             clip: this._state.clip,
                             weight: this._state.weight,
                         },

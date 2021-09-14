@@ -4,7 +4,7 @@ import { PoseBlend1D, PoseBlend2D, Condition, InvalidTransitionError, VariableNo
 import { LayerBlending, PoseGraph, PoseSubgraph, VariableType } from '../../cocos/core/animation/newgen-anim/pose-graph';
 import { createEval } from '../../cocos/core/animation/newgen-anim/create-eval';
 import { VariableTypeMismatchedError } from '../../cocos/core/animation/newgen-anim/errors';
-import { PoseGraphEval } from '../../cocos/core/animation/newgen-anim/graph-eval';
+import { PoseGraphEval, PoseNodeStats, PoseStatus } from '../../cocos/core/animation/newgen-anim/graph-eval';
 import { createGraphFromDescription } from '../../cocos/core/animation/newgen-anim/__tmp__/graph-from-description';
 import gAnyTransition from './graphs/any-transition';
 import gUnspecifiedCondition from './graphs/unspecified-condition';
@@ -136,7 +136,9 @@ describe('NewGen Anim', () => {
             // - The graph is in node state and a transition is judged to be happened, then the graph will run in transition state.
             const graphEval = new PoseGraphEval(createGraphFromDescription(gZeroTimePiece), new Node());
             graphEval.update(0.0);
-            expect(graphEval.getCurrentNodeInfo(0).name).toBe('Exit');
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                currentNode: { __DEBUG_ID__: 'SubgraphNode1' },
+            });
         });
 
         test(`Transition: pose -> pose`, () => {
@@ -162,27 +164,41 @@ describe('NewGen Anim', () => {
         test('Condition not specified', () => {
             const graphEval = new PoseGraphEval(createGraphFromDescription(gUnspecifiedCondition), new Node());
             graphEval.update(0.0);
-            expect(graphEval.getCurrentNodeInfo(0).name).toBe('asd');
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+               currentNode: { __DEBUG_ID__: 'asd' },
+            });
         });
 
         test('Condition not specified for non-entry node', () => {
             const graphEval = new PoseGraphEval(createGraphFromDescription(glUnspecifiedConditionOnEntryNode), new Node());
             graphEval.update(0.0);
-            expect(graphEval.getCurrentNodeInfo(0).name).toBe('Node1');
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                currentNode: { __DEBUG_ID__: 'Node1' },
+                transition: {
+                    nextNode: { __DEBUG_ID__: 'Node2' },
+                },
+             });
             graphEval.update(0.32);
-            expect(graphEval.getCurrentNodeInfo(0).name).toBe('Node2');
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                currentNode: { __DEBUG_ID__: 'Node2' },
+            });
         });
 
         test('Successive transitions', () => {
             const graphEval = new PoseGraphEval(createGraphFromDescription(gSuccessiveSatisfaction), new Node());
             graphEval.update(0.0);
-            expect(graphEval.getCurrentNodeInfo(0).name).toBe('Node2');
+            
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                currentNode: { __DEBUG_ID__: 'Node2' },
+            });
         });
 
         test('Any transition', () => {
             const graphEval = new PoseGraphEval(createGraphFromDescription(gAnyTransition), new Node());
             graphEval.update(0.0);
-            expect(graphEval.getCurrentNodeInfo(0).name).toBe('Node1');
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                currentNode: { __DEBUG_ID__: 'Node1' },
+            });
         });
 
         test('Infinity loop', () => {
@@ -222,15 +238,23 @@ describe('NewGen Anim', () => {
             const graphEval = new PoseGraphEval(poseGraph, new Node());
 
             graphEval.update(0.0);
-            expect(graphEval.getCurrentNodeInfo(0).name).toBe('Subgraph');
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                currentNode: null,
+            });
 
             graphEval.setValue('trigger', true);
             graphEval.update(0.0);
-            expect(graphEval.getCurrentNodeInfo(0).name).toBe('Subgraph');
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                currentNode: null,
+            });
 
             graphEval.setValue('subgraphExitTrigger', true);
             graphEval.update(0.0);
-            expect(graphEval.getCurrentNodeInfo(0).name).toBe('Node');
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                currentNode: {
+                    __DEBUG_ID__: 'Node',
+                },
+            });
         });
 
         test(`In single frame: exit condition just satisfied or satisfied and remain time`, () => {
@@ -306,53 +330,43 @@ describe('NewGen Anim', () => {
 
             const graphEval = new PoseGraphEval(poseGraph, new Node());
 
-            {
-                graphEval.update(0.2);
+            graphEval.update(0.2);
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                current: {
+                    clip: poseNodeClip.clip!,
+                    weight: 0.33333,
+                },
+                transition: {
+                    time: 0.2,
+                    next: {
+                        clip: subgraphPoseNodeClip.clip!,
+                        weight: 0.66667,
+                    },
+                },
+            });
 
-                const currentTransition = graphEval.getCurrentTransition(0);
-                expect(currentTransition).not.toBeNull();
-                expect(currentTransition.time).toBeCloseTo(0.2);
+            graphEval.update(0.1);
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                current: {
+                    clip: subgraphPoseNodeClip.clip!,
+                    weight: 1.0,
+                },
+            });
 
-                const fromPoseStatues = Array.from(graphEval.getCurrentPoses(0));
-                expect(fromPoseStatues).toHaveLength(1);
-                expect(fromPoseStatues[0].clip).toBe(poseNodeClip.clip!);
-                expect(fromPoseStatues[0].weight).toBeCloseTo(0.33333, 5);
-
-                const toPoseStatues = Array.from(graphEval.getNextPoses(0));
-                expect(toPoseStatues).toHaveLength(1);
-                expect(toPoseStatues[0].clip).toBe(subgraphPoseNodeClip.clip!);
-                expect(toPoseStatues[0].weight).toBeCloseTo(0.66667, 5);
-            }
-
-            {
-                graphEval.update(0.1);
-
-                const currentTransition = graphEval.getCurrentTransition(0);
-                expect(currentTransition).toBeNull();
-
-                const fromPoseStatues = Array.from(graphEval.getCurrentPoses(0));
-                expect(fromPoseStatues).toHaveLength(1);
-                expect(fromPoseStatues[0].clip).toBe(subgraphPoseNodeClip.clip!);
-                expect(fromPoseStatues[0].weight).toBeCloseTo(1.0, 5);
-            }
-
-            {
-                graphEval.update(subgraphPoseNodeClip.clip!.duration - 0.3 + 0.1);
-
-                const currentTransition = graphEval.getCurrentTransition(0);
-                expect(currentTransition).not.toBeNull();
-                expect(currentTransition.time).toBeCloseTo(0.1, 5);
-
-                const fromPoseStatues = Array.from(graphEval.getCurrentPoses(0));
-                expect(fromPoseStatues).toHaveLength(1);
-                expect(fromPoseStatues[0].clip).toBe(subgraphPoseNodeClip.clip!);
-                expect(fromPoseStatues[0].weight).toBeCloseTo(0.66667, 5);
-
-                const toPoseStatues = Array.from(graphEval.getNextPoses(0));
-                expect(toPoseStatues).toHaveLength(1);
-                expect(toPoseStatues[0].clip).toBe(subgraphPoseNode2Clip.clip!);
-                expect(toPoseStatues[0].weight).toBeCloseTo(0.33333, 5);
-            }
+            graphEval.update(subgraphPoseNodeClip.clip!.duration - 0.3 + 0.1);
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                current: {
+                    clip: subgraphPoseNodeClip.clip!,
+                    weight: 0.66667,
+                },
+                transition: {
+                    time: 0.1,
+                    next: {
+                        clip: subgraphPoseNode2Clip.clip!,
+                        weight: 0.33333,
+                    },
+                },
+            });
         });
 
         test('Transition from subgraph', () => {
@@ -393,40 +407,32 @@ describe('NewGen Anim', () => {
 
             const graphEval = new PoseGraphEval(poseGraph, new Node());
 
-            {
-                graphEval.update(
-                    // exit condition + duration
-                    subgraphPoseNodeClip.clip!.duration + 0.2,
-                );
+            graphEval.update(
+                // exit condition + duration
+                subgraphPoseNodeClip.clip!.duration + 0.2,
+            );
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                current: {
+                    clip: subgraphPoseNodeClip.clip!,
+                    weight: 0.33333,
+                },
+                transition: {
+                    time: 0.2,
+                    next: {
+                        clip: poseNodeClip.clip!,
+                        weight: 0.66667,
+                    },
+                },
+            });
 
-                const currentTransition = graphEval.getCurrentTransition(0);
-                expect(currentTransition).not.toBeNull();
-                expect(currentTransition.time).toBeCloseTo(0.2, 5);
-                
-                const fromPoseStatues = Array.from(graphEval.getCurrentPoses(0));
-                expect(fromPoseStatues).toHaveLength(1);
-                expect(fromPoseStatues[0].clip).toBe(subgraphPoseNodeClip.clip!);
-                expect(fromPoseStatues[0].weight).toBeCloseTo(0.33333, 5);
-
-                const toPoseStatues = Array.from(graphEval.getNextPoses(0));
-                expect(toPoseStatues).toHaveLength(1);
-                expect(toPoseStatues[0].clip).toBe(poseNodeClip.clip!);
-                expect(toPoseStatues[0].weight).toBeCloseTo(0.66667, 5);
-            }
-
-            {
-                graphEval.update(
-                    0.10001,
-                );
-
-                const currentTransition = graphEval.getCurrentTransition(0);
-                expect(currentTransition).toBeNull();
-                
-                const fromPoseStatues = Array.from(graphEval.getCurrentPoses(0));
-                expect(fromPoseStatues).toHaveLength(1);
-                expect(fromPoseStatues[0].clip).toBe(poseNodeClip.clip!);
-                expect(fromPoseStatues[0].weight).toBeCloseTo(1.0, 5);
-            }
+            graphEval.update(
+                0.10001,
+            );
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                current: {
+                    clip: poseNodeClip.clip!,
+                },
+            });
         });
 
         test('Transition from subgraph to subgraph', () => {
@@ -470,40 +476,32 @@ describe('NewGen Anim', () => {
 
             const graphEval = new PoseGraphEval(poseGraph, new Node());
 
-            {
-                graphEval.update(
-                    // exit condition + duration
-                    subgraph1PoseNodeClip.clip!.duration + 0.2,
-                );
+            graphEval.update(
+                // exit condition + duration
+                subgraph1PoseNodeClip.clip!.duration + 0.2,
+            );
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                current: {
+                    clip: subgraph1PoseNodeClip.clip!,
+                    weight: 0.33333,
+                },
+                transition: {
+                    time: 0.2,
+                    next: {
+                        clip: subgraph2PoseNodeClip.clip!,
+                        weight: 0.66667,
+                    },
+                },
+            });
 
-                const currentTransition = graphEval.getCurrentTransition(0);
-                expect(currentTransition).not.toBeNull();
-                expect(currentTransition.time).toBeCloseTo(0.2, 5);
-                
-                const fromPoseStatues = Array.from(graphEval.getCurrentPoses(0));
-                expect(fromPoseStatues).toHaveLength(1);
-                expect(fromPoseStatues[0].clip).toBe(subgraph1PoseNodeClip.clip!);
-                expect(fromPoseStatues[0].weight).toBeCloseTo(0.33333, 5);
-
-                const toPoseStatues = Array.from(graphEval.getNextPoses(0));
-                expect(toPoseStatues).toHaveLength(1);
-                expect(toPoseStatues[0].clip).toBe(subgraph2PoseNodeClip.clip!);
-                expect(toPoseStatues[0].weight).toBeCloseTo(0.66667, 5);
-            }
-
-            {
-                graphEval.update(
-                    0.10001,
-                );
-
-                const currentTransition = graphEval.getCurrentTransition(0);
-                expect(currentTransition).toBeNull();
-                
-                const fromPoseStatues = Array.from(graphEval.getCurrentPoses(0));
-                expect(fromPoseStatues).toHaveLength(1);
-                expect(fromPoseStatues[0].clip).toBe(subgraph2PoseNodeClip.clip!);
-                expect(fromPoseStatues[0].weight).toBeCloseTo(1.0, 5);
-            }
+            graphEval.update(
+                0.10001,
+            );
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                current: {
+                    clip: subgraph2PoseNodeClip.clip!,
+                },
+            });
         });
 
         describe('Condition', () => {
@@ -544,9 +542,13 @@ describe('NewGen Anim', () => {
                     const graphEval = new PoseGraphEval(graph, new Node());
                     graphEval.update(0.0);
                     if (output) {
-                        expect(graphEval.getCurrentNodeInfo(0).name).toBe('TruthyBranchNode');
+                        expectPoseGraphEvalStatusLayer0(graphEval, {
+                            currentNode: { __DEBUG_ID__: 'TruthyBranchNode' },
+                        });
                     } else {
-                        expect(graphEval.getCurrentNodeInfo(0).name).toBe('FalsyBranchNode');
+                        expectPoseGraphEvalStatusLayer0(graphEval, {
+                            currentNode: { __DEBUG_ID__: 'FalsyBranchNode' },
+                        });
                     }
                 }
             });
@@ -594,9 +596,13 @@ describe('NewGen Anim', () => {
                     const graphEval = new PoseGraphEval(graph, new Node());
                     graphEval.update(0.0);
                     if (output) {
-                        expect(graphEval.getCurrentNodeInfo(0).name).toBe('TruthyBranchNode');
+                        expectPoseGraphEvalStatusLayer0(graphEval, {
+                            currentNode: { __DEBUG_ID__: 'TruthyBranchNode' },
+                        });
                     } else {
-                        expect(graphEval.getCurrentNodeInfo(0).name).toBe('FalsyBranchNode');
+                        expectPoseGraphEvalStatusLayer0(graphEval, {
+                            currentNode: { __DEBUG_ID__: 'FalsyBranchNode' },
+                        });
                     }
                 }
             });
@@ -625,10 +631,14 @@ describe('NewGen Anim', () => {
 
                 const graphEval = new PoseGraphEval(poseGraph, new Node());
                 graphEval.update(0.0);
-                expect(graphEval.getCurrentNodeInfo(0).name).toBe('FalsyBranchNode');
+                expectPoseGraphEvalStatusLayer0(graphEval, {
+                    currentNode: { __DEBUG_ID__: 'FalsyBranchNode' },
+                });
                 graphEval.setValue('theTrigger', true);
                 graphEval.update(0.0);
-                expect(graphEval.getCurrentNodeInfo(0).name).toBe('TruthyBranchNode');
+                expectPoseGraphEvalStatusLayer0(graphEval, {
+                    currentNode: { __DEBUG_ID__: 'TruthyBranchNode' },
+                });
                 expect(graphEval.getValue('theTrigger')).toBe(false);
             });
         });
@@ -769,3 +779,64 @@ function createPosePositionX(duration: number, value: number, name = '') {
     return pose;
 }
 
+type MayBeArray<T> = T | T[];
+
+function expectPoseGraphEvalStatusLayer0 (graphEval: PoseGraphEval, status: {
+    currentNode?: Parameters<typeof expectPoseNodeStatus>[1];
+    current?: Parameters<typeof expectPoseStatuses>[1];
+    transition?: {
+        time?: number;
+        nextNode?: Parameters<typeof expectPoseNodeStatus>[1];
+        next?: Parameters<typeof expectPoseStatuses>[1];
+    };
+}) {
+    if (status.currentNode) {
+        expectPoseNodeStatus(graphEval.getCurrentPoseNodeStats(0), status.currentNode);
+    }
+    if (status.current) {
+        const currentPoses = Array.from(graphEval.getCurrentPoses(0));
+        expectPoseStatuses(currentPoses, status.current);
+    }
+
+    const currentTransition = graphEval.getCurrentTransition(0);
+    if (!status.transition) {
+        expect(currentTransition).toBeNull();
+    } else {
+        expect(currentTransition).not.toBeNull();
+        if (typeof status.transition.time === 'number') {
+            expect(currentTransition.time).toBeCloseTo(status.transition.time, 5);
+        }
+        if (status.transition.nextNode) {
+            expectPoseNodeStatus(graphEval.getNextPoseNodeStats(0), status.transition.nextNode);
+        }
+        if (status.transition.next) {
+            expectPoseStatuses(Array.from(graphEval.getNextPoses(0)), status.transition.next);
+        }
+    }
+}
+
+function expectPoseNodeStatus (poseNodeStats: Readonly<PoseNodeStats> | null, expected: null | {
+    __DEBUG_ID__?: string;
+}) {
+    if (!expected) {
+        expect(poseNodeStats).toBeNull();
+    } else {
+        expect(poseNodeStats).not.toBeNull();
+        expect(poseNodeStats.__DEBUG_ID__).toBe(expected.__DEBUG_ID__);
+    }
+}
+
+function expectPoseStatuses (poseStatues: PoseStatus[], expected: MayBeArray<{
+    clip?: AnimationClip;
+    weight?: number;
+}>) {
+    const expects = Array.isArray(expected) ? expected : [expected];
+    expect(poseStatues).toHaveLength(expects.length);
+    for (let i = 0; i < expects.length; ++i) {
+        const { clip, weight = 1.0 } = expects[i];
+        if (clip) {
+            expect(poseStatues[i].clip).toBe(clip);
+        }
+        expect(poseStatues[i].weight).toBeCloseTo(weight, 5);
+    }
+}
