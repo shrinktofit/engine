@@ -734,7 +734,6 @@ class LayerEval {
 
         const fromNode = this._currentNode;
         const toNode = currentTransitionToNode;
-        assertIsTrue(fromNode !== toNode);
 
         const toNodeName = toNode?.name ?? '<Empty>';
 

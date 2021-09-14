@@ -214,6 +214,55 @@ describe('NewGen Anim', () => {
             expect(warnMockInstance.mock.calls[0][1]).toStrictEqual(100);
         });
 
+        test('Self transition', () => {
+            const poseGraph = new PoseGraph();
+            const layer = poseGraph.addLayer();
+            const graph = layer.graph;
+            
+            const poseNode = graph.addPoseNode();
+            poseNode.name = 'Node';
+            const pose = poseNode.pose = createPosePositionXLinear(1.0, 0.3, 1.4);
+            const clip = pose.clip!;
+
+            graph.connect(graph.entryNode, poseNode);
+            
+            const selfTransition = graph.connect(poseNode, poseNode);
+            selfTransition.exitConditionEnabled = true;
+            selfTransition.exitCondition = 0.9;
+            selfTransition.duration = 0.3;
+
+            const node = new Node();
+            const graphEval = new PoseGraphEval(poseGraph, node);
+            
+            graphEval.update(0.7);
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                current: {
+                    clip,
+                    weight: 1.0,
+                },
+            });
+            expect(node.position.x).toBeCloseTo(0.3 + (1.4 - 0.3) * 0.7);
+
+            graphEval.update(0.25);
+            expectPoseGraphEvalStatusLayer0(graphEval, {
+                current: {
+                    clip,
+                    weight: 0.83333,
+                },
+                transition: {
+                    time: 0.05,
+                    next: {
+                        clip,
+                        weight: 0.16667,
+                    },
+                },
+            });
+            expect(node.position.x).toBeCloseTo(
+                (0.3 + (1.4 - 0.3) * 0.95) * 0.83333 +
+                (0.3 + (1.4 - 0.3) * 0.05) * 0.16667
+            );
+        });
+
         test('Subgraph transitions are selected only when subgraph exited', () => {
             const poseGraph = new PoseGraph();
             const layer = poseGraph.addLayer();
@@ -279,21 +328,23 @@ describe('NewGen Anim', () => {
             {
                 const graphEval = new PoseGraphEval(poseGraph, new Node());
                 graphEval.update(poseNode1Clip.clip!.duration);
-                expect(graphEval.getCurrentTransition(0)).toBeNull();
-                const fromPoseStatues = Array.from(graphEval.getCurrentPoses(0));
-                expect(fromPoseStatues).toHaveLength(1);
-                expect(fromPoseStatues[0].clip).toBe(poseNode2Clip.clip!);
-                expect(fromPoseStatues[0].weight).toBeCloseTo(1.0, 5);
+                expectPoseGraphEvalStatusLayer0(graphEval, {
+                    current: {
+                        clip: poseNode2Clip.clip!,
+                        weight: 1.0,
+                    },
+                });
             }
 
             {
                 const graphEval = new PoseGraphEval(poseGraph, new Node());
                 graphEval.update(poseNode1Clip.clip!.duration + 0.1);
-                expect(graphEval.getCurrentTransition(0)).toBeNull();
-                const fromPoseStatues = Array.from(graphEval.getCurrentPoses(0));
-                expect(fromPoseStatues).toHaveLength(1);
-                expect(fromPoseStatues[0].clip).toBe(poseNode2Clip.clip!);
-                expect(fromPoseStatues[0].weight).toBeCloseTo(1.0, 5);
+                expectPoseGraphEvalStatusLayer0(graphEval, {
+                    current: {
+                        clip: poseNode2Clip.clip!,
+                        weight: 1.0,
+                    },
+                });
             }
         });
 
@@ -835,6 +886,24 @@ function createPosePositionX(duration: number, value: number, name = '') {
     track.componentsCount = 3;
     track.path.toProperty('position');
     track.channels()[0].curve.assignSorted([[0.0, value]]);
+    clip.addTrack(track);
+    const pose = new AnimatedPose();
+    pose.clip = clip;
+    return pose;
+}
+
+function createPosePositionXLinear(duration: number, from: number, to: number, name = '') {
+    const clip = new AnimationClip();
+    clip.name = name;
+    clip.enableTrsBlending = true;
+    clip.duration = duration;
+    const track = new VectorTrack();
+    track.componentsCount = 3;
+    track.path.toProperty('position');
+    track.channels()[0].curve.assignSorted([
+        [0.0, from],
+        [duration, to],
+    ]);
     clip.addTrack(track);
     const pose = new AnimatedPose();
     pose.clip = clip;
