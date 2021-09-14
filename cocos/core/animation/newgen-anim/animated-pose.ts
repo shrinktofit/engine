@@ -20,7 +20,6 @@ class AnimatedPoseEval implements PoseEval {
     public declare __DEBUG__ID__?: string;
 
     private declare _state: AnimationState;
-    private _weight = 1.0;
 
     public declare readonly duration: number;
 
@@ -30,7 +29,7 @@ class AnimatedPoseEval implements PoseEval {
         this._state.initialize(context.node, context.blendBuffer);
     }
 
-    public poses (): Iterator<PoseStatus, any, undefined> {
+    public poses (baseWeight: number): Iterator<PoseStatus, any, undefined> {
         let got = false;
         return {
             next: () => {
@@ -46,7 +45,7 @@ class AnimatedPoseEval implements PoseEval {
                         value: {
                             __DEBUG_ID__: this.__DEBUG__ID__,
                             clip: this._state.clip,
-                            weight: this._state.weight,
+                            weight: baseWeight,
                         },
                     };
                 }
@@ -65,20 +64,11 @@ class AnimatedPoseEval implements PoseEval {
     public inactive () {
     }
 
-    public update (deltaTime: number) {
-        this._state.time += deltaTime;
-    }
-
-    public setBaseWeight (weight: number) {
-        if (GRAPH_DEBUG_ENABLED) {
-            graphDebug(`Set state ${this._state.name} weight to ${weight}`);
-        }
-        this._weight = weight;
-        this._state.weight = this._weight;
-    }
-
-    public sample () {
-        pushWeight(this._state.name, this._state.weight);
+    public sample (time: number, weight: number) {
+        pushWeight(this._state.name, weight);
+        this._state.time = time;
+        this._state.weight = weight;
         this._state.sample();
+        this._state.weight = 0.0;
     }
 }

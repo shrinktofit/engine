@@ -220,6 +220,8 @@ class LayerEval {
 
     public update (deltaTime: number) {
         if (!this.exited) {
+            this._fromWeight = 1.0;
+            this._toWeight = 0.0;
             this._eval(deltaTime);
             this._sample();
         }
@@ -238,7 +240,7 @@ class LayerEval {
     public getCurrentPoses (): Iterable<PoseStatus> {
         const { _currentNode: currentNode } = this;
         if (currentNode.kind === NodeKind.pose) {
-            return currentNode.getPoses();
+            return currentNode.getPoses(this._fromWeight);
         } else {
             return emptyPoseIterable;
         }
@@ -268,7 +270,7 @@ class LayerEval {
         assertIsTrue(nCurrentTransitionPath > 0, 'There is no transition currently in layer.');
         const to = currentTransitionPath[nCurrentTransitionPath - 1].to;
         assertIsTrue(to.kind === NodeKind.pose);
-        return to.getPoses() ?? emptyPoseIterable;
+        return to.getPoses(this._toWeight) ?? emptyPoseIterable;
     }
 
     private _weight: number;
@@ -280,6 +282,8 @@ class LayerEval {
     private _currentTransitionPath: TransitionEval[] = [];
     private _transitionProgress = 0;
     private declare _triggerReset: TriggerResetFn;
+    private _fromWeight = 0.0;
+    private _toWeight = 0.0;
 
     private _addSubgraph (graph: PoseSubgraph, context: LayerContext): {
         entry: NodeEval;
@@ -462,29 +466,27 @@ class LayerEval {
             const transitionMatch = this._matchCurrentNodeTransition(remainTimePiece);
 
             if (transitionMatch) {
-                if (transitionMatch.transition.to !== currentNode) {
-                    const {
-                        transition,
-                        requires: updateRequires,
-                    } = transitionMatch;
+                const {
+                    transition,
+                    requires: updateRequires,
+                } = transitionMatch;
 
-                    graphDebug(`[Subgraph ${this.name}]: CurrentNodeUpdate: ${currentNode.name}`);
-                    if (currentNode.kind === NodeKind.pose) {
-                        currentNode.update(updateRequires);
-                    }
-                    if (GRAPH_DEBUG_ENABLED) {
-                        passConsumed = remainTimePiece;
-                    }
-
-                    remainTimePiece -= updateRequires;
-                    this._switchTo(transition);
+                graphDebug(`[Subgraph ${this.name}]: CurrentNodeUpdate: ${currentNode.name}`);
+                if (currentNode.kind === NodeKind.pose) {
+                    currentNode.updateFromPort(updateRequires);
                 }
+                if (GRAPH_DEBUG_ENABLED) {
+                    passConsumed = remainTimePiece;
+                }
+
+                remainTimePiece -= updateRequires;
+                this._switchTo(transition);
 
                 continueNextIterationForce = true;
             } else { // If no transition matched, we update current node.
                 graphDebug(`[Subgraph ${this.name}]: CurrentNodeUpdate: ${currentNode.name}`);
                 if (currentNode.kind === NodeKind.pose) {
-                    currentNode.update(remainTimePiece);
+                    currentNode.updateFromPort(remainTimePiece);
                     // Poses eat all times.
                     remainTimePiece = 0.0;
                 }
@@ -505,13 +507,14 @@ class LayerEval {
         const {
             _currentNode: currentNode,
             _currentTransitionToNode: currentTransitionToNode,
+            _fromWeight: fromWeight,
         } = this;
         if (currentNode.kind === NodeKind.pose) {
-            currentNode.sample();
+            currentNode.sampleFromPort(fromWeight);
         }
         if (currentTransitionToNode) {
             if (currentTransitionToNode.kind === NodeKind.pose) {
-                currentTransitionToNode.sample();
+                currentTransitionToNode.sampleToPort(this._toWeight);
             }
         }
     }
@@ -601,7 +604,8 @@ class LayerEval {
             let deltaTimeRequired = 0.0;
 
             if (node.kind === NodeKind.pose && transition.exitConditionEnabled) {
-                deltaTimeRequired = node.duration * (transition.exitCondition - node.progress);
+                const exitTime = node.duration * transition.exitCondition;
+                deltaTimeRequired = exitTime - node.fromPortTime;
                 assertIsTrue(deltaTimeRequired >= 0.0);
                 if (deltaTimeRequired > deltaTime) {
                     continue;
@@ -687,7 +691,8 @@ class LayerEval {
         // Apply transitions
         this._transitionProgress = 0.0;
         this._currentTransitionToNode = realTargetNode;
-        realTargetNode.setWeight(this._weight);
+
+        realTargetNode.resetToPort();
 
         graphDebugGroupEnd();
     }
@@ -739,18 +744,19 @@ class LayerEval {
             + `with ratio ${ratio} in base weight ${this._weight}.`,
         );
 
+        this._fromWeight = weight * (1.0 - ratio);
+        this._toWeight = weight * ratio;
+
         if (fromNode.kind === NodeKind.pose) {
             graphDebugGroup(`Update ${fromNode.name}`);
-            fromNode.setWeight(weight * (1.0 - ratio));
-            fromNode.update(contrib);
+            fromNode.updateFromPort(contrib);
             graphDebugGroupEnd();
         }
 
         if (toNode) {
             graphDebugGroup(`Update ${toNode.name}`);
-            toNode.setWeight(weight * ratio);
             const stretchedTime = contrib * currentTransition.targetStretch;
-            toNode.update(stretchedTime);
+            toNode.updateToPort(stretchedTime);
             graphDebugGroupEnd();
         }
 
@@ -771,10 +777,13 @@ class LayerEval {
                     to.enter();
                 }
             }
+            toNode.finishTransition();
             toNode.exit();
             this._currentNode = toNode;
             this._currentTransitionToNode = null;
             this._currentTransitionPath.length = 0;
+            this._fromWeight = 1.0;
+            this._toWeight = 0.0;
         }
 
         return contrib;
@@ -957,16 +966,12 @@ export class PoseNodeEval extends NodeBaseEval {
 
     public startRatio: number;
 
-    get progress () {
-        return this._pose?.progress ?? 0.0;
-    }
-
     get duration () {
         return this._pose?.duration ?? 0.0;
     }
 
-    public setWeight (weight: number) {
-        this._pose?.setBaseWeight(weight);
+    get fromPortTime () {
+        return this._fromPort.time;
     }
 
     public enter () {
@@ -980,26 +985,52 @@ export class PoseNodeEval extends NodeBaseEval {
         this._pose?.inactive();
     }
 
-    public update (deltaTime: number) {
-        this._pose?.update(deltaTime);
+    public updateFromPort (deltaTime: number) {
+        this._fromPort.time += deltaTime;
     }
 
-    public sample () {
-        this._pose?.sample();
+    public updateToPort (deltaTime: number) {
+        this._toPort.time += deltaTime;
     }
 
-    public getPoses (): Iterable<PoseStatus> {
+    public resetToPort () {
+        this._toPort.time = 0.0;
+    }
+
+    public finishTransition () {
+        this._fromPort.time = this._toPort.time;
+    }
+
+    public sampleFromPort (weight: number) {
+        this._pose?.sample(this._fromPort.time, weight);
+    }
+
+    public sampleToPort (weight: number) {
+        this._pose?.sample(this._toPort.time, weight);
+    }
+
+    public getPoses (baseWeight: number): Iterable<PoseStatus> {
         const { _pose: pose } = this;
         if (!pose) {
             return emptyPoseIterable;
         } else {
             return {
-                [Symbol.iterator]: () => pose.poses(),
+                [Symbol.iterator]: () => pose.poses(baseWeight),
             };
         }
     }
 
     private _pose: PoseEval | null = null;
+    private _fromPort: PoseEvalPort = {
+        time: 0.0,
+    };
+    private _toPort: PoseEvalPort = {
+        time: 0.0,
+    };
+}
+
+interface PoseEvalPort {
+    time: number;
 }
 
 export class SpecialNodeEval extends NodeBaseEval {
