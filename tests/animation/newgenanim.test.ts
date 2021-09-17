@@ -15,7 +15,6 @@ import gVariableNotFoundInPoseBlend from './graphs/variable-not-found-in-pose-bl
 import gPoseBlendRequiresNumbers from './graphs/pose-blend-requires-numbers';
 import gInfinityLoop from './graphs/infinity-loop';
 import gZeroTimePiece from './graphs/zero-time-piece';
-import { getPropertyBindingPoints } from '../../cocos/core/animation/newgen-anim/parametric';
 import { blend1D } from '../../cocos/core/animation/newgen-anim/blend-1d';
 import '../utils/matcher-deep-close-to';
 import { BinaryCondition, UnaryCondition, TriggerCondition } from '../../cocos/core/animation/newgen-anim/condition';
@@ -37,10 +36,12 @@ describe('NewGen Anim', () => {
 
         const graphNode = layerGraph.addPoseNode();
         expect(graphNode.name).toBe('');
-        expect(graphNode.speed).toBe(1.0);
+        expect(graphNode.speed.variable).toBe('');
+        expect(graphNode.speed.value).toBe(1.0);
         expect(graphNode.loop).toBe(true);
         expect(graphNode.pose).toBeNull();
-        expect(graphNode.startRatio).toBe(0.0);
+        expect(graphNode.startRatio.variable).toBe('');
+        expect(graphNode.startRatio.value).toBe(0.0);
 
         testGraphDefaults(layerGraph.addSubgraph());
 
@@ -49,13 +50,16 @@ describe('NewGen Anim', () => {
         
         const poseBlend1D = new PoseBlend1D();
         expect(Array.from(poseBlend1D.children)).toHaveLength(0);
-        expect(poseBlend1D.param).toBe(0.0);
+        expect(poseBlend1D.param.variable).toBe('');
+        expect(poseBlend1D.param.value).toBe(0.0);
 
         const poseBlend2D = new PoseBlend2D();
         expect(poseBlend2D.algorithm).toBe(PoseBlend2D.Algorithm.SIMPLE_DIRECTIONAL);
         expect(Array.from(poseBlend2D.children)).toHaveLength(0);
-        expect(poseBlend2D.paramX).toBe(0.0);
-        expect(poseBlend2D.paramY).toBe(0.0);
+        expect(poseBlend2D.paramX.variable).toBe('');
+        expect(poseBlend2D.paramX.value).toBe(0.0);
+        expect(poseBlend2D.paramY.variable).toBe('');
+        expect(poseBlend2D.paramY.value).toBe(0.0);
 
         const poseBlendDirect = new PoseBlendDirect();
         expect(Array.from(poseBlendDirect.children)).toHaveLength(0);
@@ -86,38 +90,25 @@ describe('NewGen Anim', () => {
         }
     });
 
-    describe('Connecting', () => {
-        test('Connecting', () => {
-            const graph = new PoseGraph();
-            const layer = graph.addLayer();
-            const layerGraph = layer.graph;
-            const n1 = layerGraph.addPoseNode();
-            const n2 = layerGraph.addPoseNode();
-            layerGraph.connect(n1, n2);
-            expect([...layerGraph.getOutgoings(n1)].map((t) => t.to)).toContain(n2);
-            expect([...layerGraph.getIncomings(n2)].map((t) => t.from)).toContain(n1);
-        });
+    describe('Asset transition API', () => {
+        const graph = new PoseGraph();
+        const layer = graph.addLayer();
+        const layerGraph = layer.graph;
+        const n1 = layerGraph.addPoseNode();
+        const n2 = layerGraph.addPoseNode();
+        const trans1 = layerGraph.connect(n1, n2);
+        expect([...layerGraph.getOutgoings(n1)].map((t) => t.to)).toContain(n2);
+        expect([...layerGraph.getIncomings(n2)].map((t) => t.from)).toContain(n1);
 
-        test('Reconnecting', () => {
-            const graph = new PoseGraph();
-            const layer = graph.addLayer();
-            const layerGraph = layer.graph;
-            const n1 = layerGraph.addPoseNode();
-            const n2 = layerGraph.addPoseNode();
-            const trans1 = layerGraph.connect(n1, n2);
-            const trans2 = layerGraph.connect(n1, n2);
-            expect(trans1).not.toBe(trans2);
-            expect(layerGraph.getTransition(n1, n2)).toBe(trans2);
-        });
+        // There may be multiple transitions between two nodes.
+        const trans2 = layerGraph.connect(n1, n2);
+        expect(trans2).not.toBe(trans1);
+        expect([...layerGraph.getTransition(n1, n2)]).toEqual(expect.arrayContaining([trans1, trans2]));
 
-        test('Self connecting', () => {
-            const graph = new PoseGraph();
-            const layer = graph.addLayer();
-            const layerGraph = layer.graph;
-            const n1 = layerGraph.addPoseNode();
-            layerGraph.connect(n1, n1);
-            // TODO: what's the expectation?
-        });
+        // Self transitions are also allowed.
+        const n3 = layerGraph.addPoseNode();
+        const selfTransition = layerGraph.connect(n3, n3);
+        expect([...layerGraph.getTransition(n3, n3)]).toMatchObject([selfTransition]);
     });
 
     describe('Transitions', () => {
@@ -273,7 +264,7 @@ describe('NewGen Anim', () => {
             const subgraphEntryToExit = subgraph.connect(subgraph.entryNode, subgraph.exitNode);
             const [subgraphEntryToExitCondition] = subgraphEntryToExit.conditions = [new TriggerCondition()];
             poseGraph.addVariable('subgraphExitTrigger', VariableType.TRIGGER, false);
-            subgraphEntryToExitCondition.bindProperty('trigger', 'subgraphExitTrigger');
+            subgraphEntryToExitCondition.trigger = 'subgraphExitTrigger';
 
             graph.connect(graph.entryNode, subgraph);
             const node = graph.addPoseNode();
@@ -282,7 +273,7 @@ describe('NewGen Anim', () => {
             const [triggerCondition] = subgraphToNode.conditions = [new TriggerCondition()];
 
             poseGraph.addVariable('trigger', VariableType.TRIGGER);
-            triggerCondition.bindProperty('trigger', 'trigger');
+            triggerCondition.trigger = 'trigger';
 
             const graphEval = createPoseGraphEval(poseGraph, new Node());
 
@@ -588,7 +579,7 @@ describe('NewGen Anim', () => {
                 for (const [input, output] of samples) {
                     const condition = new UnaryCondition();
                     condition.operator = op;
-                    condition.operand = input;
+                    condition.operand.value = input;
                     const graph = createPoseGraphForConditionTest([condition]);
                     const graphEval = createPoseGraphEval(graph, new Node());
                     graphEval.update(0.0);
@@ -641,8 +632,8 @@ describe('NewGen Anim', () => {
                 for (const [lhs, rhs, output] of samples) {
                     const condition = new BinaryCondition();
                     condition.operator = op;
-                    condition.lhs = lhs;
-                    condition.rhs = rhs;
+                    condition.lhs.value = lhs;
+                    condition.rhs.value = rhs;
                     const graph = createPoseGraphForConditionTest([condition]);
                     const graphEval = createPoseGraphEval(graph, new Node());
                     graphEval.update(0.0);
@@ -660,7 +651,7 @@ describe('NewGen Anim', () => {
 
             test(`Trigger condition`, () => {
                 const condition = new TriggerCondition();
-                condition.bindProperty('trigger', 'theTrigger');
+                condition.trigger = 'theTrigger';
                 const poseGraph = new PoseGraph();
                 const layer = poseGraph.addLayer();
                 const graph = layer.graph;
@@ -715,7 +706,7 @@ describe('NewGen Anim', () => {
 
             const addTriggerCondition = (transition: Transition) => {
                 const [condition] = transition.conditions = [new TriggerCondition()];
-                condition.bindProperty('trigger', `trigger${nTriggers}`);
+                condition.trigger = `trigger${nTriggers}`;
                 poseGraph.addVariable(`trigger${nTriggers}`, VariableType.TRIGGER);
                 ++nTriggers;
             };
@@ -755,6 +746,70 @@ describe('NewGen Anim', () => {
             const triggerStates = Array.from({ length: nTriggers }, (_, iTrigger) => graphEval.getValue(`trigger${iTrigger}`));
             expect(triggerStates).toStrictEqual(new Array(nTriggers).fill(false));
         });
+
+        describe(`Transition priority`, () => {
+            test('Transitions to different nodes, use the first-connected and first-matched transition', () => {
+                const poseGraph = new PoseGraph();
+                const layer = poseGraph.addLayer();
+                const graph = layer.graph;
+                const poseNode1 = graph.addPoseNode();
+                poseNode1.name = 'Node1';
+                poseNode1.pose = createEmptyClipPose(1.0);
+                const poseNode2 = graph.addPoseNode();
+                poseNode2.name = 'Node2';
+                poseNode2.pose = createEmptyClipPose(1.0);
+                const poseNode3 = graph.addPoseNode();
+                poseNode3.name = 'Node3';
+                poseNode3.pose = createEmptyClipPose(1.0);
+                const transition1 = graph.connect(poseNode1, poseNode2);
+                transition1.exitConditionEnabled = true;
+                transition1.exitCondition = 0.8;
+                const [ transition1Condition ] = transition1.conditions = [ new UnaryCondition() ];
+                transition1Condition.operator = UnaryCondition.Operator.TRUTHY;
+                transition1Condition.operand.variable = 'switch1';
+                const transition2 = graph.connect(poseNode1, poseNode3);
+                transition2.exitConditionEnabled = true;
+                transition2.exitCondition = 0.8;
+                const [ transition2Condition ] = transition2.conditions = [ new UnaryCondition() ];
+                transition2Condition.operator = UnaryCondition.Operator.TRUTHY;
+                transition2Condition.operand.variable = 'switch2';
+                graph.connect(graph.entryNode, poseNode1);
+                poseGraph.addVariable('switch1', VariableType.BOOLEAN, false);
+                poseGraph.addVariable('switch2', VariableType.BOOLEAN, false);
+
+                // #region Both satisfied
+                {
+                    const graphEval = createPoseGraphEval(poseGraph, new Node());
+                    graphEval.setValue('switch1', true);
+                    graphEval.setValue('switch2', true);
+                    graphEval.update(0.9);
+                    expectPoseGraphEvalStatusLayer0(graphEval, {
+                        currentNode: { __DEBUG_ID__: 'Node1' },
+                        transition: {
+                            time: 0.1,
+                            nextNode: { __DEBUG_ID__: 'Node2' },
+                        },
+                    });
+                }
+                // #endregion
+
+                // #region The later satisfied
+                {
+                    const graphEval = createPoseGraphEval(poseGraph, new Node());
+                    graphEval.setValue('switch1', false);
+                    graphEval.setValue('switch2', true);
+                    graphEval.update(0.9);
+                    expectPoseGraphEvalStatusLayer0(graphEval, {
+                        currentNode: { __DEBUG_ID__: 'Node1' },
+                        transition: {
+                            time: 0.1,
+                            nextNode: { __DEBUG_ID__: 'Node3' },
+                        },
+                    });
+                }
+                // #endregion
+            });
+        });
     });
 
     describe(`Any state`, () => {
@@ -790,6 +845,7 @@ describe('NewGen Anim', () => {
             const poseNodeClip = poseNode.pose = createPosePositionX(1.0, 0.5, 'PoseNodeClip');
 
             const subgraph = layerGraph.addSubgraph();
+            subgraph.name = 'Subgraph';
             const subgraphPoseNode = subgraph.addPoseNode();
             const subgraphPoseNodeClip = subgraphPoseNode.pose = createPosePositionX(1.0, 0.7, 'SubgraphPoseNodeClip');
             subgraph.connect(subgraph.entryNode, subgraphPoseNode);
@@ -800,7 +856,7 @@ describe('NewGen Anim', () => {
             anyTransition.exitConditionEnabled = true;
             anyTransition.exitCondition = 0.1;
             const [ triggerCondition ] = anyTransition.conditions = [new TriggerCondition()];
-            triggerCondition.bindProperty('trigger', 'trigger');
+            triggerCondition.trigger = 'trigger';
             graph.addVariable('trigger', VariableType.TRIGGER, true);
 
             const graphEval = createPoseGraphEval(graph, new Node());
@@ -830,23 +886,45 @@ describe('NewGen Anim', () => {
     });
 
     test('State events', () => {
-        class ResultReceiver extends Component {
-            public onEnter = jest.fn<void, Parameters<StateMachineComponent['onEnter']>>();
+        type Invocation = {
+            kind: 'onEnter',
+            id: string,
+            args: Parameters<StateMachineComponent['onEnter']>;
+        } | {
+            kind: 'onExit',
+            id: string,
+            args: Parameters<StateMachineComponent['onExit']>;
+        };
 
-            public onExit = jest.fn<void, Parameters<StateMachineComponent['onExit']>>();
+        class Recorder extends Component {
+            public record = jest.fn<void, [Invocation]>();
+
+            public clear () {
+                this.record.mockClear();
+            }
         }
 
-        class TestComponent extends StateMachineComponent {
+        class StatsComponent extends StateMachineComponent {
+            public id: string = '';
+
             onEnter (...args: Parameters<StateMachineComponent['onEnter']>) {
-                this._getResultReceiver(args[0]).onEnter(...args);
+                this._getRecorder(args[0]).record({
+                    kind: 'onEnter',
+                    id: this.id,
+                    args,
+                });
             }
 
             onExit (...args: Parameters<StateMachineComponent['onExit']>) {
-                this._getResultReceiver(args[0]).onExit(...args);
+                this._getRecorder(args[0]).record({
+                    kind: 'onExit',
+                    id: this.id,
+                    args,
+                });
             }
 
-            private _getResultReceiver(newGenAnim: NewGenAnim): ResultReceiver {
-                const receiver = newGenAnim.node.getComponent(ResultReceiver) as ResultReceiver | null;
+            private _getRecorder(newGenAnim: NewGenAnim): Recorder {
+                const receiver = newGenAnim.node.getComponent(Recorder) as Recorder | null;
                 expect(receiver).not.toBeNull();
                 return receiver!;
             }
@@ -855,28 +933,125 @@ describe('NewGen Anim', () => {
         const graph = new PoseGraph();
         const layer = graph.addLayer();
         const layerGraph = layer.graph;
+
         const poseNode = layerGraph.addPoseNode();
-        poseNode.addComponent(TestComponent);
-        const poseNodeClip = poseNode.pose = createPosePositionX(1.0, 0.5, 'PoseNodeClip');
+        const poseNodeStats = poseNode.addComponent(StatsComponent);
+        poseNodeStats.id = 'PoseNode';
+        poseNode.pose = createPosePositionX(1.0, 0.5, 'PoseNodeClip');
+
         const poseNode2 = layerGraph.addPoseNode();
-        poseNode2.addComponent(TestComponent);
-        const poseNode2Clip = poseNode2.pose = createPosePositionX(1.0, 0.5, 'PoseNode2Clip');
+        const poseNode2Stats = poseNode2.addComponent(StatsComponent);
+        poseNode2Stats.id = 'PoseNode2';
+        poseNode2.pose = createPosePositionX(1.0, 0.5, 'PoseNode2Clip');
+
+        const poseNode3 = layerGraph.addPoseNode();
+        const poseNode3Stats = poseNode3.addComponent(StatsComponent);
+        poseNode3Stats.id = 'PoseNode3';
+        poseNode3.pose = createPosePositionX(1.0, 0.5, 'PoseNode3Clip');
+
+        const subgraph = layerGraph.addSubgraph();
+        const subgraphStats = subgraph.addComponent(StatsComponent);
+        subgraphStats.id = 'Subgraph';
+        const subgraphPoseNode = subgraph.addPoseNode();
+        const subgraphPoseNodeStats = subgraphPoseNode.addComponent(StatsComponent);
+        subgraphPoseNodeStats.id = 'SubgraphPoseNode';
+        subgraphPoseNode.pose = createPosePositionX(1.0, 0.5, 'SubgraphPoseNodeClip');
+        subgraph.connect(subgraph.entryNode, subgraphPoseNode);
+        const subgraphTransition = subgraph.connect(subgraphPoseNode, subgraph.exitNode);
+        subgraphTransition.duration = 0.3;
+        subgraphTransition.exitConditionEnabled = true;
+        subgraphTransition.exitCondition = 0.7;
 
         layerGraph.connect(layerGraph.entryNode, poseNode);
         const transition = layerGraph.connect(poseNode, poseNode2);
         transition.duration = 0.3;
         transition.exitConditionEnabled = true;
         transition.exitCondition = 0.7;
+        layerGraph.connect(poseNode2, subgraph);
+        layerGraph.connect(subgraph, poseNode3);
 
         const node = new Node();
-        const receiver = node.addComponent(ResultReceiver) as ResultReceiver;
-        const graphEval = createPoseGraphEval(graph, node);
+        const recorder = node.addComponent(Recorder) as Recorder;
+        const { graphEval, newGenAnim } = createPoseGraphEval2(graph, node);
+
         graphEval.update(0.1);
-        expect(receiver.onEnter).toBeCalledTimes(1);
-        expect(receiver.onExit).toBeCalledTimes(0);
+        expect(recorder.record).toHaveBeenCalledTimes(1);
+        expect(recorder.record).toHaveBeenNthCalledWith(1, {
+            kind: 'onEnter',
+            id: 'PoseNode',
+            args: [
+                newGenAnim,
+            ],
+        });
+        recorder.clear();
+
         graphEval.update(1.1);
-        expect(receiver.onEnter).toBeCalledTimes(2);
-        expect(receiver.onExit).toBeCalledTimes(1);
+        expect(recorder.record).toHaveBeenCalledTimes(2);
+        expect(recorder.record).toHaveBeenNthCalledWith(1, {
+            kind: 'onEnter',
+            id: 'PoseNode2',
+            args: [
+                newGenAnim,
+            ],
+        });
+        expect(recorder.record).toHaveBeenNthCalledWith(2, {
+            kind: 'onExit',
+            id: 'PoseNode',
+            args: [
+                newGenAnim,
+            ],
+        });
+        recorder.clear();
+
+        graphEval.update(1.0);
+        expect(recorder.record).toHaveBeenCalledTimes(3);
+        expect(recorder.record).toHaveBeenNthCalledWith(1, {
+            kind: 'onEnter',
+            id: 'Subgraph',
+            args: [
+                newGenAnim,
+            ],
+        });
+        expect(recorder.record).toHaveBeenNthCalledWith(2, {
+            kind: 'onEnter',
+            id: 'SubgraphPoseNode',
+            args: [
+                newGenAnim,
+            ],
+        });
+        expect(recorder.record).toHaveBeenNthCalledWith(3, {
+            kind: 'onExit',
+            id: 'PoseNode2',
+            args: [
+                newGenAnim,
+            ],
+        });
+        recorder.clear();
+
+        graphEval.update(1.0);
+        expect(recorder.record).toHaveBeenCalledTimes(3);
+        expect(recorder.record).toHaveBeenNthCalledWith(1, {
+            kind: 'onEnter',
+            id: 'PoseNode3',
+            args: [
+                newGenAnim,
+            ],
+        });
+        expect(recorder.record).toHaveBeenNthCalledWith(2, {
+            kind: 'onExit',
+            id: 'SubgraphPoseNode',
+            args: [
+                newGenAnim,
+            ],
+        });
+        expect(recorder.record).toHaveBeenNthCalledWith(3, {
+            kind: 'onExit',
+            id: 'Subgraph',
+            args: [
+                newGenAnim,
+            ],
+        });
+        recorder.clear();
     });
 
     describe('Animation properties', () => {
@@ -887,7 +1062,7 @@ describe('NewGen Anim', () => {
             const layerGraph = layer.graph;
             const poseNode = layerGraph.addPoseNode();
             poseNode.pose = createPosePositionXLinear(1.0, 0.3, 1.7);
-            poseNode.speed = 1.2;
+            poseNode.speed.value = 1.2;
             layerGraph.connect(layerGraph.entryNode, poseNode);
 
             const node = new Node();
@@ -997,24 +1172,18 @@ describe('NewGen Anim', () => {
     });
 
     describe('Property binding', () => {
-        test('Bind property', () => {
-            const poseBlend2D = new PoseBlend2D();
-            const bindingPoints = getPropertyBindingPoints(poseBlend2D);
-            expect(Object.keys(bindingPoints)).toEqual(expect.arrayContaining([
-                'paramX',
-                'paramY',
-            ]));
-            poseBlend2D.bindProperty('paramX', 'x');
-            expect(poseBlend2D.getPropertyBinding('paramX')).toBe('x');
-        });
-
-        test('Serialization', () => {
-            const poseBlend2D = new PoseBlend2D();
-            poseBlend2D.bindProperty('paramX', 'x');
-            expect(poseBlend2D.getPropertyBinding('paramX')).toBe('x');
-        });
     });
 });
+
+function createEmptyClipPose (duration: number, name = '') {
+    const clip = new AnimationClip();
+    clip.name = name;
+    clip.enableTrsBlending = true;
+    clip.duration = duration;
+    const pose = new AnimatedPose();
+    pose.clip = clip;
+    return pose;
+}
 
 function createPosePositionX(duration: number, value: number, name = '') {
     const clip = new AnimationClip();
@@ -1121,4 +1290,19 @@ function createPoseGraphEval (poseGraph: PoseGraph, node: Node): PoseGraphEval {
     // @ts-expect-error HACK
     newGenAnim._graphEval = graphEval;
     return graphEval;
+}
+
+function createPoseGraphEval2 (poseGraph: PoseGraph, node: Node) {
+    const newGenAnim = node.addComponent(NewGenAnim) as NewGenAnim;
+    const graphEval = new PoseGraphEval(
+        poseGraph,
+        node,
+        newGenAnim,
+    );
+    // @ts-expect-error HACK
+    newGenAnim._graphEval = graphEval;
+    return {
+        graphEval,
+        newGenAnim,
+    };
 }
