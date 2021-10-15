@@ -56,7 +56,74 @@ class Transition extends EditorExtendable implements OwnedBy<StateMachine>, Tran
         }
     }
 
+    /**
+     * Returns the path along source and target node.
+     * @returns
+     */
+    public path (): Iterable<SubStateMachine | null> | undefined {
+        // TODO: The following LCA is memory-allocating-aware.
+
+        const fromStateMachine = this.from[ownerSymbol];
+        assertIsTrue(fromStateMachine);
+        const toStateMachine = this.to[ownerSymbol];
+        assertIsTrue(toStateMachine);
+
+        const fromParents = Array.from(getStateMachineParents(fromStateMachine));
+        const toParents = Array.from(getStateMachineParents(toStateMachine));
+
+        const lenFrom = fromParents.length;
+        const lenTo = toParents.length;
+        const shortest = Math.min(lenFrom, lenTo);
+        assertIsTrue(shortest > 0);
+        let iMismatch = 0;
+        for (; iMismatch < shortest; ++iMismatch) {
+            const fromParent = fromParents[lenFrom - 1 - iMismatch];
+            const toParent = toParents[lenTo - 1 - iMismatch];
+            if (fromParent !== toParent) {
+                break;
+            }
+        }
+        assertIsTrue(iMismatch > 0);
+
+        const part1 = fromParents.slice(0, lenFrom - iMismatch + 1);
+        const part2 = toParents.slice(0, lenTo - iMismatch).reverse();
+
+        return part1.concat(part2).map((stateMachine) => stateMachine[ownerSymbol] ?? null);
+    }
+
     [ownerSymbol]: StateMachine | undefined;
+}
+
+function getStateMachineParents (stateMachine: StateMachine): Iterable<StateMachine> {
+    let currentStateMachine: StateMachine | null = stateMachine;
+    return {
+        [Symbol.iterator] () {
+            return {
+                next () {
+                    if (!currentStateMachine) {
+                        return {
+                            done: true,
+                            value: undefined,
+                        };
+                    } else {
+                        const result = {
+                            done: false,
+                            value: currentStateMachine,
+                        };
+                        const ownerSubStateMachine = currentStateMachine[ownerSymbol];
+                        if (!ownerSubStateMachine) {
+                            currentStateMachine = null;
+                        } else {
+                            const parent = ownerSubStateMachine[ownerSymbol];
+                            assertIsTrue(parent);
+                            currentStateMachine = parent;
+                        }
+                        return result;
+                    }
+                },
+            };
+        },
+    };
 }
 
 type TransitionView = Omit<Transition, 'from' | 'to'> & {
@@ -113,6 +180,8 @@ export function isAnimationTransition (transition: TransitionView): transition i
 
 @ccclass('cc.animation.StateMachine')
 export class StateMachine extends EditorExtendable {
+    [ownerSymbol]: SubStateMachine | undefined;
+
     @serializable
     private _states: State[] = [];
 
@@ -293,7 +362,6 @@ export class StateMachine extends EditorExtendable {
 
     public connect (from: State, to: State, conditions?: Condition[]): TransitionView {
         assertsOwnedBy(from, this);
-        assertsOwnedBy(to, this);
 
         if (to === this.entryState) {
             throw new InvalidTransitionError('to-entry');
@@ -442,6 +510,11 @@ export class StateMachine extends EditorExtendable {
 
 @ccclass('cc.animation.SubStateMachine')
 export class SubStateMachine extends InteractiveState {
+    constructor () {
+        super();
+        own(this._stateMachine, this);
+    }
+
     get stateMachine () {
         return this._stateMachine;
     }

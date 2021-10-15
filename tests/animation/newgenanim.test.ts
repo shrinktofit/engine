@@ -143,6 +143,57 @@ describe('NewGen Anim', () => {
                 expect(transitions).toHaveLength(0);
             }
         });
+
+        test('Transition path', () => {
+            const graph = new AnimationGraph();
+            const layer = graph.addLayer();
+            const layerGraph = layer.stateMachine;
+            const smMotion = layerGraph.addMotion();
+
+            const subSM = layerGraph.addSubStateMachine();
+            subSM.name = 'SubSM';
+            const subSMMotion = subSM.stateMachine.addSubStateMachine();
+
+            const subSubSM = subSM.stateMachine.addSubStateMachine();
+            subSubSM.name = 'subSubSM';
+            const subSubSMMotion = subSubSM.stateMachine.addMotion();
+
+            const subSubSubSM = subSubSM.stateMachine.addSubStateMachine();
+            subSubSubSM.name = 'subSubSubSM';
+            const subSubSubSMMotion = subSubSubSM.stateMachine.addMotion();
+
+            const subSubSubSubSM = subSubSubSM.stateMachine.addSubStateMachine();
+            subSubSubSubSM.name = 'subSubSubSubSM';
+            const subSubSubSubSMMotion = subSubSubSubSM.stateMachine.addMotion();
+
+            const subSubSubSM2 = subSubSM.stateMachine.addSubStateMachine();
+            subSubSubSM2.name = 'subSubSubSM2';
+            const subSubSubSM2Motion = subSubSubSM2.stateMachine.addMotion();
+
+            {
+                const transition = layerGraph.connect(smMotion, subSubSMMotion);
+                const path = Array.from(transition.path());
+                expect(path).toStrictEqual([null, subSM, subSubSM]);
+            }
+
+            {
+                const transition = subSubSM.stateMachine.connect(subSubSMMotion, smMotion);
+                const path = Array.from(transition.path());
+                expect(path).toStrictEqual([subSubSM, subSM, null]);
+            }
+
+            {
+                const transition = subSubSubSM2.stateMachine.connect(subSubSubSM2Motion, subSubSubSMMotion);
+                const path = Array.from(transition.path());
+                expect(path).toStrictEqual([subSubSubSM2, subSubSM, subSubSubSM]);
+            }
+
+            {
+                const transition = subSubSubSM2.stateMachine.connect(subSubSubSM2Motion, subSubSubSubSMMotion);
+                const path = Array.from(transition.path());
+                expect(path).toStrictEqual([subSubSubSM2, subSubSM, subSubSubSM, subSubSubSubSM]);
+            }
+        });
     });
 
     describe('Transitions', () => {
