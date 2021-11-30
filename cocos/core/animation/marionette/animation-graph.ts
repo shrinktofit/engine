@@ -472,9 +472,6 @@ export class Layer implements OwnedBy<AnimationGraph> {
     @serializable
     public mask: AnimationMask | null = null;
 
-    @serializable
-    public blending: LayerBlending = LayerBlending.additive;
-
     /**
      * @internal
      */
@@ -485,11 +482,6 @@ export class Layer implements OwnedBy<AnimationGraph> {
     get stateMachine () {
         return this._stateMachine;
     }
-}
-
-export enum LayerBlending {
-    override,
-    additive,
 }
 
 @ccclass('cc.animation.Variable')
