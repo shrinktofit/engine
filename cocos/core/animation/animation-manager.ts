@@ -35,7 +35,7 @@ import { errorID } from '../platform/debug';
 import { Node } from '../scene-graph';
 import { Scheduler } from '../scheduler';
 import { MutableForwardIterator, remove } from '../utils/array';
-import { BlendStateBuffer, LegacyBlendStateBuffer } from '../../3d/skeletal-animation/skeletal-animation-blending';
+import { LegacyBlendStateBuffer } from '../../3d/skeletal-animation/skeletal-animation-blending';
 import { AnimationState } from './animation-state';
 import type { CrossFade } from './cross-fade';
 import { legacyCC } from '../global-exports';
