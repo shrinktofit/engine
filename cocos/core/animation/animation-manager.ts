@@ -49,7 +49,7 @@ interface ISocketData {
 
 @ccclass
 export class AnimationManager extends System {
-    public get blendState () {
+    public get blendState (): LegacyBlendStateBuffer {
         return this._blendStateBuffer;
     }
 
@@ -61,7 +61,7 @@ export class AnimationManager extends System {
         thisArg: any;
         args: any[];
     }[] = [];
-    private _blendStateBuffer: BlendStateBuffer = new LegacyBlendStateBuffer();
+    private _blendStateBuffer: LegacyBlendStateBuffer = new LegacyBlendStateBuffer();
     private _sockets: ISocketData[] = [];
 
     public addCrossFade (crossFade: CrossFade) {
