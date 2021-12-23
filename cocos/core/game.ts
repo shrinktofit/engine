@@ -389,12 +389,27 @@ export class Game extends EventTarget {
     public collisionMatrix = [];
     public groupList: any[] = [];
 
+    /**
+     * @marked_as_engine_private
+     */
     public _persistRootNodes = {};
 
+    /**
+     * @marked_as_engine_private
+     */
     public _gfxDevice: Device | null = null;
+    /**
+     * @marked_as_engine_private
+     */
     public _swapchain: Swapchain | null = null;
     // states
+    /**
+     * @marked_as_engine_private
+     */
     public _configLoaded = false; // whether config loaded
+    /**
+     * @marked_as_engine_private
+     */
     public _isCloning = false;    // deserializing or instantiating
     private _inited = false;
     private _engineInited = false; // whether the engine has inited
@@ -505,6 +520,7 @@ export class Game extends EventTarget {
             legacyCC.Object._deferredDestroy();
 
             legacyCC.director.reset();
+            legacyCC.profiler.reset();
             this.pause();
             return this._setRenderPipelineNShowSplash().then(() => {
                 this.resume();

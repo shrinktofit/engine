@@ -96,6 +96,10 @@ export class EditBox extends Component {
             value = value.slice(0, this._maxLength);
         }
 
+        if (this._string === value) {
+            return;
+        }
+
         this._string = value;
         this._updateString(value);
     }
@@ -209,6 +213,10 @@ export class EditBox extends Component {
     }
 
     set inputFlag (value) {
+        if (this._inputFlag === value) {
+            return;
+        }
+
         this._inputFlag = value;
         this._updateString(this._string);
     }
@@ -355,7 +363,13 @@ export class EditBox extends Component {
     @tooltip('i18n:editbox.editing_return')
     public editingReturn: ComponentEventHandler[] = [];
 
+    /**
+     * @marked_as_engine_private
+     */
     public _impl: EditBoxImplBase | null = null;
+    /**
+     * @marked_as_engine_private
+     */
     public _background: Sprite | null = null;
 
     @serializable
@@ -457,16 +471,25 @@ export class EditBox extends Component {
         return false;
     }
 
+    /**
+     * @marked_as_engine_private
+     */
     public _editBoxEditingDidBegan () {
         ComponentEventHandler.emitEvents(this.editingDidBegan, this);
         this.node.emit(EventType.EDITING_DID_BEGAN, this);
     }
 
+    /**
+     * @marked_as_engine_private
+     */
     public _editBoxEditingDidEnded () {
         ComponentEventHandler.emitEvents(this.editingDidEnded, this);
         this.node.emit(EventType.EDITING_DID_ENDED, this);
     }
 
+    /**
+     * @marked_as_engine_private
+     */
     public _editBoxTextChanged (text: string) {
         text = this._updateLabelStringStyle(text, true);
         this.string = text;
@@ -474,16 +497,25 @@ export class EditBox extends Component {
         this.node.emit(EventType.TEXT_CHANGED, this);
     }
 
+    /**
+     * @marked_as_engine_private
+     */
     public _editBoxEditingReturn () {
         ComponentEventHandler.emitEvents(this.editingReturn, this);
         this.node.emit(EventType.EDITING_RETURN, this);
     }
 
+    /**
+     * @marked_as_engine_private
+     */
     public _showLabels () {
         this._isLabelVisible = true;
         this._updateLabels();
     }
 
+    /**
+     * @marked_as_engine_private
+     */
     public _hideLabels () {
         this._isLabelVisible = false;
         if (this._textLabel) {
