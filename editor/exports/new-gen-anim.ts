@@ -1,9 +1,10 @@
-import { BlendStateBuffer } from '../../cocos/3d/skeletal-animation/skeletal-animation-blending';
+import { BlendStateBuffer, LegacyBlendStateBuffer } from '../../cocos/3d/skeletal-animation/skeletal-animation-blending';
 import { Node } from '../../cocos/core';
 import { Motion, MotionEval } from '../../cocos/core/animation/marionette/motion';
 import { createEval } from '../../cocos/core/animation/marionette/create-eval';
 import { BindContext } from '../../cocos/core/animation/marionette/parametric';
 import { VarInstance, Value, VariableType } from '../../cocos/core/animation/marionette/variable';
+import { assertIsNonNullable } from '../../cocos/core/data/utils/asserts';
 
 export {
     blend1D,
@@ -72,7 +73,7 @@ class AnimationGraphPartialPreviewer {
 
     private _root: Node;
 
-    private _blendBuffer = new BlendStateBuffer();
+    private _blendBuffer: BlendStateBuffer = new LegacyBlendStateBuffer();
 
     private _varInstances: Record<string, VarInstance> = {};
 
@@ -97,7 +98,7 @@ export class AnimationBlendPreviewer extends AnimationGraphPartialPreviewer {
         if (!motionEval) {
             return;
         }
-        motionEval.sample(this._time / this._motionEval.duration, 1.0);
+        motionEval.sample(this._time / motionEval.duration, 1.0);
         super.evaluate();
     }
 
@@ -123,6 +124,9 @@ export class TransitionPreviewer extends AnimationGraphPartialPreviewer {
             _transitionDuration: transitionDuration,
             _relativeDuration: relativeDuration,
         } = this;
+
+        assertIsNonNullable(source);
+        assertIsNonNullable(target);
 
         const sourceMotionDuration = source.duration;
         const exitTimeRelative = exitConditionEnabled ? exitCondition * sourceMotionDuration : 0.0;
@@ -170,6 +174,7 @@ export class TransitionPreviewer extends AnimationGraphPartialPreviewer {
     }
 
     public calculateTransitionDurationFromTimelineLength(value: number) {
+        assertIsNonNullable(this._source);
         return this._relativeDuration ? value / this._source.duration : value;
     }
 
@@ -182,6 +187,7 @@ export class TransitionPreviewer extends AnimationGraphPartialPreviewer {
     }
 
     public calculateExitTimesFromTimelineLength(value: number) {
+        assertIsNonNullable(this._source);
         return value / this._source.duration;
     }
 
@@ -237,11 +243,11 @@ export class TransitionPreviewer extends AnimationGraphPartialPreviewer {
         super.evaluate();
     }
 
-    private _time: number;
+    private _time: number = 0.0;
     private _transitionDuration: number = 0.0;
     private _relativeDuration: boolean = false;
     private _exitConditionEnabled: boolean = false;
     private _exitCondition: number = 0.0;
-    private _source: MotionEval | null;
-    private _target: MotionEval | null;
+    private _source: MotionEval | null = null;
+    private _target: MotionEval | null = null;
 }
