@@ -48,6 +48,7 @@ if(EXISTS ${RES_DIR}/assets/jsb-adapter)
     add_custom_target(copy_resource ALL
         COMMAND ${CMAKE_COMMAND} -E echo "Copying resources to ${bin_dir}"
         COMMAND ${CMAKE_COMMAND} -E make_directory ${bin_dir}/Resources
+        COMMAND robocopy "${COCOS_X_PATH}/internal-libs/lib" "${bin_dir}/InternalResources/libs/" /MIR || (exit 0)
         COMMAND robocopy "${RES_DIR}/assets/" "${bin_dir}/Resources/" /MIR || (exit 0)
         COMMAND ${CMAKE_COMMAND} -E echo "Copying resources done!"
     )

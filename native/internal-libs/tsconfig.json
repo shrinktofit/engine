@@ -1,0 +1,19 @@
+{
+    "compilerOptions": {
+        "target": "ES2020",
+        "module": "ES2020",
+        "lib": ["ES2020"],
+        "rootDir": "./src",
+        "outDir": "./lib",
+        "types": [
+            "./@types/index"
+        ],
+    },
+    "include": [
+        "./src/**/*.ts"
+    ],
+    "exclude": [
+        "./lib",
+        "./first-loader",
+    ]
+}

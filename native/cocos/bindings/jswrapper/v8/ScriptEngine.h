@@ -27,12 +27,14 @@
 #pragma once
 
 #include "../config.h"
+#include "./FileOperationDelegate.h"
 
 #if SCRIPT_ENGINE_TYPE == SCRIPT_ENGINE_V8
 
     #include "../Value.h"
     #include "Base.h"
 
+    #include <memory>
     #include <thread>
 
     #if SE_ENABLE_INSPECTOR
@@ -70,6 +72,8 @@ public:
 private:
     v8::HandleScope _handleScope;
 };
+
+class EsEnvironment;
 
 /**
      * ScriptEngine is a sington which represents a context of JavaScript VM.
@@ -175,39 +179,13 @@ public:
          */
     bool saveByteCodeToFile(const std::string &path, const std::string &pathBc);
 
+    using FileOperationDelegate = se::FileOperationDelegate;
+
     /**
          * @brief Grab a snapshot of the current JavaScript execution stack.
          * @return current stack trace string
          */
     std::string getCurrentStackTrace();
-
-    /**
-         *  Delegate class for file operation
-         */
-    class FileOperationDelegate {
-    public:
-        FileOperationDelegate()
-        : onGetDataFromFile(nullptr),
-          onGetStringFromFile(nullptr),
-          onCheckFileExist(nullptr),
-          onGetFullPath(nullptr) {}
-
-        /**
-             *  @brief Tests whether delegate is valid.
-             */
-        bool isValid() const {
-            return onGetDataFromFile != nullptr && onGetStringFromFile != nullptr && onCheckFileExist != nullptr && onGetFullPath != nullptr;
-        }
-
-        // path, buffer, buffer size
-        std::function<void(const std::string &, const std::function<void(const uint8_t *, size_t)> &)> onGetDataFromFile;
-        // path, return file string content.
-        std::function<std::string(const std::string &)> onGetStringFromFile;
-        // path
-        std::function<bool(const std::string &)> onCheckFileExist;
-        // path, return full path
-        std::function<std::string(const std::string &)> onGetFullPath;
-    };
 
     /**
          *  @brief Sets the delegate for file operation.
@@ -228,6 +206,8 @@ public:
          *  @return true if succeed, otherwise false.
          */
     bool runScript(const std::string &path, Value *ret = nullptr);
+
+    bool import(const std::string &specifier_, std::string *parentURL);
 
     /**
          *  @brief Tests whether script engine is doing garbage collection.
@@ -330,6 +310,8 @@ private:
     bool runByteCodeFile(const std::string &pathBc, Value *ret /* = nullptr */);
     void callExceptionCallback(const char *, const char *, const char *);
 
+    void _initializeModuleEnvironment();
+
     std::chrono::steady_clock::time_point _startTime;
     std::vector<RegisterCallback>         _registerCallbackArray;
     std::vector<RegisterCallback>         _permRegisterCallbackArray;
@@ -367,6 +349,8 @@ private:
     bool _isGarbageCollecting;
     bool _isInCleanup;
     bool _isErrorHandleWorking;
+
+    std::unique_ptr<EsEnvironment> _environment;
 };
 
 } // namespace se

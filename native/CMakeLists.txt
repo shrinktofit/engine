@@ -2255,7 +2255,7 @@ else()
     )
 endif()
 
-add_library(cocos2d ${COCOS2D_SOURCE_LIST})
+add_library(cocos2d ${COCOS2D_SOURCE_LIST} "${CWD}/cocos/bindings/jswrapper/v8/module/Module.cpp" "${CWD}/cocos/bindings/jswrapper/v8/module/Module.h")
 
 if(USE_MODULES)
     target_link_libraries(cocos2d PUBLIC

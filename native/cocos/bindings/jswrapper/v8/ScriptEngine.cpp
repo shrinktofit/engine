@@ -29,6 +29,7 @@
 
     #include "../MappingUtils.h"
     #include "../State.h"
+    #include "./module/Module.h"
     #include "Class.h"
     #include "MissingSymbols.h"
     #include "Object.h"
@@ -198,7 +199,7 @@ bool jsbConsoleAssert(State &s) {
 }
 SE_BIND_FUNC(jsbConsoleAssert)
 
-/*
+    /*
         * The unique V8 platform instance
         */
 class ScriptEngineV8Context {
@@ -212,9 +213,9 @@ public:
         flags.append(" --expose-gc-as=" EXPOSE_GC);
         flags.append(" --no-flush-bytecode --no-lazy"); // for bytecode support
                                                         // flags.append(" --trace-gc"); // v8 trace gc
-    #if (CC_PLATFORM == CC_PLATFORM_MAC_IOS)
+        #if (CC_PLATFORM == CC_PLATFORM_MAC_IOS)
         flags.append(" --jitless");
-    #endif
+        #endif
         if (!flags.empty()) {
             v8::V8::SetFlagsFromString(flags.c_str(), static_cast<int>(flags.length()));
         }
@@ -532,6 +533,8 @@ bool ScriptEngine::init() {
         hook();
     }
     _afterInitHookArray.clear();
+
+    this->_initializeModuleEnvironment();
 
     return _isValid;
 }

@@ -195,6 +195,11 @@ void jsb_init_file_operation_delegate() { //NOLINT
             return FileUtils::getInstance()->isFileExist(path);
         };
 
+        delegate.loadInternalSource = [](const std::string &path) -> std::string {
+            const auto fullPath = path;
+            return delegate.onGetStringFromFile(fullPath);
+        };
+
         assert(delegate.isValid());
 
         se::ScriptEngine::getInstance()->setFileOperationDelegate(delegate);
