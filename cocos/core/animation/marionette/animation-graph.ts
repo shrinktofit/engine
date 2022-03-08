@@ -544,8 +544,8 @@ const BOOLEAN_VARIABLE_FLAG_RESET_MODE_MASK = 6; // 0b110
 
 type PlainVariableType = VariableType.FLOAT | VariableType.INTEGER | VariableType.BOOLEAN;
 
-@ccclass('cc.animation.NumericVariable')
-class NumericVariable {
+@ccclass('cc.animation.PlainVariable')
+class PlainVariable {
     // TODO: we should not specify type here but due to de-serialization limitation
     // See: https://github.com/cocos-creator/3d-tasks/issues/7909
     @serializable
@@ -605,9 +605,9 @@ class NumericVariable {
 }
 
 @ccclass('cc.animation.TriggerVariable')
-class TriggerVariable {
+class TriggerVariable implements BasicVariableDescription<VariableType.TRIGGER> {
     get type () {
-        return VariableType.TRIGGER;
+        return VariableType.TRIGGER as const;
     }
 
     get value () {
@@ -668,7 +668,7 @@ export class AnimationGraph extends Asset implements AnimationGraphRunTime {
     private _layers: Layer[] = [];
 
     @serializable
-    private _variables: Record<string, NumericVariable | TriggerVariable> = {};
+    private _variables: Record<string, VariableDescription> = {};
 
     constructor () {
         super();
@@ -688,7 +688,7 @@ export class AnimationGraph extends Asset implements AnimationGraphRunTime {
     }
 
     get variables (): Iterable<[string, VariableDescription]> {
-        return Object.entries(this._variables) as unknown as Iterable<[string, VariableDescription]>;
+        return Object.entries(this._variables);
     }
 
     /**
@@ -718,24 +718,45 @@ export class AnimationGraph extends Asset implements AnimationGraphRunTime {
         move(this._layers, index, newIndex);
     }
 
+    /**
+     * Adds a boolean variable.
+     * @param name The variable's name.
+     * @param value The variable's default value.
+     */
     public addBoolean (name: string, value = false) {
-        const variable = new NumericVariable(VariableType.BOOLEAN);
+        const variable = new PlainVariable(VariableType.BOOLEAN);
         variable.value = value;
-        this._variables[name] = variable;
+        this._variables[name] = variable as unknown as BasicVariableDescription<VariableType.BOOLEAN>;
     }
 
+    /**
+     * Adds a floating variable.
+     * @param name The variable's name.
+     * @param value The variable's default value.
+     */
     public addFloat (name: string, value = 0.0) {
-        const variable = new NumericVariable(VariableType.FLOAT);
+        const variable = new PlainVariable(VariableType.FLOAT);
         variable.value = value;
-        this._variables[name] = variable;
+        this._variables[name] = variable as unknown as BasicVariableDescription<VariableType.FLOAT>;
     }
 
+    /**
+     * Adds an integer variable.
+     * @param name The variable's name.
+     * @param value The variable's default value.
+     */
     public addInteger (name: string, value = 0) {
-        const variable = new NumericVariable(VariableType.INTEGER);
+        const variable = new PlainVariable(VariableType.INTEGER);
         variable.value = value;
-        this._variables[name] = variable;
+        this._variables[name] = variable as unknown as BasicVariableDescription<VariableType.INTEGER>;
     }
 
+    /**
+     * Adds a trigger variable.
+     * @param name The variable's name.
+     * @param value The variable's default value.
+     * @param resetMode The trigger's reset mode.
+     */
     public addTrigger (name: string, value = false, resetMode = TriggerResetMode.AFTER_CONSUMED) {
         const variable = new TriggerVariable();
         variable.resetMode = resetMode;
@@ -747,7 +768,7 @@ export class AnimationGraph extends Asset implements AnimationGraphRunTime {
         delete this._variables[name];
     }
 
-    public getVariable (name: string) {
-        return this._variables[name];
+    public getVariable (name: string): VariableDescription | undefined {
+        return this._variables[name] as VariableDescription | undefined;
     }
 }
