@@ -141,6 +141,20 @@ describe('NewGen Anim', () => {
             expect(trigger.value).toBe(true);
             trigger.resetMode = TriggerResetMode.NEXT_FRAME_OR_AFTER_CONSUMED;
             expect(trigger.resetMode).toBe(TriggerResetMode.NEXT_FRAME_OR_AFTER_CONSUMED);
+
+            graph.addTrigger('t-with-default-specified', true);
+            const triggerWithDefault = graph.getVariable('t-with-default-specified');
+            expect(triggerWithDefault.type).toBe(VariableType.TRIGGER);
+            expect(triggerWithDefault.value).toBe(true);
+            assertIsTrue(triggerWithDefault.type === VariableType.TRIGGER);
+            expect(triggerWithDefault.resetMode).toBe(TriggerResetMode.AFTER_CONSUMED);
+
+            graph.addTrigger('t-with-default-and-reset-mode-specified', true, TriggerResetMode.NEXT_FRAME_OR_AFTER_CONSUMED);
+            const triggerWithDefaultAndResetModeSpecified = graph.getVariable('t-with-default-and-reset-mode-specified');
+            expect(triggerWithDefaultAndResetModeSpecified.type).toBe(VariableType.TRIGGER);
+            expect(triggerWithDefaultAndResetModeSpecified.value).toBe(true);
+            assertIsTrue(triggerWithDefaultAndResetModeSpecified.type === VariableType.TRIGGER);
+            expect(triggerWithDefaultAndResetModeSpecified.resetMode).toBe(TriggerResetMode.NEXT_FRAME_OR_AFTER_CONSUMED);
         }
 
         graph.removeVariable('f');
