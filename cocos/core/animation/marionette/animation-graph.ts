@@ -606,11 +606,11 @@ class NumericVariable {
 
 @ccclass('cc.animation.TriggerVariable')
 class TriggerVariable {
-    get type() {
+    get type () {
         return VariableType.TRIGGER;
     }
 
-    get value() {
+    get value () {
         return !!((this._flags & BOOLEAN_VARIABLE_FLAG_VALUE_MASK) >> BOOLEAN_VARIABLE_FLAG_VALUE_START);
     }
 
@@ -622,11 +622,11 @@ class TriggerVariable {
         }
     }
 
-    get resetMode() {
+    get resetMode () {
         return ((this._flags & BOOLEAN_VARIABLE_FLAG_RESET_MODE_MASK) >> BOOLEAN_VARIABLE_FLAG_RESET_MODE_START);
     }
 
-    set resetMode(value: TriggerResetMode) {
+    set resetMode (value: TriggerResetMode) {
         this._flags &= ~(BOOLEAN_VARIABLE_FLAG_RESET_MODE_MASK << BOOLEAN_VARIABLE_FLAG_RESET_MODE_START);
         this._flags |= (value << BOOLEAN_VARIABLE_FLAG_RESET_MODE_START);
     }
@@ -635,9 +635,9 @@ class TriggerVariable {
     // value(1 bits) | reset_mode(2 bits)
     @serializable
     private _flags =
-        0 | // value: false
-        TriggerResetMode.AFTER_CONSUMED << BOOLEAN_VARIABLE_FLAG_RESET_MODE_START
-        ;
+    0 // value: false
+        | TriggerResetMode.AFTER_CONSUMED << BOOLEAN_VARIABLE_FLAG_RESET_MODE_START
+    ;
 }
 
 export interface AnimationGraphRunTime {
@@ -649,9 +649,9 @@ interface BasicVariableDescription<TType> {
 
     value: TType extends VariableType.FLOAT ? number :
         TType extends VariableType.INTEGER ? number :
-        TType extends VariableType.BOOLEAN ? boolean :
-        TType extends VariableType.TRIGGER ? boolean :
-        never;
+            TType extends VariableType.BOOLEAN ? boolean :
+                TType extends VariableType.TRIGGER ? boolean :
+                    never;
 }
 
 export type VariableDescription =
@@ -718,25 +718,25 @@ export class AnimationGraph extends Asset implements AnimationGraphRunTime {
         move(this._layers, index, newIndex);
     }
 
-    public addBoolean(name: string, value = false) {
+    public addBoolean (name: string, value = false) {
         const variable = new NumericVariable(VariableType.BOOLEAN);
         variable.value = value;
         this._variables[name] = variable;
     }
 
-    public addFloat(name: string, value = 0.0) {
+    public addFloat (name: string, value = 0.0) {
         const variable = new NumericVariable(VariableType.FLOAT);
         variable.value = value;
         this._variables[name] = variable;
     }
 
-    public addInteger(name: string, value = 0) {
+    public addInteger (name: string, value = 0) {
         const variable = new NumericVariable(VariableType.INTEGER);
         variable.value = value;
         this._variables[name] = variable;
     }
 
-    public addTrigger(name: string, value = false, resetMode = TriggerResetMode.AFTER_CONSUMED) {
+    public addTrigger (name: string, value = false, resetMode = TriggerResetMode.AFTER_CONSUMED) {
         const variable = new TriggerVariable();
         variable.resetMode = resetMode;
         variable.value = value;
