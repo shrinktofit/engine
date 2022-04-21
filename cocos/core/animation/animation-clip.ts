@@ -87,6 +87,13 @@ interface SkeletonAnimationBakeInfo {
 
 export const exoticAnimationTag = Symbol('ExoticAnimation');
 
+declare global {
+    // eslint-disable-next-line no-var, vars-on-top
+    var globalRigHub: undefined | {
+        requestJointOnAnimationInstantiation (referenceNode: Node, path: string): Node | null;
+    };
+}
+
 /**
  * @zh 动画剪辑表示一段使用动画编辑器编辑的关键帧动画或是外部美术工具生产的骨骼动画。
  * 它的数据主要被分为几层：轨道、关键帧和曲线。
@@ -317,6 +324,17 @@ export class AnimationClip extends Asset {
         } = context;
 
         const binder: Binder = (binding: TrackBinding) => {
+            if (globalThis.globalRigHub && context.pose) {
+                const trsPath = binding.parseTrsPath();
+                if (trsPath) {
+                    const rigidJoint = globalThis.globalRigHub.requestJointOnAnimationInstantiation(context.target as Node, trsPath.node);
+                    if (rigidJoint) {
+                        const blendStateWriter = context.pose.createPoseWriter(rigidJoint, trsPath.property, false);
+                        return blendStateWriter;
+                    }
+                }
+            }
+
             if (context.mask && binding.isMaskedOff(context.mask)) {
                 return undefined;
             }

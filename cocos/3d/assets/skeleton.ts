@@ -122,6 +122,14 @@ export class Skeleton extends Asset {
     public validate () {
         return this.joints.length > 0 && this.bindposes.length > 0;
     }
+
+    public declare remapHook?: {
+        apply(node: import('../../core/scene-graph/node').Node): void;
+    };
+
+    public remap (node: import('../../core/scene-graph/node').Node) {
+        this.remapHook?.apply(node);
+    }
 }
 
 legacyCC.Skeleton = Skeleton;

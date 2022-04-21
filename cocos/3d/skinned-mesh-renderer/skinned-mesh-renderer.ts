@@ -29,7 +29,7 @@
  */
 
 import {
-    ccclass, executeInEditMode, executionOrder, help, menu, tooltip, type,
+    ccclass, executeInEditMode, executionOrder, help, menu, tooltip, type, editable, serializable,
 } from 'cc.decorator';
 import type { AnimationClip } from '../../core/animation/animation-clip';
 import { Material } from '../../core/assets';
@@ -101,6 +101,10 @@ export class SkinnedMeshRenderer extends MeshRenderer {
      * @internal This method only friends to skeletal animation component.
      */
     public associatedAnimation: SkeletalAnimation | null = null;
+
+    @editable
+    @serializable
+    public retarget = false;
 
     constructor () {
         super();
@@ -189,6 +193,9 @@ export class SkinnedMeshRenderer extends MeshRenderer {
         if (this.model) {
             this.model.bindSkeleton(this._skeleton, this._skinningRoot, this._mesh);
             if (this.model.uploadAnimation) { this.model.uploadAnimation(this._clip); }
+            if (this.retarget && this._skeleton && this._skinningRoot) {
+                this._skeleton.remap(this._skinningRoot);
+            }
         }
     }
 }
