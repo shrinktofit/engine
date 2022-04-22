@@ -5,7 +5,7 @@
             "owner": "circular-reference-check",
             "pattern": [
                 {
-                    "regexp": "^Error: Circular dependency: (.*)$",
+                    "regexp": "^Circular dependency: (.*)$",
                     "message": 0
                 }
             ]
