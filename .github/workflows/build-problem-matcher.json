@@ -2,7 +2,7 @@
 {
     "problemMatcher": [
         {
-            "owner": "circular-reference-check",
+            "owner": "web-build",
             "pattern": [
                 {
                     "regexp": "^Circular dependency: (.*)$",
