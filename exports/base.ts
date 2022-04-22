@@ -30,6 +30,7 @@ import '../predefine';
 // tslint:disable-next-line: ordered-imports
 import '../cocos/core/legacy';
 import * as renderer from '../cocos/core/renderer';
+import './a';
 
 // LOAD ENGINE CORE
 export * from '../cocos/core';
