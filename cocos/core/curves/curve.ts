@@ -1,39 +1,17 @@
 import { assertIsTrue } from '../data/utils/asserts';
-import { approx, lerp, pingPong, repeat } from '../math';
 import { KeyframeCurve } from './keyframe-curve';
 import { ccclass, serializable, uniquelyReferenced } from '../data/decorators';
 import { RealInterpolationMode, ExtrapolationMode, TangentWeightMode } from './real-curve-param';
-import { binarySearchEpsilon } from '../algorithm/binary-search';
-import { solveCubic } from './solve-cubic';
 import { EditorExtendable, EditorExtendableMixin } from '../data/editor-extendable';
 import { CCClass, deserializeTag, editorExtrasTag, SerializationContext, SerializationInput, SerializationOutput, serializeTag } from '../data';
 import { DeserializationContext } from '../data/custom-serializable';
 import { EasingMethod, getEasingFn } from './easing-method';
 import { getOrCreateSerializationMetadata } from '../data/serialization-metadata';
-import { popCount } from '../math/bits';
+import { underlying } from './real-curve.emscripten';
 
 export { RealInterpolationMode, ExtrapolationMode, TangentWeightMode, EasingMethod };
 
-const REAL_KEYFRAME_VALUE_FLAGS_INTERPOLATION_MODE_START = 0;
-const REAL_KEYFRAME_VALUE_FLAGS_INTERPOLATION_MODE_MASK = 0xFF << REAL_KEYFRAME_VALUE_FLAGS_INTERPOLATION_MODE_START;
-
-const REAL_KEYFRAME_VALUE_FLAGS_TANGENT_WEIGHT_MODE_START = 8;
-const REAL_KEYFRAME_VALUE_FLAGS_TANGENT_WEIGHT_MODE_MASK = 0xFF << REAL_KEYFRAME_VALUE_FLAGS_TANGENT_WEIGHT_MODE_START;
-
-const REAL_KEYFRAME_VALUE_FLAGS_EASING_METHOD_START = 16;
-const REAL_KEYFRAME_VALUE_FLAGS_EASING_METHOD_MASK = 0xFF << REAL_KEYFRAME_VALUE_FLAGS_EASING_METHOD_START;
-
-// The following assertions ensure they're adjacent and non-overlapped.
-
-assertIsTrue(REAL_KEYFRAME_VALUE_FLAGS_TANGENT_WEIGHT_MODE_START
-    === REAL_KEYFRAME_VALUE_FLAGS_INTERPOLATION_MODE_START + popCount(REAL_KEYFRAME_VALUE_FLAGS_INTERPOLATION_MODE_MASK));
-
-assertIsTrue(REAL_KEYFRAME_VALUE_FLAGS_EASING_METHOD_START
-    === REAL_KEYFRAME_VALUE_FLAGS_TANGENT_WEIGHT_MODE_START + popCount(REAL_KEYFRAME_VALUE_FLAGS_TANGENT_WEIGHT_MODE_MASK));
-
-const REAL_KEYFRAME_VALUE_DEFAULT_FLAGS = (RealInterpolationMode.LINEAR << REAL_KEYFRAME_VALUE_FLAGS_INTERPOLATION_MODE_START)
-    | (TangentWeightMode.NONE << REAL_KEYFRAME_VALUE_FLAGS_TANGENT_WEIGHT_MODE_START)
-    | (EasingMethod.LINEAR << REAL_KEYFRAME_VALUE_FLAGS_EASING_METHOD_START);
+const RealCurveFloatArray = Float64Array;
 
 /**
  * @en View to a real frame value.
@@ -41,7 +19,20 @@ const REAL_KEYFRAME_VALUE_DEFAULT_FLAGS = (RealInterpolationMode.LINEAR << REAL_
  * @zh 实数帧值的视图。
  * 注意，该视图可能因关键帧的添加、改变、移除而失效。
  */
-class RealKeyframeValue extends EditorExtendable {
+class RealKeyframeValue implements EditorExtendable {
+    constructor (underlying: underlying.RealKeyframeValue) {
+        this._underlying = underlying;
+    }
+
+    get [editorExtrasTag] () {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+        return this._underlying.editorExtras;
+    }
+
+    set [editorExtrasTag] (value) {
+        this._underlying.editorExtras = value;
+    }
+
     /**
      * @en
      * When perform interpolation, the interpolation method should be taken
@@ -50,12 +41,11 @@ class RealKeyframeValue extends EditorExtendable {
      * 在执行插值时，当以此关键帧作为起始关键帧时应当使用的插值方式。
      */
     get interpolationMode (): RealInterpolationMode {
-        return (this._flags & REAL_KEYFRAME_VALUE_FLAGS_INTERPOLATION_MODE_MASK) >> REAL_KEYFRAME_VALUE_FLAGS_INTERPOLATION_MODE_START;
+        return this._underlying.interpolationMode.value as unknown as RealInterpolationMode;
     }
 
     set interpolationMode (value) {
-        this._flags &= ~REAL_KEYFRAME_VALUE_FLAGS_INTERPOLATION_MODE_MASK;
-        this._flags |= (value << REAL_KEYFRAME_VALUE_FLAGS_INTERPOLATION_MODE_START);
+        this._underlying.interpolationMode = underlying.RealInterpolationMode.values[value];
     }
 
     /**
@@ -67,12 +57,11 @@ class RealKeyframeValue extends EditorExtendable {
      * 若当前的插值模式不是三次插值时，该字段无意义。
      */
     get tangentWeightMode (): TangentWeightMode {
-        return (this._flags & REAL_KEYFRAME_VALUE_FLAGS_TANGENT_WEIGHT_MODE_MASK) >> REAL_KEYFRAME_VALUE_FLAGS_TANGENT_WEIGHT_MODE_START;
+        return this._underlying.tangentWeightMode.value as unknown as TangentWeightMode;
     }
 
     set tangentWeightMode (value) {
-        this._flags &= ~REAL_KEYFRAME_VALUE_FLAGS_TANGENT_WEIGHT_MODE_MASK;
-        this._flags |= (value << REAL_KEYFRAME_VALUE_FLAGS_TANGENT_WEIGHT_MODE_START);
+        this._underlying.tangentWeightMode = underlying.TangentWeightMode.values[value];
     }
 
     /**
@@ -81,7 +70,13 @@ class RealKeyframeValue extends EditorExtendable {
      * @zh
      * 该关键帧的值。
      */
-    public value = 0.0;
+    get value () {
+        return this._underlying.value;
+    }
+
+    set value (value) {
+        this._underlying.value = value;
+    }
 
     /**
      * @en
@@ -91,7 +86,13 @@ class RealKeyframeValue extends EditorExtendable {
      * @zh
      * 当此关键帧作为三次插值的起始点时，此关键帧的切线。其他情况下该字段无意义。
      */
-    public rightTangent = 0.0;
+    get rightTangent () {
+        return this._underlying.rightTangent;
+    }
+
+    set rightTangent (value) {
+        this._underlying.rightTangent = value;
+    }
 
     /**
      * @en
@@ -101,7 +102,13 @@ class RealKeyframeValue extends EditorExtendable {
      * @zh
      * 当此关键帧作为三次插值的起始点时，此关键帧的切线权重。其他情况下该字段无意义。
      */
-    public rightTangentWeight = 0.0;
+    get rightTangentWeight () {
+        return this._underlying.rightTangentWeight;
+    }
+
+    set rightTangentWeight (value) {
+        this._underlying.rightTangentWeight = value;
+    }
 
     /**
      * @en
@@ -111,7 +118,13 @@ class RealKeyframeValue extends EditorExtendable {
      * @zh
      * 当此关键帧作为三次插值的目标点时，此关键帧的切线。其他情况下该字段无意义。
      */
-    public leftTangent = 0.0;
+    get leftTangent () {
+        return this._underlying.leftTangent;
+    }
+
+    set leftTangent (value) {
+        this._underlying.leftTangent = value;
+    }
 
     /**
      * @en
@@ -121,21 +134,33 @@ class RealKeyframeValue extends EditorExtendable {
      * @zh
      * 当此关键帧作为三次插值的目标点时，此关键帧的切线权重。其他情况下该字段无意义。
      */
-    public leftTangentWeight = 0.0;
+    get leftTangentWeight () {
+        return this._underlying.leftTangentWeight;
+    }
+
+    set leftTangentWeight (value) {
+        this._underlying.leftTangentWeight = value;
+    }
 
     /**
      * @deprecated Reserved for backward compatibility. Will be removed in future.
      */
     get easingMethod (): EasingMethod {
-        return (this._flags & REAL_KEYFRAME_VALUE_FLAGS_EASING_METHOD_MASK) >> REAL_KEYFRAME_VALUE_FLAGS_EASING_METHOD_START;
+        return this._underlying.easingMethod.value as unknown as EasingMethod;
     }
 
     set easingMethod (value) {
-        this._flags &= ~REAL_KEYFRAME_VALUE_FLAGS_EASING_METHOD_MASK;
-        this._flags |= (value << REAL_KEYFRAME_VALUE_FLAGS_EASING_METHOD_START);
+        this._underlying.easingMethod = underlying.EasingMethod.values[value];
     }
 
-    private _flags = REAL_KEYFRAME_VALUE_DEFAULT_FLAGS;
+    /**
+     * @internal
+     */
+    get underlying () {
+        return this._underlying;
+    }
+
+    private _underlying: underlying.RealKeyframeValue;
 }
 
 CCClass.fastDefine(
@@ -183,8 +208,13 @@ export type { RealKeyframeValue };
  */
 type RealKeyframeValueParameters = number | Partial<RealKeyframeValue>;
 
-function createRealKeyframeValue (params: RealKeyframeValueParameters) {
-    const realKeyframeValue = new RealKeyframeValue();
+function createUnderlyingRealKeyframeValue (params: RealKeyframeValueParameters) {
+    const realKeyframeValue = new underlying.RealKeyframeValue();
+    fillUnderlyingRealKeyframeValue(realKeyframeValue, params);
+    return realKeyframeValue;
+}
+
+function fillUnderlyingRealKeyframeValue (realKeyframeValue: underlying.RealKeyframeValue, params: RealKeyframeValueParameters) {
     if (typeof params === 'number') {
         realKeyframeValue.value = params;
     } else {
@@ -204,14 +234,111 @@ function createRealKeyframeValue (params: RealKeyframeValueParameters) {
         realKeyframeValue.rightTangentWeight = rightTangentWeight ?? realKeyframeValue.rightTangentWeight;
         realKeyframeValue.leftTangent = leftTangent ?? realKeyframeValue.leftTangent;
         realKeyframeValue.leftTangentWeight = leftTangentWeight ?? realKeyframeValue.leftTangentWeight;
-        realKeyframeValue.interpolationMode = interpolationMode ?? realKeyframeValue.interpolationMode;
-        realKeyframeValue.tangentWeightMode = tangentWeightMode ?? realKeyframeValue.tangentWeightMode;
-        realKeyframeValue.easingMethod = easingMethod ?? realKeyframeValue.easingMethod;
+        if (typeof interpolationMode !== 'undefined') {
+            realKeyframeValue.interpolationMode = underlying.RealInterpolationMode.values[interpolationMode];
+        }
+        if (typeof tangentWeightMode !== 'undefined') {
+            realKeyframeValue.tangentWeightMode = underlying.TangentWeightMode.values[tangentWeightMode];
+        }
+        if (typeof easingMethod !== 'undefined') {
+            realKeyframeValue.easingMethod = underlying.EasingMethod.values[easingMethod];
+        }
         if (editorExtras) {
-            realKeyframeValue[editorExtrasTag] = editorExtras;
+            realKeyframeValue.editorExtras = editorExtras;
         }
     }
     return realKeyframeValue;
+}
+
+class RealCurveBase extends KeyframeCurve<RealKeyframeValue> {
+    constructor (underlying: underlying.RealCurve) {
+        super();
+        this._underlying = underlying;
+    }
+
+    get keyFramesCount (): number {
+        return this._underlying.keyFramesCount;
+    }
+
+    get rangeMin (): number {
+        return this._underlying.rangeMin;
+    }
+
+    get rangeMax (): number {
+        return this._underlying.rangeMax;
+    }
+
+    public keyframes (): Iterable<Readonly<[number, Readonly<RealKeyframeValue>]>> {
+        return (function* keyframesGenerator (this: RealCurveBase) {
+            for (let i = 0; i < this._underlying.keyFramesCount; ++i) {
+                yield [
+                    this.getKeyframeTime(i),
+                    this.getKeyframeValue(i),
+                ] as const;
+            }
+        }.call(this));
+    }
+
+    public times (): Iterable<number> {
+        return (function* keyframesGenerator (this: RealCurveBase) {
+            for (let i = 0; i < this._underlying.keyFramesCount; ++i) {
+                yield this.getKeyframeTime(i);
+            }
+        }.call(this));
+    }
+
+    public values (): Iterable<RealKeyframeValue> {
+        return (function* keyframesGenerator (this: RealCurveBase) {
+            for (let i = 0; i < this._underlying.keyFramesCount; ++i) {
+                yield this.getKeyframeValue(i);
+            }
+        }.call(this));
+    }
+
+    public getKeyframeTime (index: number): number {
+        return this._underlying.getKeyframeTime(index);
+    }
+
+    public getKeyframeValue (index: number): RealKeyframeValue {
+        return new RealKeyframeValue(this._underlying.getKeyframeValue(index));
+    }
+
+    public addKeyFrame (time: number, keyframeValue: RealKeyframeValue): number {
+        return this._underlying.insertKeyframe(time, keyframeValue.underlying);
+    }
+
+    public removeKeyframe (index: number): void {
+        this._underlying.removeKeyframe(index);
+    }
+
+    public indexOfKeyframe (time: number): number {
+        return this._underlying.indexOfKeyframe(time);
+    }
+
+    public updateTime (index: number, time: number): void {
+        this._underlying.updateTime(index, time);
+    }
+
+    public clear (): void {
+        this._underlying.clear();
+    }
+
+    protected setKeyframes (times: number[], values: RealKeyframeValue[]): void {
+        throw new Error(`Not implemented`);
+    }
+
+    protected searchKeyframe (time: number): number {
+        return this._underlying.searchKeyframe(time);
+    }
+
+    public assignSorted (
+        times: Iterable<[number, RealKeyframeValueParameters]> | readonly number[],
+        values?: readonly RealKeyframeValueParameters[] | undefined,
+    ): void {
+        throw new Error(`Not implemented`);
+    }
+
+    protected _underlying: underlying.RealCurve;
 }
 
 /**
@@ -289,7 +416,11 @@ function createRealKeyframeValue (params: RealKeyframeValueParameters) {
  * 注意，切线/切线权重/切线权重模式在某些情况下可能是“无意义的”。
  * 无意义意味着这些值可能不会被存储或序列化。
  */
-export class RealCurve extends KeyframeCurve<RealKeyframeValue> {
+export class RealCurve extends RealCurveBase {
+    constructor () {
+        super(new underlying.RealCurve());
+    }
+
     /**
      * @en
      * Gets or sets the pre-extrapolation-mode of this curve.
@@ -298,7 +429,13 @@ export class RealCurve extends KeyframeCurve<RealKeyframeValue> {
      * 获取或设置此曲线的前向外推模式。
      * 默认为 `ExtrapolationMode.CLAMP`。
      */
-    public preExtrapolation: ExtrapolationMode = ExtrapolationMode.CLAMP;
+    get preExtrapolation () {
+        return this._underlying.preExtrapolation.value as ExtrapolationMode;
+    }
+
+    set preExtrapolation (value) {
+        this._underlying.preExtrapolation = underlying.ExtrapolationMode.values[value];
+    }
 
     /**
      * @en
@@ -308,7 +445,13 @@ export class RealCurve extends KeyframeCurve<RealKeyframeValue> {
      * 获取或设置此曲线的后向外推模式。
      * 默认为 `ExtrapolationMode.CLAMP`。
      */
-    public postExtrapolation: ExtrapolationMode = ExtrapolationMode.CLAMP;
+    get postExtrapolation () {
+        return this._underlying.postExtrapolation.value as ExtrapolationMode;
+    }
+
+    set postExtrapolation (value) {
+        this._underlying.postExtrapolation = underlying.ExtrapolationMode.values[value];
+    }
 
     /**
      * @en
@@ -319,77 +462,7 @@ export class RealCurve extends KeyframeCurve<RealKeyframeValue> {
      * @returns Result value.
      */
     public evaluate (time: number): number {
-        const {
-            _times: times,
-            _values: values,
-        } = this;
-
-        const nFrames = times.length;
-
-        if (nFrames === 0) {
-            return 0.0;
-        }
-
-        const firstTime = times[0];
-        const lastTime = times[nFrames - 1];
-        if (time < firstTime) {
-            // Underflow
-            const { preExtrapolation } = this;
-            const preValue = values[0];
-            if (preExtrapolation === ExtrapolationMode.CLAMP || nFrames < 2) {
-                return preValue.value;
-            }
-            switch (preExtrapolation) {
-            case ExtrapolationMode.LINEAR:
-                return linearTrend(firstTime, values[0].value, times[1], values[1].value, time);
-            case ExtrapolationMode.LOOP:
-                time = wrapRepeat(time, firstTime, lastTime);
-                break;
-            case ExtrapolationMode.PING_PONG:
-                time = wrapPingPong(time, firstTime, lastTime);
-                break;
-            default:
-                return preValue.value;
-            }
-        } else if (time > lastTime) {
-            // Overflow
-            const { postExtrapolation } = this;
-            const preFrame = values[nFrames - 1];
-            if (postExtrapolation === ExtrapolationMode.CLAMP || nFrames < 2) {
-                return preFrame.value;
-            }
-            switch (postExtrapolation) {
-            case ExtrapolationMode.LINEAR:
-                return linearTrend(lastTime, preFrame.value, times[nFrames - 2], values[nFrames - 2].value, time);
-            case ExtrapolationMode.LOOP:
-                time = wrapRepeat(time, firstTime, lastTime);
-                break;
-            case ExtrapolationMode.PING_PONG:
-                time = wrapPingPong(time, firstTime, lastTime);
-                break;
-            default:
-                return preFrame.value;
-            }
-        }
-
-        const index = binarySearchEpsilon(times, time);
-        if (index >= 0) {
-            return values[index].value;
-        }
-
-        const iNext = ~index;
-        assertIsTrue(iNext !== 0 && iNext !== nFrames && nFrames > 1);
-
-        const iPre = iNext - 1;
-        const preTime = times[iPre];
-        const preValue = values[iPre];
-        const nextTime = times[iNext];
-        const nextValue = values[iNext];
-        assertIsTrue(nextTime > time && time > preTime);
-        const dt = nextTime - preTime;
-
-        const ratio = (time - preTime) / dt;
-        return evalBetweenTwoKeyFrames(preTime, preValue, nextTime, nextValue, ratio);
+        return this._underlying.evaluate(time);
     }
 
     /**
@@ -402,7 +475,7 @@ export class RealCurve extends KeyframeCurve<RealKeyframeValue> {
      * @returns The index to the new keyframe.
      */
     public addKeyFrame (time: number, value: RealKeyframeValueParameters): number {
-        return super.addKeyFrame(time, createRealKeyframeValue(value));
+        return this._underlying.insertKeyframe(time, createUnderlyingRealKeyframeValue(value));
     }
 
     /**
@@ -425,18 +498,30 @@ export class RealCurve extends KeyframeCurve<RealKeyframeValue> {
         times: Iterable<[number, RealKeyframeValueParameters]> | readonly number[],
         values?: readonly RealKeyframeValueParameters[],
     ) {
+        const allocWithTimes = (times: ArrayLike<number>) => {
+            const nKeyframes = times.length;
+            const pTimes = underlying._malloc(RealCurveFloatArray.BYTES_PER_ELEMENT * nKeyframes);
+            const timeArray = new RealCurveFloatArray(underlying.HEAPU8.buffer, pTimes + underlying.HEAPU8.byteOffset, nKeyframes);
+            timeArray.set(times);
+            this._underlying.resize(nKeyframes, pTimes);
+        };
+
         if (values !== undefined) {
             assertIsTrue(Array.isArray(times));
-            this.setKeyframes(
-                times.slice(),
-                values.map((value) => createRealKeyframeValue(value)),
-            );
+            allocWithTimes(times);
+            const nKeyframes = times.length;
+            for (let iKeyframe = 0; iKeyframe < nKeyframes; ++iKeyframe) {
+                const keyframeValue = this._underlying.getKeyframeValue(iKeyframe);
+                fillUnderlyingRealKeyframeValue(keyframeValue, values[iKeyframe]);
+            }
         } else {
             const keyframes = Array.from(times as Iterable<[number, Partial<RealKeyframeValue>]>);
-            this.setKeyframes(
-                keyframes.map(([time]) => time),
-                keyframes.map(([, value]) => createRealKeyframeValue(value)),
-            );
+            allocWithTimes(keyframes.map(([time]) => time));
+            const nKeyframes = keyframes.length;
+            for (let iKeyframe = 0; iKeyframe < nKeyframes; ++iKeyframe) {
+                const keyframeValue = this._underlying.getKeyframeValue(iKeyframe);
+                fillUnderlyingRealKeyframeValue(keyframeValue, keyframes[iKeyframe][1]);
+            }
         }
     }
 
@@ -449,11 +534,7 @@ export class RealCurve extends KeyframeCurve<RealKeyframeValue> {
      * @returns Whether it is constant.
      */
     public isConstant (tolerance: number) {
-        if (this._values.length <= 1) {
-            return true;
-        }
-        const firstVal = this._values[0].value;
-        return this._values.every((frame) => approx(frame.value, firstVal, tolerance));
+        return this._underlying.isConstant(tolerance);
     }
 
     /**
@@ -464,43 +545,14 @@ export class RealCurve extends KeyframeCurve<RealKeyframeValue> {
             output.writeThis();
             return;
         }
-
-        const {
-            _times: times,
-            _values: keyframeValues,
-        } = this;
-
-        const nKeyframes = times.length;
-
-        const dataSize = 0
-            + OVERFLOW_BYTES + OVERFLOW_BYTES
-            + FRAME_COUNT_BYTES
-            + TIME_BYTES * nKeyframes
-            + REAL_KEY_FRAME_VALUE_MAX_SIZE * nKeyframes;
-
-        const dataView = new DataView(new ArrayBuffer(dataSize));
-        let currentOffset = 0;
-
-        // Overflow operations
-        dataView.setUint8(currentOffset, this.preExtrapolation); currentOffset += OVERFLOW_BYTES;
-        dataView.setUint8(currentOffset, this.postExtrapolation); currentOffset += OVERFLOW_BYTES;
-
-        // Frame count
-        dataView.setUint32(currentOffset, nKeyframes, true); currentOffset += FRAME_COUNT_BYTES;
-
-        // Times
-        times.forEach((time, index) => dataView.setFloat32(currentOffset + TIME_BYTES * index, time, true));
-        currentOffset += TIME_BYTES * nKeyframes;
-
-        // Frame values
-        for (const keyframeValue of keyframeValues) {
-            currentOffset = saveRealKeyFrameValue(dataView, keyframeValue, currentOffset);
-        }
-
-        const bytes = new Uint8Array(dataView.buffer, 0, currentOffset);
+        const bytes = this._underlying.serializeBinary();
         output.writeProperty('bytes', bytes);
 
-        const keyframeValueEditorExtras = keyframeValues.map((keyframeValue) => keyframeValue[editorExtrasTag]);
+        const nKeyframes = this.keyFramesCount;
+        const keyframeValueEditorExtras = new Array<unknown>(nKeyframes);
+        for (let iKeyframe = 0; iKeyframe < nKeyframes; ++iKeyframe) {
+            keyframeValueEditorExtras[iKeyframe] = this._underlying.getKeyframeValue(iKeyframe).editorExtras;
+        }
         if (keyframeValueEditorExtras.some((extras) => extras !== undefined)) {
             output.writeProperty(`keyframeValueEditorExtras`, keyframeValueEditorExtras);
         }
@@ -514,44 +566,22 @@ export class RealCurve extends KeyframeCurve<RealKeyframeValue> {
             input.readThis();
             return;
         }
-
         const bytes = input.readProperty('bytes') as Uint8Array;
 
-        const dataView = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-        let currentOffset = 0;
+        const pBytesNative = underlying._malloc(bytes.byteLength);
+        const bytesNative = new Uint8Array(underlying.HEAPU8.buffer, pBytesNative + underlying.HEAPU8.byteOffset, bytes.byteLength);
+        bytesNative.set(bytes);
 
-        // Overflow operations
-        this.preExtrapolation = dataView.getUint8(currentOffset); currentOffset += OVERFLOW_BYTES;
-        this.postExtrapolation = dataView.getUint8(currentOffset); currentOffset += OVERFLOW_BYTES;
+        this._underlying.deserializeBinary(pBytesNative, bytes.byteLength);
 
-        // Frame count
-        const nKeyframes = dataView.getUint32(currentOffset, true); currentOffset += FRAME_COUNT_BYTES;
-
-        // Times
-        const times = Array.from({ length: nKeyframes },
-            (_, index) => dataView.getFloat32(currentOffset + TIME_BYTES * index, true));
-        currentOffset += TIME_BYTES * nKeyframes;
-
-        // Frame values
-        const keyframeValues = new Array<RealKeyframeValue>(nKeyframes);
-        for (let iKeyFrame = 0; iKeyFrame < nKeyframes; ++iKeyFrame) {
-            const keyframeValue = createRealKeyframeValue({});
-            currentOffset = loadRealKeyFrameValue(dataView, keyframeValue, currentOffset);
-            keyframeValues[iKeyFrame] = keyframeValue;
-        }
-
-        assertIsTrue(currentOffset === bytes.byteLength);
-
+        const nKeyframes = this.keyFramesCount;
         const keyframeValueEditorExtras = input.readProperty(`keyframeValueEditorExtras`) as unknown[];
         if (keyframeValueEditorExtras) {
             assertIsTrue(keyframeValueEditorExtras.length === nKeyframes);
             keyframeValueEditorExtras.forEach(
-                (extras, index) => keyframeValues[index][editorExtrasTag] = extras,
+                (extras, index) => this._underlying.getKeyframeValue(index).editorExtras = extras,
             );
         }
-
-        this._times = times;
-        this._values = keyframeValues;
     }
 }
 
@@ -561,311 +591,3 @@ CCClass.fastDefine('cc.RealCurve', RealCurve, {
     preExtrapolation: ExtrapolationMode.CLAMP,
     postExtrapolation: ExtrapolationMode.CLAMP,
 });
-
-const FLAGS_EASING_METHOD_BITS_START = 8;
-const FLAG_EASING_METHOD_MASK = 0xFF << FLAGS_EASING_METHOD_BITS_START; // 8-16 bits
-
-enum KeyframeValueFlagMask {
-    VALUE = 1 << 0,
-    INTERPOLATION_MODE = 1 << 1,
-    TANGENT_WEIGHT_MODE = 1 << 2,
-    LEFT_TANGENT = 1 << 3,
-    LEFT_TANGENT_WEIGHT = 1 << 4,
-    RIGHT_TANGENT = 1 << 5,
-    RIGHT_TANGENT_WEIGHT = 1 << 6,
-}
-
-const OVERFLOW_BYTES = 1;
-const FRAME_COUNT_BYTES = 4;
-const TIME_BYTES = 4;
-const KEY_FRAME_VALUE_FLAGS_BYTES = 4;
-const VALUE_BYTES = 4;
-const INTERPOLATION_MODE_BYTES = 1;
-const TANGENT_WEIGHT_MODE_BYTES = 1;
-const LEFT_TANGENT_BYTES = 4;
-const LEFT_TANGENT_WEIGHT_BYTES = 4;
-const RIGHT_TANGENT_BYTES = 4;
-const RIGHT_TANGENT_WEIGHT_BYTES = 4;
-
-const {
-    interpolationMode: DEFAULT_INTERPOLATION_MODE,
-    tangentWeightMode: DEFAULT_TANGENT_WEIGHT_MODE,
-    leftTangent: DEFAULT_LEFT_TANGENT,
-    leftTangentWeight: DEFAULT_LEFT_TANGENT_WEIGHT,
-    rightTangent: DEFAULT_RIGHT_TANGENT,
-    rightTangentWeight: DEFAULT_RIGHT_TANGENT_WEIGHT,
-} = createRealKeyframeValue({});
-
-const REAL_KEY_FRAME_VALUE_MAX_SIZE = KEY_FRAME_VALUE_FLAGS_BYTES
-    + VALUE_BYTES
-    + INTERPOLATION_MODE_BYTES
-    + TANGENT_WEIGHT_MODE_BYTES
-    + LEFT_TANGENT_BYTES
-    + LEFT_TANGENT_WEIGHT_BYTES
-    + RIGHT_TANGENT_BYTES
-    + RIGHT_TANGENT_WEIGHT_BYTES
-    + 0;
-
-function saveRealKeyFrameValue (dataView: DataView, keyframeValue: RealKeyframeValue, offset: number) {
-    let flags = 0;
-
-    let currentOffset = offset;
-
-    const pFlags = currentOffset; // Place holder for flags
-    currentOffset += KEY_FRAME_VALUE_FLAGS_BYTES;
-
-    const {
-        value,
-        interpolationMode,
-        tangentWeightMode,
-        rightTangent,
-        rightTangentWeight,
-        leftTangent,
-        leftTangentWeight,
-        easingMethod,
-    } = keyframeValue;
-
-    dataView.setFloat32(currentOffset, value, true);
-    currentOffset += VALUE_BYTES;
-
-    if (interpolationMode !== DEFAULT_INTERPOLATION_MODE) {
-        flags |= KeyframeValueFlagMask.INTERPOLATION_MODE;
-        dataView.setUint8(currentOffset, interpolationMode);
-        currentOffset += INTERPOLATION_MODE_BYTES;
-    }
-
-    if (tangentWeightMode !== DEFAULT_TANGENT_WEIGHT_MODE) {
-        flags |= KeyframeValueFlagMask.TANGENT_WEIGHT_MODE;
-        dataView.setUint8(currentOffset, tangentWeightMode);
-        currentOffset += TANGENT_WEIGHT_MODE_BYTES;
-    }
-
-    if (leftTangent !== DEFAULT_LEFT_TANGENT) {
-        flags |= KeyframeValueFlagMask.LEFT_TANGENT;
-        dataView.setFloat32(currentOffset, leftTangent, true);
-        currentOffset += LEFT_TANGENT_BYTES;
-    }
-
-    if (leftTangentWeight !== DEFAULT_LEFT_TANGENT_WEIGHT) {
-        flags |= KeyframeValueFlagMask.LEFT_TANGENT_WEIGHT;
-        dataView.setFloat32(currentOffset, leftTangentWeight, true);
-        currentOffset += LEFT_TANGENT_WEIGHT_BYTES;
-    }
-
-    if (rightTangent !== DEFAULT_RIGHT_TANGENT) {
-        flags |= KeyframeValueFlagMask.RIGHT_TANGENT;
-        dataView.setFloat32(currentOffset, rightTangent, true);
-        currentOffset += RIGHT_TANGENT_BYTES;
-    }
-
-    if (rightTangentWeight !== DEFAULT_RIGHT_TANGENT_WEIGHT) {
-        flags |= KeyframeValueFlagMask.RIGHT_TANGENT_WEIGHT;
-        dataView.setFloat32(currentOffset, rightTangentWeight, true);
-        currentOffset += RIGHT_TANGENT_WEIGHT_BYTES;
-    }
-
-    flags |= (easingMethod << FLAGS_EASING_METHOD_BITS_START);
-
-    dataView.setUint32(pFlags, flags, true);
-
-    return currentOffset;
-}
-
-function loadRealKeyFrameValue (dataView: DataView, keyframeValue: RealKeyframeValue, offset: number) {
-    let currentOffset = offset;
-
-    const flags = dataView.getUint32(currentOffset, true);
-    currentOffset += KEY_FRAME_VALUE_FLAGS_BYTES;
-
-    keyframeValue.value = dataView.getFloat32(currentOffset, true);
-    currentOffset += VALUE_BYTES;
-
-    if (flags & KeyframeValueFlagMask.INTERPOLATION_MODE) {
-        keyframeValue.interpolationMode = dataView.getUint8(currentOffset);
-        currentOffset += INTERPOLATION_MODE_BYTES;
-    }
-
-    if (flags & KeyframeValueFlagMask.TANGENT_WEIGHT_MODE) {
-        keyframeValue.tangentWeightMode = dataView.getUint8(currentOffset);
-        currentOffset += TANGENT_WEIGHT_MODE_BYTES;
-    }
-
-    if (flags & KeyframeValueFlagMask.LEFT_TANGENT) {
-        keyframeValue.leftTangent = dataView.getFloat32(currentOffset, true);
-        currentOffset += LEFT_TANGENT_BYTES;
-    }
-
-    if (flags & KeyframeValueFlagMask.LEFT_TANGENT_WEIGHT) {
-        keyframeValue.leftTangentWeight = dataView.getFloat32(currentOffset, true);
-        currentOffset += LEFT_TANGENT_WEIGHT_BYTES;
-    }
-
-    if (flags & KeyframeValueFlagMask.RIGHT_TANGENT) {
-        keyframeValue.rightTangent = dataView.getFloat32(currentOffset, true);
-        currentOffset += RIGHT_TANGENT_BYTES;
-    }
-
-    if (flags & KeyframeValueFlagMask.RIGHT_TANGENT_WEIGHT) {
-        keyframeValue.rightTangentWeight = dataView.getFloat32(currentOffset, true);
-        currentOffset += RIGHT_TANGENT_WEIGHT_BYTES;
-    }
-
-    const easingMethod = ((flags & FLAG_EASING_METHOD_MASK) >> FLAGS_EASING_METHOD_BITS_START) as EasingMethod;
-    keyframeValue.easingMethod = easingMethod;
-
-    return currentOffset;
-}
-
-function wrapRepeat (time: number, prevTime: number, nextTime: number) {
-    return prevTime + repeat(time - prevTime, nextTime - prevTime);
-}
-
-function wrapPingPong (time: number, prevTime: number, nextTime: number) {
-    return prevTime + pingPong(time - prevTime, nextTime - prevTime);
-}
-
-function linearTrend (
-    prevTime: number,
-    prevValue: number,
-    nextTime: number,
-    nextValue: number,
-    time: number,
-) {
-    const slope = (nextValue - prevValue) / (nextTime - prevTime);
-    return prevValue + (time - prevTime) * slope;
-}
-
-function evalBetweenTwoKeyFrames (
-    prevTime: number,
-    prevValue: RealKeyframeValue,
-    nextTime: number,
-    nextValue: RealKeyframeValue,
-    ratio: number,
-) {
-    const dt = nextTime - prevTime;
-    switch (prevValue.interpolationMode) {
-    default:
-    case RealInterpolationMode.CONSTANT:
-        return prevValue.value;
-    case RealInterpolationMode.LINEAR: {
-        const transformedRatio = prevValue.easingMethod === EasingMethod.LINEAR
-            ? ratio
-            : getEasingFn(prevValue.easingMethod)(ratio);
-        return lerp(prevValue.value, nextValue.value, transformedRatio);
-    }
-    case RealInterpolationMode.CUBIC: {
-        const ONE_THIRD = 1.0 / 3.0;
-        const {
-            rightTangent: prevTangent,
-            rightTangentWeight: prevTangentWeightSpecified,
-        } = prevValue;
-        const prevTangentWeightEnabled = isRightTangentWeightEnabled(prevValue.tangentWeightMode);
-        const {
-            leftTangent: nextTangent,
-            leftTangentWeight: nextTangentWeightSpecified,
-        } = nextValue;
-        const nextTangentWeightEnabled = isLeftTangentWeightEnabled(nextValue.tangentWeightMode);
-
-        if (!prevTangentWeightEnabled && !nextTangentWeightEnabled) {
-            // Optimize for the case when both x components of tangents are 1.
-            // See below.
-            const p1 = prevValue.value + ONE_THIRD * prevTangent * dt;
-            const p2 = nextValue.value - ONE_THIRD * nextTangent * dt;
-            return bezierInterpolate(prevValue.value, p1, p2, nextValue.value, ratio);
-        } else {
-            let prevTangentWeight = 0.0;
-            if (prevTangentWeightEnabled) {
-                prevTangentWeight = prevTangentWeightSpecified;
-            } else {
-                const x = dt;
-                const y = dt * prevTangent;
-                prevTangentWeight = Math.sqrt(x * x + y * y) * ONE_THIRD;
-            }
-            const angle0 = Math.atan(prevTangent);
-            const tx0 = Math.cos(angle0) * prevTangentWeight + prevTime;
-            const ty0 = Math.sin(angle0) * prevTangentWeight + prevValue.value;
-
-            let nextTangentWeight = 0.0;
-            if (nextTangentWeightEnabled) {
-                nextTangentWeight = nextTangentWeightSpecified;
-            } else {
-                const x = dt;
-                const y = dt * nextTangent;
-                nextTangentWeight = Math.sqrt(x * x + y * y) * ONE_THIRD;
-            }
-            const angle1 = Math.atan(nextTangent);
-            const tx1 = -Math.cos(angle1) * nextTangentWeight + nextTime;
-            const ty1 = -Math.sin(angle1) * nextTangentWeight + nextValue.value;
-
-            const dx = dt;
-            // Hermite to Bezier
-            const u0x = (tx0 - prevTime) / dx;
-            const u1x = (tx1 - prevTime) / dx;
-            const u0y = ty0;
-            const u1y = ty1;
-            // Converts from Bernstein Basis to Power Basis.
-            // Formula: [1, 0, 0, 0; -3, 3, 0, 0; 3, -6, 3, 0; -1, 3, -3, 1] * [p_0; p_1; p_2; p_3]
-            // --------------------------------------
-            // | Basis | Coeff
-            // | t^3   | 3 * p_1 - p_0 - 3 * p_2 + p_3
-            // | t^2   | 3 * p_0 - 6 * p_1 + 3 * p_2
-            // | t^1   | 3 * p_1 - 3 * p_0
-            // | t^0   | p_0
-            // --------------------------------------
-            // where: p_0 = 0, p_1 = u0x, p_2 = u1x, p_3 = 1
-            // Especially, when both tangents are 1, we will have u0x = 1/3 and u1x = 2/3
-            // and then: ratio = t, eg. the ratios are
-            // 1-1 corresponding to param t. That's why we can do optimization like above.
-            const coeff0 = 0.0; // 0
-            const coeff1 = 3.0 * u0x; // 1
-            const coeff2 = 3.0 * u1x - 6.0 * u0x; // -1
-            const coeff3 = 3.0 * (u0x - u1x) + 1.0; // 1
-            // Solves the param t from equation X(t) = ratio.
-            const solutions = [0.0, 0.0, 0.0] as [number, number, number];
-            const nSolutions = solveCubic(coeff0 - ratio, coeff1, coeff2, coeff3, solutions);
-            const param = getParamFromCubicSolution(solutions, nSolutions, ratio);
-            // Solves Y.
-            const y = bezierInterpolate(prevValue.value, u0y, u1y, nextValue.value, param);
-            return y;
-        }
-    }
-    }
-}
-
-function isLeftTangentWeightEnabled (tangentWeightMode: TangentWeightMode) {
-    return (tangentWeightMode & TangentWeightMode.LEFT) !== 0;
-}
-
-function isRightTangentWeightEnabled (tangentWeightMode: TangentWeightMode) {
-    return (tangentWeightMode & TangentWeightMode.RIGHT) !== 0;
-}
-
-function bezierInterpolate (p0: number, p1: number, p2: number, p3: number, t: number) {
-    const u = 1 - t;
-    const coeff0 = u * u * u;
-    const coeff1 = 3 * u * u * t;
-    const coeff2 = 3 * u * t * t;
-    const coeff3 = t * t * t;
-    return coeff0 * p0 + coeff1 * p1 + coeff2 * p2 + coeff3 * p3;
-}
-
-function getParamFromCubicSolution (solutions: readonly [number, number, number], solutionsCount: number, x: number) {
-    let param = x;
-    if (solutionsCount === 1) {
-        param = solutions[0];
-    } else {
-        param = -Infinity;
-        for (let iSolution = 0; iSolution < solutionsCount; ++iSolution) {
-            const solution = solutions[iSolution];
-            if (solution >= 0.0 && solution <= 1.0) {
-                if (solution > param) {
-                    param = solution;
-                }
-            }
-        }
-        if (param === -Infinity) {
-            param = 0.0;
-        }
-    }
-    return param;
-}

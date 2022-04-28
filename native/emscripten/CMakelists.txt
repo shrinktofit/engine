@@ -1,0 +1,43 @@
+cmake_minimum_required (VERSION 3.6)
+
+project (cc_wasm)
+
+option(BUILD_WASM "Build WASM." on)
+
+set(CMAKE_VERBOSE_MAKEFILE on)
+
+set (emccLinkerFlags "\
+    -O0 \
+    --memory-init-file 0 \
+    --bind \
+    -s MODULARIZE=1 \
+    -s EXPORT_ES6=0 \
+    --llvm-lto 1 \
+    --g3 \
+    -gsource-map \
+    -s ASSERTIONS=1 \
+    ")
+if (BUILD_WASM)
+else ()
+    set (emccLinkerFlags "${emccLinkerFlags} -s WASM=0")
+endif ()
+
+file(GLOB_RECURSE sourceFiles
+    "./bindings.cpp"
+    "../cocos/curve/Curve.h"
+    "../cocos/curve/Curve.cpp"
+    "../cocos/curve/RealCurve.h"
+    "../cocos/curve/RealCurve.cpp"
+    "../cocos/curve/private/SolveCubic.h"
+    "../cocos/curve/private/SolveCubic.cpp"
+)
+
+add_executable (cc_wasm ${sourceFiles})
+set_target_properties (cc_wasm PROPERTIES CXX_STANDARD 14)
+set_target_properties (cc_wasm PROPERTIES SUFFIX ".js")
+set_target_properties (cc_wasm PROPERTIES LINK_FLAGS ${emccLinkerFlags})
+target_include_directories (cc_wasm PRIVATE
+    "../cocos"
+)
+
+target_compile_definitions (cc_wasm PRIVATE CC_PLATFORM=9)

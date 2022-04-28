@@ -91,6 +91,9 @@ describe('Curve', () => {
 
     test('Default keyframe value', () => {
         const curve = new RealCurve();
+        expect(curve.preExtrapolation).toBe(ExtrapolationMode.CLAMP);
+        expect(curve.postExtrapolation).toBe(ExtrapolationMode.CLAMP);
+        expect(curve.keyFramesCount).toBe(0);
         curve.addKeyFrame(0, {});
         const keyframeValue = curve.getKeyframeValue(0);
         expect(keyframeValue.value).toBe(0.0);
@@ -102,6 +105,30 @@ describe('Curve', () => {
         expect(keyframeValue.easingMethod).toBe(EasingMethod.LINEAR);
     });
 
+    test('Real keyframe baseline test', () => {
+        const curve = new RealCurve();
+        curve.addKeyFrame(0, {});
+        const propertyTest = <K extends keyof RealKeyframeValue>(
+            k: K,
+            v: RealKeyframeValue[K],
+        ) => {
+            const keyframeValue = curve.getKeyframeValue(0);
+            keyframeValue[k] = v;
+            expect(keyframeValue[k]).toBe(v);
+            const another = curve.getKeyframeValue(0);
+            expect(another[k]).toBe(v);
+        };
+
+        propertyTest('value', 0.3);
+        propertyTest('interpolationMode', RealInterpolationMode.CUBIC);
+        propertyTest('tangentWeightMode', TangentWeightMode.RIGHT);
+        propertyTest('leftTangent', 0.4);
+        propertyTest('leftTangentWeight', 0.5);
+        propertyTest('rightTangent', 0.6);
+        propertyTest('rightTangentWeight', 0.7);
+        propertyTest('easingMethod', EasingMethod.BACK_OUT_IN);
+    })
+
     describe('Evaluation', () => {
         test('Empty curve', () => {
             const curve = new RealCurve();
@@ -111,8 +138,8 @@ describe('Curve', () => {
         test('Interpolation mode: constant', () => {
             const curve = new RealCurve();
             curve.assignSorted([
-                [0.2, createRealKeyframeValueLike({ value: 0.7, interpolationMode: RealInterpolationMode.CONSTANT, })],
-                [0.4, createRealKeyframeValueLike({ value: 0.8, interpolationMode: RealInterpolationMode.LINEAR, })],
+                [0.2, { value: 0.7, interpolationMode: RealInterpolationMode.CONSTANT, }],
+                [0.4, { value: 0.8, interpolationMode: RealInterpolationMode.LINEAR, }],
             ]);
             expect(curve.evaluate(0.28)).toBe(0.7);
         });
@@ -223,14 +250,14 @@ describe('Curve', () => {
             curve.postExtrapolation = ExtrapolationMode.LOOP;
 
             curve.assignSorted([
-                [0.2, ({ value: 5.0 })],
-                [0.36, ({ value: 3.14 })],
+                [0.2, { value: 5.0 }],
+                [0.36, { value: 3.14 }],
             ]);
             expect(curve.evaluate(-2.7)).toBeCloseTo(curve.evaluate(0.34));
             expect(curve.evaluate(4.6)).toBeCloseTo(curve.evaluate(0.28));
 
             curve.assignSorted([
-                [0.2, ({ value: 5.0 })],
+                [0.2, { value: 5.0 }],
             ]);
             // Fall back to clamp
             expect(curve.evaluate(0.05)).toBeCloseTo(5.0);

@@ -333,6 +333,14 @@ cocos_source_files(
     cocos/base/Vector.h
 )
 
+##### curve
+cocos_source_files(
+    cocos/curve/Curve.h
+    cocos/curve/Curve.cpp
+    cocos/curve/RealCurve.h
+    cocos/curve/RealCurve.cpp
+)
+
 ############ application
 cocos_source_files(
     cocos/application/BaseApplication.h
@@ -1853,6 +1861,8 @@ cocos_source_files(
                  cocos/bindings/manual/jsb_xmlhttprequest.h
                  cocos/bindings/manual/jsb_pipeline_manual.h
     NO_WERROR    cocos/bindings/manual/jsb_pipeline_manual.cpp
+    NO_WERROR    cocos/bindings/manual/jsb_curve_manual.cpp
+                 cocos/bindings/manual/jsb_curve_manual.h
 )
 
 if(USE_SOCKET)

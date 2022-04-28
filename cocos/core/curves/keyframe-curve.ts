@@ -77,7 +77,7 @@ export class KeyframeCurve<TKeyframeValue> implements CurveBase, Iterable<KeyFra
      * @zh
      * 返回关键帧对的迭代器。
      */
-    public keyframes (): Iterable<KeyFrame<TKeyframeValue>> {
+    public keyframes (): Iterable<Readonly<KeyFrame<Readonly<TKeyframeValue>>>> {
         return this;
     }
 

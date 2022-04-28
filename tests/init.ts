@@ -77,6 +77,7 @@ import '../cocos/core/gfx/empty/empty-device';
 import '../cocos/3d/skeletal-animation/data-pool-manager';
 import '../cocos/core/animation';
 import '../cocos/2d/utils/dynamic-atlas/atlas-manager';
+import { wait } from '../cocos/core/curves/real-curve.emscripten';
 
 const canvas = document.createElement('canvas');
 const div = document.createElement('div');
@@ -92,3 +93,7 @@ const config: IGameConfig = {
 }
 game.init(config);
 game.run();
+
+globalThis.waitThis((async () => {
+    await wait();
+})());

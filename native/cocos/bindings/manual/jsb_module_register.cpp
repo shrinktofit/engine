@@ -35,6 +35,7 @@
 #include "cocos/bindings/jswrapper/SeApi.h"
 #include "cocos/bindings/manual/jsb_cocos_manual.h"
 #include "cocos/bindings/manual/jsb_conversions.h"
+#include "cocos/bindings/manual/jsb_curve_manual.h"
 #include "cocos/bindings/manual/jsb_gfx_manual.h"
 #include "cocos/bindings/manual/jsb_global.h"
 #include "cocos/bindings/manual/jsb_network_manual.h"
@@ -114,6 +115,8 @@ bool jsb_register_all_modules() {
     se->addRegisterCallback(register_platform_bindings);
     se->addRegisterCallback(register_all_gfx);
     se->addRegisterCallback(register_all_gfx_manual);
+
+    se->addRegisterCallback(register_curve_manual);
 
     se->addRegisterCallback(register_all_network);
     se->addRegisterCallback(register_all_network_manual);
