@@ -14,3 +14,10 @@ export type {
 } from '../../cocos/core/animation/marionette/blend-2d';
 
 export * from '../../cocos/core/animation/marionette/asset-creation';
+
+export {
+    MotionPreviewer,
+    MotionPreviewerTimelineStats,
+    TransitionPreviewer,
+    TransitionPreviewerTimelineStats,
+} from '../src/marionette/preview';
