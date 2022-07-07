@@ -24,7 +24,7 @@
  */
 
 import { ccclass, serializable } from 'cc.decorator';
-import { DEBUG } from 'internal:constants';
+import { DEBUG, TEST } from 'internal:constants';
 import { Asset } from '../assets/asset';
 import { SpriteFrame } from '../../2d/assets/sprite-frame';
 import { error, errorID, getError, warn, warnID } from '../platform/debug';
@@ -51,6 +51,7 @@ import { array } from '../utils/js';
 import type { AnimationMask } from './marionette/animation-mask';
 import { getGlobalAnimationManager } from './global-animation-manager';
 import { EmbeddedPlayableState, EmbeddedPlayer } from './embedded-player/embedded-player';
+import { RootMotionOutput } from './marionette/root-motion';
 
 export declare namespace AnimationClip {
     export interface IEvent {
@@ -691,14 +692,20 @@ export class AnimationClip extends Asset {
             this.syncLegacyData();
         }
 
-        const rootMotionTrackExcludes: Track[] = [];
+        if (!TEST && !(this.name === 'Standing Run Forward Stop')) {
+            rootMotionOptions = undefined;
+        }
+        let rootBonePath = '';
         let rootMotionEvaluation: RootMotionEvaluation | undefined;
-        if (rootMotionOptions) {
-            rootMotionEvaluation = this._createRootMotionEvaluation(
-                target,
-                rootMotionOptions,
-                rootMotionTrackExcludes,
-            );
+        if (rootMotionOptions && target instanceof Node) {
+            const rootMotionInfo = this._getRootBoneInfo(target);
+            if (rootMotionInfo) {
+                rootBonePath = rootMotionInfo.rootBonePath;
+                rootMotionEvaluation = this._createRootMotionEvaluation(
+                    rootMotionInfo.rootBonePath,
+                    rootMotionOptions.output,
+                );
+            }
         }
 
         const trackEvalStatues: TrackEvalStatus[] = [];
@@ -708,9 +715,15 @@ export class AnimationClip extends Asset {
         const nTracks = tracks.length;
         for (let iTrack = 0; iTrack < nTracks; ++iTrack) {
             const track = tracks[iTrack];
-            if (rootMotionTrackExcludes.includes(track)) {
-                continue;
+
+            if (rootBonePath) {
+                const { [trackBindingTag]: trackBinding } = track;
+                const trsPath = trackBinding.parseTrsPath();
+                if (trsPath && trsPath.node === rootBonePath) {
+                    continue;
+                }
             }
+
             if (Array.from(track.channels()).every(({ curve }) => curve.keyFramesCount === 0)) {
                 continue;
             }
@@ -726,7 +739,7 @@ export class AnimationClip extends Asset {
         }
 
         if (this._exoticAnimation) {
-            exoticAnimationEvaluator = this._exoticAnimation.createEvaluator(binder);
+            exoticAnimationEvaluator = this._exoticAnimation.createEvaluator(binder, rootBonePath);
         }
 
         const evaluation = new AnimationClipEvaluation(
@@ -738,11 +751,7 @@ export class AnimationClip extends Asset {
         return evaluation;
     }
 
-    private _createRootMotionEvaluation (
-        target: unknown,
-        rootMotionOptions: RootMotionOptions,
-        rootMotionTrackExcludes: Track[],
-    ) {
+    private _getRootBoneInfo (target: unknown) {
         if (!(target instanceof Node)) {
             errorID(3920);
             return undefined;
@@ -760,11 +769,19 @@ export class AnimationClip extends Asset {
             return undefined;
         }
 
-        // const { } = rootMotionOptions;
+        return {
+            rootBonePath,
+            rootBone,
+        };
+    }
 
+    private _createRootMotionEvaluation (
+        rootBonePath: string,
+        rootMotionOutput: RootMotionOutput,
+    ) {
         const boneTransform = new BoneTransform();
         const rootMotionsTrackEvaluations: TrackEvalStatus[] = [];
-        const { _tracks: tracks } = this;
+        const { _tracks: tracks, _exoticAnimation: exoticAnimation } = this;
         const nTracks = tracks.length;
         for (let iTrack = 0; iTrack < nTracks; ++iTrack) {
             const track = tracks[iTrack];
@@ -777,7 +794,6 @@ export class AnimationClip extends Asset {
             if (bonePath !== rootBonePath) {
                 continue;
             }
-            rootMotionTrackExcludes.push(track);
             const property = trsPath.property;
             const trackTarget = createBoneTransformBinding(boneTransform, property);
             if (!trackTarget) {
@@ -789,11 +805,27 @@ export class AnimationClip extends Asset {
                 trackEval,
             });
         }
+        let exoticRootMotionEvaluation: ExoticAnimationEvaluator | undefined;
+        if (exoticAnimation) {
+            exoticRootMotionEvaluation = exoticAnimation.__createEvaluatorOnlyRoot((trackBinding) => {
+                const trsPath = trackBinding.parseTrsPath();
+                if (!trsPath) {
+                    return undefined;
+                }
+                const { property } = trsPath;
+                const trackTarget = createBoneTransformBinding(boneTransform, property);
+                if (!trackTarget) {
+                    return undefined;
+                }
+                return trackTarget;
+            }, rootBonePath);
+        }
         const rootMotionEvaluation = new RootMotionEvaluation(
-            rootBone,
+            rootMotionOutput,
             this._duration,
             boneTransform,
             rootMotionsTrackEvaluations,
+            exoticRootMotionEvaluation,
         );
 
         return rootMotionEvaluation;
@@ -814,7 +846,10 @@ export class AnimationClip extends Asset {
                     rank: 0,
                 };
             }
-        });
+        }).concat((this[exoticAnimationTag]?._nodeAnimations ?? []).map((t) => t.path).map((p) => ({
+            path: p,
+            rank: p.split('/').length,
+        })));
 
         paths.sort((a, b) => a.rank - b.rank);
 
@@ -929,6 +964,7 @@ interface AnimationClipEvalContext {
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface RootMotionOptions {
+    output: RootMotionOutput;
 }
 
 type ExoticAnimationEvaluator = ReturnType<ExoticAnimation['createEvaluator']>;
@@ -1160,10 +1196,10 @@ class AnimationClipEvaluation {
      * @param startTime Start time.
      * @param endTime End time.
      */
-    public evaluateRootMotion (time: number, motionLength: number) {
+    public evaluateRootMotion (time: number, motionLength: number, weight: number) {
         const { _rootMotionEvaluation: rootMotionEvaluation } = this;
         if (rootMotionEvaluation) {
-            rootMotionEvaluation.evaluate(time, motionLength);
+            rootMotionEvaluation.evaluate(time, motionLength, weight);
         }
     }
 
@@ -1210,39 +1246,35 @@ const motionTransformCache = new Mat4();
 
 class RootMotionEvaluation {
     constructor (
-        private _rootBone: Node,
+        private _output: RootMotionOutput,
         private _duration: number,
         private _boneTransform: BoneTransform,
         private _trackEvalStatuses: TrackEvalStatus[],
+        private _exoticRootMotionEvaluation: ExoticAnimationEvaluator | undefined,
     ) {
 
     }
 
-    public evaluate (time: number, motionLength: number) {
+    public evaluate (time: number, motionLength: number, weight: number) {
         const motionTransform = this._calcMotionTransform(time, motionLength, this._motionTransformCache);
 
         const {
             _translationMotionCache: translationMotion,
             _rotationMotionCache: rotationMotion,
             _scaleMotionCache: scaleMotion,
-            _rootBone: rootBone,
+            _output: output,
         } = this;
 
         Mat4.toRTS(motionTransform, rotationMotion, translationMotion, scaleMotion);
 
-        Vec3.add(translationMotion, translationMotion, rootBone.position);
-        rootBone.setPosition(translationMotion);
-
-        Quat.multiply(rotationMotion, rotationMotion, rootBone.rotation);
-        rootBone.setRotation(rotationMotion);
-
-        Vec3.multiply(scaleMotion, scaleMotion, rootBone.scale);
-        rootBone.setScale(scaleMotion);
+        Vec3.add(output.position, output.position, translationMotion);
+        Quat.multiply(output.rotation, output.rotation, rotationMotion);
     }
 
     private _calcMotionTransform (time: number, motionLength: number, outTransform: Mat4) {
         const { _duration: duration } = this;
-        const remainLength = duration - time;
+        assertIsTrue(time >= 0 && motionLength >= 0);
+        const remainLength = (1.0 - frac(time / duration)) * duration;
         assertIsTrue(remainLength >= 0);
         const startTransform = this._evaluateAt(time, this._startTransformCache);
         if (motionLength < remainLength) {
@@ -1281,14 +1313,27 @@ class RootMotionEvaluation {
     private _evaluateAt (time: number, outTransform: Mat4) {
         const {
             _trackEvalStatuses: trackEvalStatuses,
+            _exoticRootMotionEvaluation: exoticRootMotionEvaluation,
+            _duration: duration,
         } = this;
+
+        const exclusiveRemainder = (x : number, y: number) => {
+            if (x === 0) {
+                return x;
+            }
+            const remainder = x % y;
+            return remainder === 0 ? y : remainder;
+        };
+
+        const clipTime = exclusiveRemainder(time, duration);
 
         const nTrackEvalStatuses = trackEvalStatuses.length;
         for (let iTrackEvalStatus = 0; iTrackEvalStatus < nTrackEvalStatuses; ++iTrackEvalStatus) {
             const { trackEval, binding } = trackEvalStatuses[iTrackEvalStatus];
-            const value = trackEval.evaluate(time, binding);
+            const value = trackEval.evaluate(clipTime, binding);
             binding.setValue(value);
         }
+        exoticRootMotionEvaluation?.evaluate(clipTime);
 
         this._boneTransform.getTransform(outTransform);
         return outTransform;
@@ -1302,6 +1347,10 @@ class RootMotionEvaluation {
     private _translationMotionCache = new Vec3();
     private _rotationMotionCache = new Quat();
     private _scaleMotionCache = new Vec3();
+}
+
+function frac (v: number) {
+    return v - Math.trunc(v);
 }
 
 function relativeTransform (out: Mat4, from: Mat4, to: Mat4) {

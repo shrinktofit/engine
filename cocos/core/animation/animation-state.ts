@@ -36,6 +36,7 @@ import { AnimationMask } from './marionette/animation-mask';
 import { PoseOutput } from './pose-output';
 import { BlendStateBuffer } from '../../3d/skeletal-animation/skeletal-animation-blending';
 import { getGlobalAnimationManager } from './global-animation-manager';
+import { RootMotionOutput } from './marionette/root-motion';
 
 /**
  * @en The event type supported by Animation
@@ -332,7 +333,7 @@ export class AnimationState extends Playable {
         return this._curveLoaded;
     }
 
-    public initialize (root: Node, blendStateBuffer?: BlendStateBuffer, mask?: AnimationMask) {
+    public initialize (root: Node, blendStateBuffer?: BlendStateBuffer, mask?: AnimationMask, rootMotionOutput?: RootMotionOutput) {
         if (this._curveLoaded) { return; }
         this._curveLoaded = true;
         if (this._poseOutput) {
@@ -377,6 +378,9 @@ export class AnimationState extends Playable {
                 target: root,
                 pose: this._poseOutput ?? undefined,
                 mask,
+                rootMotion: rootMotionOutput ? {
+                    output: rootMotionOutput,
+                } : undefined,
             });
         }
 
@@ -511,6 +515,17 @@ export class AnimationState extends Playable {
         }
         this._sampleEmbeddedPlayers(info);
         return info;
+    }
+
+    public __sampleRootMotion (from: number, length: number, weight: number) {
+        assertIsTrue(this._wrapMode === WrapMode.Normal || this._wrapMode === WrapMode.Loop, 'TODO: more wrap mode support?');
+        if (this._wrapMode === WrapMode.Loop) {
+            this._clipEval?.evaluateRootMotion(from, length, weight);
+        } else {
+            const fromNormalized = Math.min(from, this.duration);
+            const lengthNormalized = Math.min(this.duration - fromNormalized, length);
+            this._clipEval?.evaluateRootMotion(fromNormalized, lengthNormalized, weight);
+        }
     }
 
     protected onPlay () {

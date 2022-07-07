@@ -104,9 +104,9 @@ export class AnimationBlendEval implements MotionEval {
         };
     }
 
-    public sample (progress: number, weight: number) {
+    public sample (progress: number, weight: number, lastProgress: number) {
         for (let iChild = 0; iChild < this._childEvaluators.length; ++iChild) {
-            this._childEvaluators[iChild]?.sample(progress, weight * this._weights[iChild]);
+            this._childEvaluators[iChild]?.sample(progress, weight * this._weights[iChild], lastProgress);
         }
     }
 

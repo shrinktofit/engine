@@ -804,8 +804,8 @@ export class Vec3 extends ValueType {
      * @zh 返回当前向量的字符串表示。
      * @returns The string with vector information
      */
-    public toString () {
-        return `(${this.x.toFixed(2)}, ${this.y.toFixed(2)}, ${this.z.toFixed(2)})`;
+    public toString (fractionDigits = 2) {
+        return `(${this.x.toFixed(fractionDigits)}, ${this.y.toFixed(fractionDigits)}, ${this.z.toFixed(fractionDigits)})`;
     }
 
     /**

@@ -5,6 +5,7 @@ import type { BindContext } from './parametric';
 import type { BlendStateBuffer } from '../../../3d/skeletal-animation/skeletal-animation-blending';
 import type { ClipStatus } from './graph-eval';
 import type { RuntimeID } from './graph-debug';
+import { RootMotionOutput } from './root-motion';
 
 export interface MotionEvalContext extends BindContext {
     node: Node;
@@ -12,6 +13,8 @@ export interface MotionEvalContext extends BindContext {
     blendBuffer: BlendStateBuffer;
 
     mask?: AnimationMask;
+
+    rootMotionOutput?: RootMotionOutput;
 }
 
 export interface MotionEval {
@@ -21,7 +24,7 @@ export interface MotionEval {
     readonly runtimeId?: RuntimeID;
 
     readonly duration: number;
-    sample(progress: number, baseWeight: number): void;
+    sample(progress: number, baseWeight: number, lastProgress: number): void;
     getClipStatuses(baseWeight: number): Iterator<ClipStatus>;
 }
 

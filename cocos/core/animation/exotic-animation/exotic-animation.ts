@@ -23,8 +23,15 @@ function throwIfSplitMethodIsNotValid (): never {
  */
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}ExoticAnimation`)
 export class ExoticAnimation {
-    public createEvaluator (binder: Binder) {
-        return new ExoticTrsAnimationEvaluator(this._nodeAnimations, binder);
+    public createEvaluator (binder: Binder, ignoreRoot?: string) {
+        return new ExoticTrsAnimationEvaluator(
+            typeof ignoreRoot === 'string' ? this._nodeAnimations.filter(({ path }) => path !== ignoreRoot) : this._nodeAnimations,
+            binder,
+        );
+    }
+
+    public __createEvaluatorOnlyRoot (binder: Binder, root: string) {
+        return new ExoticTrsAnimationEvaluator(this._nodeAnimations.filter(({ path }) => path === root), binder);
     }
 
     public addNodeAnimation (path: string) {
@@ -57,7 +64,7 @@ export class ExoticAnimation {
     }
 
     @serializable
-    private _nodeAnimations: ExoticNodeAnimation[] = [];
+    public _nodeAnimations: ExoticNodeAnimation[] = [];
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}ExoticNodeAnimation`)

@@ -21,6 +21,7 @@ import { AnimationClip } from '../animation-clip';
 import type { AnimationController } from './animation-controller';
 import { StateMachineComponent } from './state-machine-component';
 import { InteractiveState } from './state';
+import { applyRootMotionOutput, resetRootMotionOutput, RootMotionOutput } from './root-motion';
 
 export class AnimationGraphEval {
     private declare _layerEvaluations: LayerEval[];
@@ -29,6 +30,8 @@ export class AnimationGraphEval {
         duration: 0.0,
         time: 0.0,
     };
+    private _root: Node;
+    private _rootMotionOutput = new RootMotionOutput();
 
     constructor (graph: AnimationGraph, root: Node, controller: AnimationController) {
         if (DEBUG) {
@@ -39,6 +42,8 @@ export class AnimationGraphEval {
                 );
             }
         }
+
+        this._root = root;
 
         for (const [name, variable] of graph.variables) {
             const varInstance = this._varInstances[name] = new VarInstance(variable.type, variable.value);
@@ -55,6 +60,7 @@ export class AnimationGraphEval {
             controller,
             blendBuffer: this._blendBuffer,
             node: root,
+            rootMotionOutput: this._rootMotionOutput,
             getVar: (id: string): VarInstance | undefined => this._varInstances[id],
             triggerResetFn: (name: string) => {
                 this.setValue(name, false);
@@ -84,11 +90,15 @@ export class AnimationGraphEval {
         const {
             _blendBuffer: blendBuffer,
             _layerEvaluations: layerEvaluations,
+            _rootMotionOutput: rootMotionOutput,
+            _root: rootMotionTarget,
         } = this;
         graphDebugGroup(`New frame started.`);
         if (GRAPH_DEBUG_ENABLED) {
             clearWeightsStats();
         }
+
+        resetRootMotionOutput(rootMotionOutput);
         const nLayers = layerEvaluations.length;
         for (let iLayer = 0; iLayer < nLayers; ++iLayer) {
             const layerEval = layerEvaluations[iLayer];
@@ -109,6 +119,9 @@ export class AnimationGraphEval {
             graphDebug(`Weights: ${getWeightsStats()}`);
         }
         this._blendBuffer.apply();
+
+        applyRootMotionOutput(rootMotionTarget, rootMotionOutput);
+
         graphDebugGroupEnd();
     }
 
@@ -261,6 +274,8 @@ interface LayerContext extends BindContext {
      * The blend buffer.
      */
     blendBuffer: BlendStateBuffer;
+
+    rootMotionOutput?: RootMotionOutput;
 
     /**
      * The mask applied to this layer.
@@ -1613,10 +1628,12 @@ export class MotionStateEval extends StateEval {
     }
 
     public resetToPort (at: number) {
+        this._toPort.lastProgress = at;
         this._toPort.progress = at;
     }
 
     public finishTransition () {
+        this._fromPort.lastProgress = this._toPort.progress;
         this._fromPort.progress = this._toPort.progress;
         if (DEBUG) {
             // Well, this statement exists for debugging purpose.
@@ -1631,7 +1648,8 @@ export class MotionStateEval extends StateEval {
     }
 
     public sampleFromPort (weight: number) {
-        this._source?.sample(this._fromPort.progress, weight);
+        this._source?.sample(this._fromPort.progress, weight, this._fromPort.lastProgress);
+        this._fromPort.lastProgress = this._fromPort.progress;
     }
 
     public sampleToPort (weight: number) {
@@ -1639,7 +1657,8 @@ export class MotionStateEval extends StateEval {
             // See `this.finishTransition()`
             assertIsTrue(!Number.isNaN(this._toPort.progress));
         }
-        this._source?.sample(this._toPort.progress, weight);
+        this._source?.sample(this._toPort.progress, weight, this._toPort.lastProgress);
+        this._toPort.lastProgress = this._toPort.progress;
     }
 
     public getClipStatuses (baseWeight: number): Iterable<ClipStatus> {
@@ -1658,10 +1677,12 @@ export class MotionStateEval extends StateEval {
     private _speed = 1.0;
     private _fromPort: MotionEvalPort = {
         progress: 0.0,
+        lastProgress: 0.0,
         statusCache: createStateStatusCache(),
     };
     private _toPort: MotionEvalPort = {
         progress: 0.0,
+        lastProgress: 0.0,
         statusCache: createStateStatusCache(),
     };
 
@@ -1685,6 +1706,7 @@ function normalizeProgress (progress: number) {
 }
 
 interface MotionEvalPort {
+    lastProgress: number;
     progress: number;
     statusCache: MotionStateStatus;
 }

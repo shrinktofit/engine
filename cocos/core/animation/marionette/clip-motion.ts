@@ -46,7 +46,7 @@ class ClipMotionEval implements MotionEval {
     constructor (context: MotionEvalContext, clip: AnimationClip) {
         this.duration = clip.duration / clip.speed;
         this._state = new AnimationState(clip);
-        this._state.initialize(context.node, context.blendBuffer, context.mask);
+        this._state.initialize(context.node, context.blendBuffer, context.mask, context.rootMotionOutput);
     }
 
     public getClipStatuses (baseWeight: number): Iterator<ClipStatus, any, undefined> {
@@ -77,7 +77,7 @@ class ClipMotionEval implements MotionEval {
         return this._state.time / this.duration;
     }
 
-    public sample (progress: number, weight: number) {
+    public sample (progress: number, weight: number, lastProgress: number) {
         if (weight === 0.0) {
             return;
         }
@@ -88,6 +88,8 @@ class ClipMotionEval implements MotionEval {
         this._state.time = time;
         this._state.weight = weight;
         this._state.sample();
+        const rootMotionLength = (progress - lastProgress) * this._state.duration;
+        this._state.__sampleRootMotion(time, rootMotionLength, weight);
         this._state.weight = 0.0;
     }
 }
