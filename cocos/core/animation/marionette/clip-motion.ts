@@ -1,8 +1,9 @@
 import { editorExtrasTag } from '../../data';
 import { ccclass, type } from '../../data/class-decorator';
 import { EditorExtendable } from '../../data/editor-extendable';
-import { AnimationClip } from '../animation-clip';
+import { AnimationClip, AnimationClipEvalContext } from '../animation-clip';
 import { AnimationState } from '../animation-state';
+import { PoseOutput } from '../pose-output';
 import { createEval } from './create-eval';
 import { getMotionRuntimeID, graphDebug, GRAPH_DEBUG_ENABLED, pushWeight, RUNTIME_ID_ENABLED } from './graph-debug';
 import { ClipStatus } from './graph-eval';
@@ -46,7 +47,23 @@ class ClipMotionEval implements MotionEval {
     constructor (context: MotionEvalContext, clip: AnimationClip) {
         this.duration = clip.duration / clip.speed;
         this._state = new AnimationState(clip);
-        this._state.initialize(context.node, context.blendBuffer, context.mask, context.rootMotionOutput);
+        const poseOutput = new PoseOutput(context.blendBuffer);
+        this._poseOutput = poseOutput;
+        const clipEvalContext: AnimationClipEvalContext = {
+            originNode: context.node,
+            poseOutput,
+            namedCurveOutput: {
+                bind: (curveName) => {
+                    const writer = context.blendBuffer.createNamedCurveWriter(curveName, this._state);
+                    return writer;
+                },
+            },
+            mask: context.mask,
+            rootMotion: context.rootMotionOutput ? {
+                output: context.rootMotionOutput,
+            } : undefined,
+        };
+        this._state.initialize(clipEvalContext);
     }
 
     public getClipStatuses (baseWeight: number): Iterator<ClipStatus, any, undefined> {
@@ -87,9 +104,12 @@ class ClipMotionEval implements MotionEval {
         const time = this._state.duration * progress;
         this._state.time = time;
         this._state.weight = weight;
+        this._poseOutput.weight = weight;
         this._state.sample();
         const rootMotionLength = (progress - lastProgress) * this._state.duration;
         this._state.__sampleRootMotion(time, rootMotionLength, weight);
         this._state.weight = 0.0;
     }
+
+    private declare _poseOutput: PoseOutput;
 }

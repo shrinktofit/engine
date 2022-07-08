@@ -362,19 +362,21 @@ export class AnimationClip extends Asset {
      */
     public createEvaluator (context: AnimationClipEvalContext) {
         const {
-            target,
+            originNode: target,
         } = context;
+
+        // We now only enable pose blend on clips imported from external(for those `this.enableTrsBlending === true`)
+        const contextTrimmed: AnimationClipEvalContext = {
+            ...context,
+            poseOutput: this.enableTrsBlending ? context.poseOutput : undefined,
+        };
 
         const binder: Binder = (binding: TrackBinding) => {
             if (context.mask && binding.isMaskedOff(context.mask)) {
                 return undefined;
             }
 
-            const trackTarget = binding.createRuntimeBinding(
-                target,
-                this.enableTrsBlending ? context.pose : undefined,
-                false,
-            );
+            const trackTarget = binding.createRuntimeBinding(contextTrimmed);
             if (DEBUG && !trackTarget) {
                 // If we got a null track target here, we should already have warn logged,
                 // To elaborate on error details, we warn here as well.
@@ -383,7 +385,7 @@ export class AnimationClip extends Asset {
                 warnID(
                     3937,
                     this.name,
-                    (context.target instanceof Node) ? context.target.name : context.target,
+                    (context.originNode instanceof Node) ? context.originNode.name : context.originNode,
                 );
             }
             return trackTarget ?? undefined;
@@ -940,16 +942,20 @@ interface TrackEvalStatus {
     trackEval: TrackEval;
 }
 
-interface AnimationClipEvalContext {
-    /**
-     * The output pose.
-     */
-    pose?: PoseOutput;
-
+export interface AnimationClipEvalContext {
     /**
      * The root animating target(should be scene node now).
      */
-    target: unknown;
+    originNode: Node;
+
+    /**
+     * The pose output.
+     */
+    poseOutput?: PoseOutput;
+
+    namedCurveOutput?: {
+        bind(curveName: string): RuntimeBinding | null;
+    };
 
     /**
      * The animation mask applied.

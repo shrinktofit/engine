@@ -25,7 +25,7 @@
 
 import { EDITOR } from 'internal:constants';
 import { Node } from '../scene-graph/node';
-import { AnimationClip } from './animation-clip';
+import { AnimationClip, AnimationClipEvalContext } from './animation-clip';
 import { Playable } from './playable';
 import { WrapMode, WrapModeMask, WrappedInfo } from './types';
 import { legacyCC } from '../global-exports';
@@ -333,7 +333,19 @@ export class AnimationState extends Playable {
         return this._curveLoaded;
     }
 
-    public initialize (root: Node, blendStateBuffer?: BlendStateBuffer, mask?: AnimationMask, rootMotionOutput?: RootMotionOutput) {
+    /**
+     * TODO
+     * @param originNode
+     */
+    public initialize (originNode: Node): void;
+
+    /**
+     *
+     * @internal TODO
+     */
+    public initialize (clipEvalContext: AnimationClipEvalContext): void;
+
+    public initialize (clipEvalContextOrOriginNode: Node | AnimationClipEvalContext) {
         if (this._curveLoaded) { return; }
         this._curveLoaded = true;
         if (this._poseOutput) {
@@ -351,7 +363,6 @@ export class AnimationState extends Playable {
             this._clipEmbeddedPlayerEval.destroy();
             this._clipEmbeddedPlayerEval = undefined;
         }
-        this._targetNode = root;
         const clip = this._clip;
 
         this.duration = clip.duration;
@@ -369,19 +380,27 @@ export class AnimationState extends Playable {
             this.repeatCount = 1;
         }
 
+        const originNode = clipEvalContextOrOriginNode instanceof Node
+            ? clipEvalContextOrOriginNode
+            : clipEvalContextOrOriginNode.originNode;
+
         if (!this._doNotCreateEval) {
-            const pose = blendStateBuffer ?? getGlobalAnimationManager()?.blendState ?? null;
-            if (pose) {
-                this._poseOutput = new PoseOutput(pose);
+            let clipEvalContext: AnimationClipEvalContext;
+            if (!(clipEvalContextOrOriginNode instanceof Node)) {
+                clipEvalContext = clipEvalContextOrOriginNode;
+            } else {
+                const pose = getGlobalAnimationManager()?.blendState ?? null;
+                let poseOutput: PoseOutput | undefined;
+                if (poseOutput) {
+                    poseOutput = new PoseOutput(pose);
+                    this._poseOutput = poseOutput;
+                }
+                clipEvalContext = {
+                    originNode,
+                    poseOutput,
+                };
             }
-            this._clipEval = clip.createEvaluator({
-                target: root,
-                pose: this._poseOutput ?? undefined,
-                mask,
-                rootMotion: rootMotionOutput ? {
-                    output: rootMotionOutput,
-                } : undefined,
-            });
+            this._clipEval = clip.createEvaluator(clipEvalContext);
         }
 
         if (!(EDITOR && !legacyCC.GAME_VIEW)) {
@@ -394,6 +413,8 @@ export class AnimationState extends Playable {
             this._clipEmbeddedPlayerEval = clip.createEmbeddedPlayerEvaluator(this._targetNode);
             this._clipEmbeddedPlayerEval.notifyHostSpeedChanged(this._speed);
         }
+
+        this._targetNode = originNode;
     }
 
     public destroy () {

@@ -1,4 +1,4 @@
-import { BlendStateBuffer, LegacyBlendStateBuffer } from '../../../cocos/3d/skeletal-animation/skeletal-animation-blending';
+import { BlendStateBuffer, LayeredBlendStateBuffer, LegacyBlendStateBuffer, NamedCurveHost } from '../../../cocos/3d/skeletal-animation/skeletal-animation-blending';
 import { Node } from '../../../cocos/core';
 import { Motion, MotionEval } from '../../../cocos/core/animation/marionette/motion';
 import { createEval } from '../../../cocos/core/animation/marionette/create-eval';
@@ -13,12 +13,15 @@ import type { RuntimeID } from '../../../cocos/core/animation/marionette/graph-d
 class AnimationGraphPartialPreviewer {
     constructor(root: Node) {
         this._root = root;
+        this._namedCurveHost = new NamedCurveHost();
+        this._blendBuffer = new LayeredBlendStateBuffer(this._namedCurveHost);
     }
 
     public destroy() {
     }
 
     public evaluate() {
+        this._blendBuffer.commitLayerChanges(0, 1.0);
         this._blendBuffer.apply();
     }
 
@@ -65,7 +68,9 @@ class AnimationGraphPartialPreviewer {
 
     private _root: Node;
 
-    private _blendBuffer: BlendStateBuffer = new LegacyBlendStateBuffer();
+    private _namedCurveHost: NamedCurveHost;
+
+    private _blendBuffer: LayeredBlendStateBuffer;
 
     private _varInstances: Record<string, VarInstance> = {};
 

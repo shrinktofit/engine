@@ -27,7 +27,7 @@ import { JSB } from 'internal:constants';
 import { Mat4, Quat, Vec3 } from '../../core/math';
 import { IAnimInfo, JointAnimationInfo } from './skeletal-animation-utils';
 import { Node } from '../../core/scene-graph/node';
-import type { AnimationClip } from '../../core/animation/animation-clip';
+import type { AnimationClip, AnimationClipEvalContext } from '../../core/animation/animation-clip';
 import { AnimationState } from '../../core/animation/animation-state';
 import { SkeletalAnimation, Socket } from './skeletal-animation';
 import { SkelAnimDataHub } from './skeletal-animation-data-hub';
@@ -71,16 +71,17 @@ export class SkeletalAnimationState extends AnimationState {
         this._animInfoMgr = legacyCC.director.root.dataPoolManager.jointAnimationInfo;
     }
 
-    public initialize (root: Node) {
+    public initialize (root: Node | AnimationClipEvalContext) {
         if (this._curveLoaded) { return; }
-        this._parent = root.getComponent('cc.SkeletalAnimation') as SkeletalAnimation;
+        const originNode = root instanceof Node ? root : root.originNode;
+        this._parent = originNode.getComponent('cc.SkeletalAnimation') as SkeletalAnimation;
         const baked = this._parent.useBakedAnimation;
         this._doNotCreateEval = baked;
-        super.initialize(root);
+        super.initialize(originNode);
         this._curvesInited = !baked;
         const { frames, samples } = SkelAnimDataHub.getOrExtract(this.clip);
         this._frames = frames - 1;
-        this._animInfo = this._animInfoMgr.getData(root.uuid);
+        this._animInfo = this._animInfoMgr.getData(originNode.uuid);
         this._bakedDuration = this._frames / samples; // last key
         this.setUseBaked(baked);
     }

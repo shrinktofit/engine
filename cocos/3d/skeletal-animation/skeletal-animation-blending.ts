@@ -24,7 +24,7 @@
  */
 
 import { DEBUG } from 'internal:constants';
-import { Vec3, Quat } from '../../core/math';
+import { Vec3, Quat, lerp } from '../../core/math';
 import { Node } from '../../core/scene-graph';
 import { RuntimeBinding } from '../../core/animation/tracks/track';
 import { assertIsTrue } from '../../core/data/utils/asserts';
@@ -134,6 +134,66 @@ class BlendStateWriterInternal<P extends BlendingPropertyName> implements Runtim
 }
 
 export type BlendStateWriter<P extends BlendingPropertyName> = Omit<BlendStateWriterInternal<P>, 'node' | 'property'>;
+
+class NamedCurveBlendState implements PropertyBlendState<number> {
+    refCount = 0;
+
+    result = 0.0;
+
+    blend (value: number, weight: number): void {
+        const { _accumulatedWeight: accumulatedWeight } = this;
+        const newSum = accumulatedWeight + weight;
+        if (weight === 1.0 && !accumulatedWeight) {
+            this._clipBlendResult = value;
+        } else if (newSum) {
+            const t = weight / newSum;
+            this._clipBlendResult =  lerp(this._clipBlendResult, value, t);
+        }
+        this._accumulatedWeight = newSum;
+    }
+
+    public commitLayerChange (weight: number) {
+        const {
+            result,
+            _clipBlendResult: clipBlendResult,
+            _accumulatedWeight: accumulatedWeight,
+        } = this;
+        if (accumulatedWeight < 1.0) {
+            this.blend(0.0, 1.0 - accumulatedWeight);
+        }
+        this.result = lerp(result, clipBlendResult, weight);
+        this._clipBlendResult = 0.0;
+        this._accumulatedWeight = 0.0;
+    }
+
+    public reset () {
+        this.result = 0.0;
+    }
+
+    private _clipBlendResult = 0.0;
+    private _accumulatedWeight = 0.0;
+}
+
+class NamedCurveWriterInternal implements RuntimeBinding {
+    constructor (private _blendState: NamedCurveBlendState, private _host: BlendStateWriterHost, public curveName: string) {
+
+    }
+
+    public setValue (value: number) {
+        const {
+            _blendState: blendState,
+            _host: host,
+        } = this;
+        const weight = host.weight;
+        blendState.blend(value, weight);
+    }
+
+    public destroy () {
+        --this._blendState.refCount;
+    }
+}
+
+export type NamedCurveWriter = RuntimeBinding;
 
 enum TransformApplyFlag {
     POSITION = 1,
@@ -581,6 +641,32 @@ class LayeredNodeBlendState extends NodeBlendState<LayeredVec3PropertyBlendState
  * ```
  */
 export class LayeredBlendStateBuffer extends BlendStateBuffer<LayeredNodeBlendState> {
+    constructor (namedCurveHost: NamedCurveHost) {
+        super();
+        this._namedCurveHost = namedCurveHost;
+    }
+
+    public createNamedCurveWriter (name: string, host: BlendStateWriterHost) {
+        let blendState = this._namedCurveBlendStates.get(name);
+        if (!blendState) {
+            blendState = new NamedCurveBlendState();
+            this._namedCurveBlendStates.set(name, blendState);
+        }
+        const writer = new NamedCurveWriterInternal(blendState, host, name);
+        ++blendState.refCount;
+        return writer as NamedCurveWriter;
+    }
+
+    public destroyNamedCurveWriter (writer: NamedCurveWriter) {
+        const internalWriter = writer as NamedCurveWriterInternal;
+        const blendState = this._namedCurveBlendStates.get(internalWriter.curveName);
+        assertIsTrue(blendState);
+        --blendState.refCount;
+        if (blendState.refCount === 0) {
+            this._namedCurveBlendStates.delete(internalWriter.curveName);
+        }
+    }
+
     public setMask (layerIndex: number, excludeNodes: Set<Node>) {
         if (DEBUG) {
             checkLayerIndex(layerIndex);
@@ -599,11 +685,45 @@ export class LayeredBlendStateBuffer extends BlendStateBuffer<LayeredNodeBlendSt
         this._nodeBlendStates.forEach((nodeBlendState, node) => {
             nodeBlendState.commitLayerChanges(layerIndex, weight);
         });
+        this._namedCurveBlendStates.forEach((namedCurveBlendState) => {
+            namedCurveBlendState.commitLayerChange(weight);
+        });
+    }
+
+    public apply (): void {
+        super.apply();
+        for (const [name, state] of this._namedCurveBlendStates) {
+            this._namedCurveHost.set(name, state.result);
+            state.reset();
+        }
     }
 
     protected createNodeBlendState () {
         return new LayeredNodeBlendState();
     }
+
+    private _namedCurveHost: NamedCurveHost;
+    protected _namedCurveBlendStates: Map<string, NamedCurveBlendState> = new Map();
+}
+
+export class NamedCurveHost {
+    public names () {
+        return this._namedCurves.keys();
+    }
+
+    public has (name: string) {
+        return this._namedCurves.has(name);
+    }
+
+    public get (name: string) {
+        return this._namedCurves.get(name) ?? 0.0;
+    }
+
+    public set (name: string, value: number) {
+        this._namedCurves.set(name, value);
+    }
+
+    private _namedCurves: Map<string, number> = new Map();
 }
 
 function checkLayerIndex (layerIndex: number) {

@@ -14,10 +14,10 @@ import { VariableNotDefinedError, VariableTypeMismatchedError } from './errors';
 import { MotionState } from './motion-state';
 import { AnimationMask } from './animation-mask';
 import { debug, warnID } from '../../platform/debug';
-import { BlendStateBuffer, LayeredBlendStateBuffer } from '../../../3d/skeletal-animation/skeletal-animation-blending';
+import { BlendStateBuffer, LayeredBlendStateBuffer, NamedCurveHost } from '../../../3d/skeletal-animation/skeletal-animation-blending';
 import { MAX_ANIMATION_LAYER } from '../../../3d/skeletal-animation/limits';
 import { clearWeightsStats, getWeightsStats, graphDebug, graphDebugGroup, graphDebugGroupEnd, GRAPH_DEBUG_ENABLED } from './graph-debug';
-import { AnimationClip } from '../animation-clip';
+import { AnimationClip, AnimationClipEvalContext } from '../animation-clip';
 import type { AnimationController } from './animation-controller';
 import { StateMachineComponent } from './state-machine-component';
 import { InteractiveState } from './state';
@@ -25,7 +25,7 @@ import { applyRootMotionOutput, resetRootMotionOutput, RootMotionOutput } from '
 
 export class AnimationGraphEval {
     private declare _layerEvaluations: LayerEval[];
-    private _blendBuffer = new LayeredBlendStateBuffer();
+    private _blendBuffer: LayeredBlendStateBuffer;
     private _currentTransitionCache: TransitionStatus = {
         duration: 0.0,
         time: 0.0,
@@ -44,6 +44,8 @@ export class AnimationGraphEval {
         }
 
         this._root = root;
+        const namedCurveHost = this._namedCurveHost = new NamedCurveHost();
+        this._blendBuffer = new LayeredBlendStateBuffer(namedCurveHost);
 
         for (const [name, variable] of graph.variables) {
             const varInstance = this._varInstances[name] = new VarInstance(variable.type, variable.value);
@@ -180,8 +182,21 @@ export class AnimationGraphEval {
         this._layerEvaluations[layerIndex].weight = weight;
     }
 
+    public getNamedCurvesNames () {
+        return this._namedCurveHost.names();
+    }
+
+    public hasNamedCurve (curveName: string): boolean {
+        return this._namedCurveHost.has(curveName);
+    }
+
+    public getNamedCurveValue (curveName: string): number {
+        return this._namedCurveHost.get(curveName);
+    }
+
     private _varInstances: Record<string, VarInstance> = {};
     private _hasAutoTrigger = false;
+    private _namedCurveHost: NamedCurveHost;
 }
 
 /**
@@ -273,7 +288,7 @@ interface LayerContext extends BindContext {
     /**
      * The blend buffer.
      */
-    blendBuffer: BlendStateBuffer;
+    blendBuffer: LayeredBlendStateBuffer;
 
     rootMotionOutput?: RootMotionOutput;
 

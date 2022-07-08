@@ -2,15 +2,18 @@ import { Node } from '../../scene-graph';
 import { AnimationMask } from './animation-mask';
 import { createEval } from './create-eval';
 import type { BindContext } from './parametric';
-import type { BlendStateBuffer } from '../../../3d/skeletal-animation/skeletal-animation-blending';
+import type { BlendStateBuffer, LayeredBlendStateBuffer } from '../../../3d/skeletal-animation/skeletal-animation-blending';
 import type { ClipStatus } from './graph-eval';
 import type { RuntimeID } from './graph-debug';
 import { RootMotionOutput } from './root-motion';
 
+import './motion-function';
+import { AnimationClipEvalContext } from '../animation-clip';
+
 export interface MotionEvalContext extends BindContext {
     node: Node;
 
-    blendBuffer: BlendStateBuffer;
+    blendBuffer: LayeredBlendStateBuffer;
 
     mask?: AnimationMask;
 

@@ -180,4 +180,22 @@ export class AnimationController extends Component {
         assertIsNonNullable(graphEval);
         return graphEval.setLayerWeight(layer, weight);
     }
+
+    public getNamedCurvesNames () {
+        const { _graphEval: graphEval } = this;
+        assertIsNonNullable(graphEval);
+        return graphEval.getNamedCurvesNames();
+    }
+
+    public hasNamedCurve (curveName: string) {
+        const { _graphEval: graphEval } = this;
+        assertIsNonNullable(graphEval);
+        return graphEval.hasNamedCurve(curveName);
+    }
+
+    public getNamedCurveValue (curveName: string) {
+        const { _graphEval: graphEval } = this;
+        assertIsNonNullable(graphEval);
+        return graphEval.getNamedCurveValue(curveName);
+    }
 }

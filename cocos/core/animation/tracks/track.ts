@@ -6,6 +6,7 @@ import { assertIsTrue } from '../../data/utils/asserts';
 import { error, errorID, warn, warnID } from '../../platform';
 import { Node } from '../../scene-graph';
 import { js } from '../../utils/js';
+import { AnimationClipEvalContext } from '../animation-clip';
 import { CLASS_NAME_PREFIX_ANIM, createEvalSymbol } from '../define';
 import type { AnimationMask } from '../marionette/animation-mask';
 import { PoseOutput } from '../pose-output';
@@ -86,6 +87,10 @@ class TrackPath {
         const path = new ComponentPath(typeof constructor === 'string' ? constructor : js.getClassName(constructor));
         this._paths.push(path);
         return this;
+    }
+
+    public toNamedCurve (curveName: string) {
+        this._paths.push(new NamedCurvePath(curveName));
     }
 
     /**
@@ -190,6 +195,15 @@ class TrackPath {
         return (this._paths[index] as ComponentPath).component;
     }
 
+    public isNamedCurveAt (index: number) {
+        return this._paths[index] instanceof NamedCurvePath;
+    }
+
+    public parseNamedCurveAt (index: number) {
+        assertIsTrue(this.isNamedCurveAt(index));
+        return (this._paths[index] as NamedCurvePath).curveName;
+    }
+
     /**
      * @en Slices a interval of the path.
      * @zh 分割指定区段上的路径。
@@ -273,6 +287,9 @@ class TrackPath {
                 } else {
                     result = (result as any)[path];
                 }
+            } else if (path instanceof NamedCurvePath) {
+                // TODO error
+                return null;
             } else {
                 result = path.get(result);
             }
@@ -284,7 +301,17 @@ class TrackPath {
     }
 
     @serializable
-    private _paths: TargetPath[] = [];
+    private _paths: (TargetPath | NamedCurvePath)[] = [];
+}
+
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}NamedCurvePath`)
+class NamedCurvePath {
+    constructor (curveName = '') {
+        this.curveName = curveName;
+    }
+
+    @serializable
+    public curveName = '';
 }
 
 /**
@@ -311,20 +338,34 @@ export class TrackBinding {
         }
     }
 
-    public createRuntimeBinding (target: unknown, poseOutput: PoseOutput | undefined, isConstant: boolean) {
+    public createRuntimeBinding (evalContext: AnimationClipEvalContext) {
+        const {
+            originNode,
+            poseOutput,
+            namedCurveOutput,
+        } = evalContext;
         const { path, proxy } = this;
         const nPaths = path.length;
         const iLastPath = nPaths - 1;
+        if (nPaths === 1 && path.isNamedCurveAt(0) && !proxy) {
+            if (!namedCurveOutput) {
+                return null;
+            } else {
+                const curveName = path.parseNamedCurveAt(0);
+                const writer = namedCurveOutput.bind(curveName);
+                return writer ?? null;
+            }
+        }
         if (nPaths !== 0 && (path.isPropertyAt(iLastPath) || path.isElementAt(iLastPath)) && !proxy) {
             const lastPropertyKey = path.isPropertyAt(iLastPath)
                 ? path.parsePropertyAt(iLastPath)
                 : path.parseElementAt(iLastPath);
-            const resultTarget = path[normalizedFollowTag](target, 0, nPaths - 1) as any;
+            const resultTarget = path[normalizedFollowTag](originNode, 0, nPaths - 1) as any;
             if (resultTarget === null) {
                 return null;
             }
             if (poseOutput && resultTarget instanceof Node && isTrsPropertyName(lastPropertyKey)) {
-                const blendStateWriter = poseOutput.createPoseWriter(resultTarget, lastPropertyKey, isConstant);
+                const blendStateWriter = poseOutput.createPoseWriter(resultTarget, lastPropertyKey, false);
                 return blendStateWriter;
             }
             let setValue; let getValue;
@@ -362,7 +403,7 @@ export class TrackBinding {
             errorID(3921);
             return null;
         } else {
-            const resultTarget = path[normalizedFollowTag](target, 0, nPaths);
+            const resultTarget = path[normalizedFollowTag](originNode, 0, nPaths);
             if (resultTarget === null) {
                 return null;
             }
