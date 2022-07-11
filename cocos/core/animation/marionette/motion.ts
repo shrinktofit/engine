@@ -18,6 +18,8 @@ export interface MotionEvalContext extends BindContext {
     mask?: AnimationMask;
 
     rootMotionOutput?: RootMotionOutput;
+
+    additive: boolean;
 }
 
 export interface MotionEval {

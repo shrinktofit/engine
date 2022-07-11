@@ -5,6 +5,7 @@ import { assertIsTrue } from '../../data/utils/asserts';
 import { clamp, lerp, Quat, Vec3 } from '../../math';
 import { error } from '../../platform/debug';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
+import { quatMultiInv } from '../math';
 import { Binder, RuntimeBinding, TrackBinding, TrackPath } from '../tracks/track';
 
 const SPLIT_METHOD_ENABLED = TEST || EDITOR;
@@ -23,15 +24,16 @@ function throwIfSplitMethodIsNotValid (): never {
  */
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}ExoticAnimation`)
 export class ExoticAnimation {
-    public createEvaluator (binder: Binder, ignoreRoot?: string) {
+    public createEvaluator (binder: Binder, additive: boolean, ignoreRoot?: string) {
         return new ExoticTrsAnimationEvaluator(
             typeof ignoreRoot === 'string' ? this._nodeAnimations.filter(({ path }) => path !== ignoreRoot) : this._nodeAnimations,
             binder,
+            additive,
         );
     }
 
-    public __createEvaluatorOnlyRoot (binder: Binder, root: string) {
-        return new ExoticTrsAnimationEvaluator(this._nodeAnimations.filter(({ path }) => path === root), binder);
+    public __createEvaluatorOnlyRoot (binder: Binder, root: string, additive: boolean) {
+        return new ExoticTrsAnimationEvaluator(this._nodeAnimations.filter(({ path }) => path === root), binder, additive);
     }
 
     public addNodeAnimation (path: string) {
@@ -85,13 +87,14 @@ class ExoticNodeAnimation {
         this._scale = new ExoticTrack(times, new ExoticVec3TrackValues(values));
     }
 
-    public createEvaluator (binder: Binder) {
+    public createEvaluator (binder: Binder, additive: boolean) {
         return new ExoticNodeAnimationEvaluator(
             this._path,
             this._position,
             this._rotation,
             this._scale,
             binder,
+            additive,
         );
     }
 
@@ -574,8 +577,8 @@ function binarySearchRatio (values: ArrayLike<number>, value: number) {
 }
 
 class ExoticTrsAnimationEvaluator {
-    constructor (nodeAnimations: ExoticNodeAnimation[], binder: Binder) {
-        this._nodeEvaluations = nodeAnimations.map((nodeAnimation) => nodeAnimation.createEvaluator(binder));
+    constructor (nodeAnimations: ExoticNodeAnimation[], binder: Binder, additive: boolean) {
+        this._nodeEvaluations = nodeAnimations.map((nodeAnimation) => nodeAnimation.createEvaluator(binder, additive));
     }
 
     public evaluate (time: number) {
@@ -594,42 +597,70 @@ class ExoticNodeAnimationEvaluator {
         rotation: ExoticQuatTrack | null,
         scale: ExoticVec3Track | null,
         binder: Binder,
+        additive: boolean,
     ) {
         if (position) {
-            this._position = createExoticTrackEvaluationRecord(
-                position.times, position.values, Vec3, path, 'position', binder,
+            const positionEval = this._position = createExoticTrackEvaluationRecord(
+                position.times, position.values, Vec3, path, 'position', binder, additive,
             );
+            if (positionEval && additive) {
+                const basePosition = positionEval.evaluator.evaluate(0.0);
+                Vec3.copy(this._basePosition, basePosition);
+            }
         }
         if (rotation) {
-            this._rotation = createExoticTrackEvaluationRecord(
-                rotation.times, rotation.values, Quat, path, 'rotation', binder,
+            const rotationEval = this._rotation = createExoticTrackEvaluationRecord(
+                rotation.times, rotation.values, Quat, path, 'rotation', binder, additive,
             );
+            if (rotationEval && additive) {
+                const baseRotation = rotationEval.evaluator.evaluate(0.0);
+                Quat.copy(this._baseRotation, baseRotation);
+            }
         }
         if (scale) {
-            this._scale = createExoticTrackEvaluationRecord(
-                scale.times, scale.values, Vec3, path, 'scale', binder,
+            const scaleEval = this._scale = createExoticTrackEvaluationRecord(
+                scale.times, scale.values, Vec3, path, 'scale', binder, additive,
             );
+            if (scaleEval && additive) {
+                const baseScale = scaleEval.evaluator.evaluate(0.0);
+                Vec3.copy(this._baseScale, baseScale);
+            }
         }
+        this._additive = additive;
     }
 
     public evaluate (time: number) {
+        const { _additive: additive } = this;
         if (this._position) {
             const value = this._position.evaluator.evaluate(time);
+            if (additive) {
+                Vec3.subtract(value, value, this._basePosition);
+            }
             this._position.runtimeBinding.setValue(value);
         }
         if (this._rotation) {
             const value = this._rotation.evaluator.evaluate(time);
+            if (additive) {
+                quatMultiInv(value, value, this._baseRotation);
+            }
             this._rotation.runtimeBinding.setValue(value);
         }
         if (this._scale) {
             const value = this._scale.evaluator.evaluate(time);
+            if (additive) {
+                Vec3.subtract(value, value, this._baseScale);
+            }
             this._scale.runtimeBinding.setValue(value);
         }
     }
 
+    private _additive = false;
     private _position: ExoticTrackEvaluationRecord<Vec3> | null = null;
+    private _basePosition = new Vec3();
     private _rotation: ExoticTrackEvaluationRecord<Quat> | null = null;
+    private _baseRotation = new Quat();
     private _scale: ExoticTrackEvaluationRecord<Vec3> | null = null;
+    private _baseScale = new Vec3();
 }
 
 class ExoticTrackEvaluator<TValue> {
@@ -682,6 +713,12 @@ class ExoticTrackEvaluator<TValue> {
     private _prevValue: TValue;
     private _nextValue: TValue;
     private _resultValue: TValue;
+}
+
+class AdditiveExoticTrackEvaluator<TValue> {
+    constructor (evaluator: ExoticTrackEvaluator<TValue>) {
+
+    }
 }
 
 interface ExoticTrackEvaluationRecord<TValue> {
@@ -845,12 +882,16 @@ function createExoticTrackEvaluationRecord<TValue> (
     path: string,
     property: 'position' | 'scale' | 'rotation',
     binder: Binder,
+    additive: boolean,
 ) {
     const trackBinding = new TrackBinding();
     trackBinding.path = new TrackPath().toHierarchy(path).toProperty(property);
     const runtimeBinding = binder(trackBinding);
     if (!runtimeBinding) {
         return null;
+    }
+    if (additive) {
+
     }
     const evaluator =  new ExoticTrackEvaluator(times, values, ValueConstructor);
     return {

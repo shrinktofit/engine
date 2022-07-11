@@ -3,6 +3,7 @@ import { QuatCurve } from '../../curves';
 import { CLASS_NAME_PREFIX_ANIM, createEvalSymbol } from '../define';
 import { SingleChannelTrack } from './track';
 import { Quat } from '../../math';
+import { quatMultiInv } from '../math';
 
 /**
  * @en
@@ -22,8 +23,8 @@ export class QuatTrack extends SingleChannelTrack<QuatCurve> {
     /**
      * @internal
      */
-    public [createEvalSymbol] () {
-        return new QuatTrackEval(this.channels()[0].curve);
+    public [createEvalSymbol] (_, additive: boolean) {
+        return new (additive ? AdditiveQuatTrackEval : QuatTrackEval)(this.channels()[0].curve);
     }
 }
 
@@ -38,4 +39,19 @@ export class QuatTrackEval {
     }
 
     private _result: Quat = new Quat();
+}
+
+class AdditiveQuatTrackEval {
+    constructor (private _curve: QuatCurve) {
+        _curve.evaluate(0.0, this._base);
+    }
+
+    public evaluate (time: number) {
+        this._curve.evaluate(time, this._result);
+        quatMultiInv(this._result, this._result, this._base);
+        return this._result;
+    }
+
+    private _result: Quat = new Quat();
+    private _base: Quat = new Quat();
 }

@@ -50,7 +50,7 @@ export class VectorTrack extends Track {
     /**
      * @internal
      */
-    public [createEvalSymbol] () {
+    public [createEvalSymbol] (_, additive: boolean) {
         switch (this._nComponents) {
         default:
         case 2:
@@ -59,7 +59,7 @@ export class VectorTrack extends Track {
                 maskIfEmpty(this._channels[1].curve),
             );
         case 3:
-            return new Vec3TrackEval(
+            return new (additive ? AdditiveVec3TrackEval : Vec3TrackEval)(
                 maskIfEmpty(this._channels[0].curve),
                 maskIfEmpty(this._channels[1].curve),
                 maskIfEmpty(this._channels[2].curve),
@@ -127,6 +127,39 @@ export class Vec3TrackEval {
         return this._result;
     }
 
+    private _result: Vec3 = new Vec3();
+}
+
+export class AdditiveVec3TrackEval {
+    constructor (private _x: RealCurve | undefined, private _y: RealCurve | undefined, private _z: RealCurve | undefined) {
+        if (this._x) {
+            this._base.x = this._x.evaluate(0.0);
+        }
+        if (this._y) {
+            this._base.y = this._y.evaluate(0.0);
+        }
+        if (this._z) {
+            this._base.z = this._z.evaluate(0.0);
+        }
+    }
+
+    public evaluate (time: number, _runtimeBinding: RuntimeBinding) {
+        Vec3.copy(this._result, Vec3.ZERO);
+
+        if (this._x) {
+            this._result.x = this._x.evaluate(time) - this._base.x;
+        }
+        if (this._y) {
+            this._result.y = this._y.evaluate(time) - this._base.y;
+        }
+        if (this._z) {
+            this._result.z = this._z.evaluate(time) - this._base.z;
+        }
+
+        return this._result;
+    }
+
+    private _base = new Vec3();
     private _result: Vec3 = new Vec3();
 }
 

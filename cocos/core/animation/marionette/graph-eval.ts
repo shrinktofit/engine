@@ -102,11 +102,24 @@ export class AnimationGraphEval {
 
         resetRootMotionOutput(rootMotionOutput);
         const nLayers = layerEvaluations.length;
+        // #region TODO partition
+        const updateAndCommitLayers = (layerEval: LayerEval, iLayer: number) => {
+            layerEval.update(deltaTime);
+            blendBuffer.commitLayerChanges(iLayer, layerEval.weight * layerEval.passthroughWeight, layerEval.additive);
+        };
         for (let iLayer = 0; iLayer < nLayers; ++iLayer) {
             const layerEval = layerEvaluations[iLayer];
-            layerEval.update(deltaTime);
-            blendBuffer.commitLayerChanges(iLayer, layerEval.weight * layerEval.passthroughWeight);
+            if (!layerEval.additive) {
+                updateAndCommitLayers(layerEval, iLayer);
+            }
         }
+        for (let iLayer = 0; iLayer < nLayers; ++iLayer) {
+            const layerEval = layerEvaluations[iLayer];
+            if (layerEval.additive) {
+                updateAndCommitLayers(layerEval, iLayer);
+            }
+        }
+        // #endregion
         if (this._hasAutoTrigger) {
             const { _varInstances: varInstances } = this;
             for (const varName in varInstances) {
@@ -315,13 +328,20 @@ class LayerEval {
         this.name = layer.name;
         this._controller = context.controller;
         this.weight = layer.weight;
+        const additive = layer.name.includes('+');
         const { entry, exit } = this._addStateMachine(layer.stateMachine, null, {
             ...context,
+            additive,
         }, layer.name);
         this._topLevelEntry = entry;
         this._topLevelExit = exit;
         this._currentNode = entry;
         this._resetTrigger = context.triggerResetFn;
+        this._additive = additive;
+    }
+
+    get additive () {
+        return this._additive;
     }
 
     /**
@@ -422,9 +442,10 @@ class LayerEval {
      * A virtual state which represents the transition snapshot captured when a transition is interrupted.
      */
     private _transitionSnapshot = new TransitionSnapshotEval();
+    private _additive = false;
 
     private _addStateMachine (
-        graph: StateMachine, parentStateMachineInfo: StateMachineInfo | null, context: LayerContext, __DEBUG_ID__: string,
+        graph: StateMachine, parentStateMachineInfo: StateMachineInfo | null, context: MotionContext, __DEBUG_ID__: string,
     ): StateMachineInfo {
         const nodes = Array.from(graph.states());
 
@@ -1551,8 +1572,12 @@ interface StateMachineInfo {
     components: InstantiatedComponents | null;
 }
 
+interface MotionContext extends LayerContext {
+    additive: boolean;
+}
+
 export class MotionStateEval extends StateEval {
-    constructor (node: MotionState, context: LayerContext) {
+    constructor (node: MotionState, context: MotionContext) {
         super(node);
 
         this._baseSpeed = node.speed;

@@ -363,6 +363,7 @@ export class AnimationClip extends Asset {
     public createEvaluator (context: AnimationClipEvalContext) {
         const {
             originNode: target,
+            additive = false,
         } = context;
 
         // We now only enable pose blend on clips imported from external(for those `this.enableTrsBlending === true`)
@@ -391,7 +392,7 @@ export class AnimationClip extends Asset {
             return trackTarget ?? undefined;
         };
 
-        return this._createEvalWithBinder(target, binder, context.rootMotion);
+        return this._createEvalWithBinder(target, binder, additive, context.rootMotion);
     }
 
     public destroy () {
@@ -450,7 +451,7 @@ export class AnimationClip extends Asset {
             return createBoneTransformBinding(jointFrame, trsPath.property);
         };
 
-        const evaluator = this._createEvalWithBinder(undefined, binder, undefined);
+        const evaluator = this._createEvalWithBinder(undefined, binder, false, undefined);
 
         for (let iFrame = 0; iFrame < frames; ++iFrame) {
             const time = start + step * iFrame;
@@ -688,7 +689,7 @@ export class AnimationClip extends Asset {
         eventGroups: [],
     };
 
-    private _createEvalWithBinder (target: unknown, binder: Binder, rootMotionOptions: RootMotionOptions | undefined) {
+    private _createEvalWithBinder (target: unknown, binder: Binder, additive: boolean, rootMotionOptions: RootMotionOptions | undefined) {
         if (this._legacyDataDirty) {
             this._legacyDataDirty = false;
             this.syncLegacyData();
@@ -706,6 +707,7 @@ export class AnimationClip extends Asset {
                 rootMotionEvaluation = this._createRootMotionEvaluation(
                     rootMotionInfo.rootBonePath,
                     rootMotionOptions.output,
+                    additive,
                 );
             }
         }
@@ -733,7 +735,7 @@ export class AnimationClip extends Asset {
             if (!trackTarget) {
                 continue;
             }
-            const trackEval = track[createEvalSymbol](trackTarget);
+            const trackEval = track[createEvalSymbol](trackTarget, additive);
             trackEvalStatues.push({
                 binding: trackTarget,
                 trackEval,
@@ -741,7 +743,7 @@ export class AnimationClip extends Asset {
         }
 
         if (this._exoticAnimation) {
-            exoticAnimationEvaluator = this._exoticAnimation.createEvaluator(binder, rootBonePath);
+            exoticAnimationEvaluator = this._exoticAnimation.createEvaluator(binder, additive, rootBonePath);
         }
 
         const evaluation = new AnimationClipEvaluation(
@@ -780,6 +782,7 @@ export class AnimationClip extends Asset {
     private _createRootMotionEvaluation (
         rootBonePath: string,
         rootMotionOutput: RootMotionOutput,
+        additive: boolean,
     ) {
         const boneTransform = new BoneTransform();
         const rootMotionsTrackEvaluations: TrackEvalStatus[] = [];
@@ -801,7 +804,7 @@ export class AnimationClip extends Asset {
             if (!trackTarget) {
                 continue;
             }
-            const trackEval = track[createEvalSymbol](trackTarget);
+            const trackEval = track[createEvalSymbol](trackTarget, additive);
             rootMotionsTrackEvaluations.push({
                 binding: trackTarget,
                 trackEval,
@@ -820,7 +823,7 @@ export class AnimationClip extends Asset {
                     return undefined;
                 }
                 return trackTarget;
-            }, rootBonePath);
+            }, rootBonePath, additive);
         }
         const rootMotionEvaluation = new RootMotionEvaluation(
             rootMotionOutput,
@@ -961,6 +964,8 @@ export interface AnimationClipEvalContext {
      * The animation mask applied.
      */
     mask?: AnimationMask;
+
+    additive?: boolean;
 
     /**
      * Path to the root bone.

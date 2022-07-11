@@ -59,6 +59,7 @@ class ClipMotionEval implements MotionEval {
                 },
             },
             mask: context.mask,
+            additive: context.additive,
             rootMotion: context.rootMotionOutput ? {
                 output: context.rootMotionOutput,
             } : undefined,

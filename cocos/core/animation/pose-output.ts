@@ -34,16 +34,6 @@ export class PoseOutput {
         return writer;
     }
 
-    public createNamedCurveWriter (name: string) {
-        if (!(this._pose instanceof LayeredBlendStateBuffer)) {
-            warn(`TODO: does not support named curve writer`);
-            return undefined;
-        }
-        const writer = this._pose.createNamedCurveWriter(name);
-        this._namedStateWriters.push(writer);
-        return writer;
-    }
-
     private _pose: Pose;
 
     private _blendStateWriters: BlendStateWriter<any>[] = [];

@@ -152,16 +152,20 @@ class NamedCurveBlendState implements PropertyBlendState<number> {
         this._accumulatedWeight = newSum;
     }
 
-    public commitLayerChange (weight: number) {
+    public commitLayerChange (weight: number, additive: boolean) {
         const {
             result,
             _clipBlendResult: clipBlendResult,
             _accumulatedWeight: accumulatedWeight,
         } = this;
-        if (accumulatedWeight < 1.0) {
-            this.blend(0.0, 1.0 - accumulatedWeight);
+        if (additive) {
+            this.result += clipBlendResult * weight;
+        } else {
+            if (accumulatedWeight < 1.0) {
+                this.blend(0.0, 1.0 - accumulatedWeight);
+            }
+            this.result = lerp(result, clipBlendResult, weight);
         }
-        this.result = lerp(result, clipBlendResult, weight);
         this._clipBlendResult = 0.0;
         this._accumulatedWeight = 0.0;
     }
@@ -435,16 +439,20 @@ class LayeredVec3PropertyBlendState implements PropertyBlendState<Vec3> {
         );
     }
 
-    public commitLayerChange (weight: number) {
+    public commitLayerChange (weight: number, additive: boolean) {
         const {
             result,
             _clipBlendResult: clipBlendResult,
             _accumulatedWeight: accumulatedWeight,
         } = this;
-        if (accumulatedWeight < 1.0) {
-            this.blend(this._defaultValue, 1.0 - accumulatedWeight);
+        if (additive) {
+            Vec3.scaleAndAdd(result, result, clipBlendResult, weight);
+        } else {
+            if (accumulatedWeight < 1.0) {
+                this.blend(this._defaultValue, 1.0 - accumulatedWeight);
+            }
+            Vec3.lerp(result, result, clipBlendResult, weight);
         }
-        Vec3.lerp(result, result, clipBlendResult, weight);
         Vec3.zero(this._clipBlendResult);
         this._accumulatedWeight = 0.0;
     }
@@ -478,16 +486,21 @@ class LayeredQuatPropertyBlendState implements PropertyBlendState<Quat> {
         );
     }
 
-    public commitLayerChange (weight: number) {
+    public commitLayerChange (weight: number, additive: boolean) {
         const {
             result,
             _clipBlendResult: clipBlendResult,
             _accumulatedWeight: accumulatedWeight,
         } = this;
-        if (accumulatedWeight < 1.0) {
-            this.blend(this._defaultValue, 1.0 - accumulatedWeight);
+        if (additive) {
+            Quat.slerp(clipBlendResult, Quat.IDENTITY, clipBlendResult, weight);
+            Quat.multiply(result, result, clipBlendResult);
+        } else {
+            if (accumulatedWeight < 1.0) {
+                this.blend(this._defaultValue, 1.0 - accumulatedWeight);
+            }
+            Quat.slerp(result, result, clipBlendResult, weight);
         }
-        Quat.slerp(result, result, clipBlendResult, weight);
         Quat.identity(this._clipBlendResult);
         this._accumulatedWeight = 0.0;
     }
@@ -506,22 +519,22 @@ class LayeredNodeBlendState extends NodeBlendState<LayeredVec3PropertyBlendState
         this._layerMask &= ~(1 << layerIndex);
     }
 
-    public commitLayerChanges (layerIndex: number, weight: number) {
+    public commitLayerChanges (layerIndex: number, weight: number, additive: boolean) {
         if (!(this._layerMask & (1 << layerIndex))) {
             return;
         }
         const { _properties: { position, scale, rotation, eulerAngles } } = this;
         if (position) {
-            position.commitLayerChange(weight);
+            position.commitLayerChange(weight, additive);
         }
         if (scale) {
-            scale.commitLayerChange(weight);
+            scale.commitLayerChange(weight, additive);
         }
         if (rotation) {
-            rotation.commitLayerChange(weight);
+            rotation.commitLayerChange(weight, additive);
         }
         if (eulerAngles) {
-            eulerAngles.commitLayerChange(weight);
+            eulerAngles.commitLayerChange(weight, additive);
         }
     }
 
@@ -678,15 +691,15 @@ export class LayeredBlendStateBuffer extends BlendStateBuffer<LayeredNodeBlendSt
         });
     }
 
-    public commitLayerChanges (layerIndex: number, weight: number) {
+    public commitLayerChanges (layerIndex: number, weight: number, additive: boolean) {
         if (DEBUG) {
             checkLayerIndex(layerIndex);
         }
         this._nodeBlendStates.forEach((nodeBlendState, node) => {
-            nodeBlendState.commitLayerChanges(layerIndex, weight);
+            nodeBlendState.commitLayerChanges(layerIndex, weight, additive);
         });
         this._namedCurveBlendStates.forEach((namedCurveBlendState) => {
-            namedCurveBlendState.commitLayerChange(weight);
+            namedCurveBlendState.commitLayerChange(weight, additive);
         });
     }
 

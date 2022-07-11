@@ -517,7 +517,7 @@ export abstract class Track {
     /**
      * @internal
      */
-    public abstract [createEvalSymbol] (runtimeBinding: RuntimeBinding): TrackEval;
+    public abstract [createEvalSymbol] (runtimeBinding: RuntimeBinding, additive: boolean): TrackEval;
 
     @serializable
     private _binding = new TrackBinding();
@@ -599,7 +599,7 @@ export abstract class SingleChannelTrack<TCurve extends Curve> extends Track {
     /**
      * @internal
      */
-    public [createEvalSymbol] (_runtimeBinding: RuntimeBinding): TrackEval {
+    public [createEvalSymbol] (_runtimeBinding: RuntimeBinding, additive: boolean): TrackEval {
         const { curve } = this._channel;
         return new SingleChannelTrackEval(curve);
     }
