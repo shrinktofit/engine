@@ -367,9 +367,10 @@ export class AnimationClip extends Asset {
         } = context;
 
         // We now only enable pose blend on clips imported from external(for those `this.enableTrsBlending === true`)
+        const outputToPose = this.enableTrsBlending || this.name.includes('_as_skeletal_anim');
         const contextTrimmed: AnimationClipEvalContext = {
             ...context,
-            poseOutput: this.enableTrsBlending ? context.poseOutput : undefined,
+            poseOutput: outputToPose ? context.poseOutput : undefined,
         };
 
         const binder: Binder = (binding: TrackBinding) => {

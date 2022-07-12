@@ -20,10 +20,10 @@ const parseTrsPathTag = Symbol('ConvertAsTrsPath');
 
 export const trackBindingTag = Symbol('TrackBinding');
 
-export type RuntimeBinding = {
-    setValue(value: unknown): void;
+export type RuntimeBinding<TValue = unknown> = {
+    setValue(value: TValue): void;
 
-    getValue?(): unknown;
+    getValue?(): TValue;
 };
 
 export type Binder = (binding: TrackBinding) => undefined | RuntimeBinding;
@@ -347,6 +347,19 @@ export class TrackBinding {
         const { path, proxy } = this;
         const nPaths = path.length;
         const iLastPath = nPaths - 1;
+
+        //#region HACK
+        if (path.isComponentAt(0) && path.parseComponentAt(0) === 'GlobalNamedCurveRegistry') {
+            const curveName = path.parsePropertyAt(1);
+            if (!namedCurveOutput) {
+                return null;
+            } else {
+                const writer = namedCurveOutput.bind(curveName);
+                return writer ?? null;
+            }
+        }
+        //#endregion
+
         if (nPaths === 1 && path.isNamedCurveAt(0) && !proxy) {
             if (!namedCurveOutput) {
                 return null;
