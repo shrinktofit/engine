@@ -5,7 +5,7 @@ import { assertIsTrue } from '../../data/utils/asserts';
 import { clamp, lerp, Quat, Vec3 } from '../../math';
 import { error } from '../../platform/debug';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
-import { quatMultiInv } from '../math';
+import { deltaQuat } from '../math';
 import { Binder, RuntimeBinding, TrackBinding, TrackPath } from '../tracks/track';
 
 const SPLIT_METHOD_ENABLED = TEST || EDITOR;
@@ -639,11 +639,11 @@ class ExoticNodeAnimationEvaluator {
             this._position.runtimeBinding.setValue(value);
         }
         if (this._rotation) {
-            const value = this._rotation.evaluator.evaluate(time);
+            const rotationAbs = this._rotation.evaluator.evaluate(time);
             if (additive) {
-                quatMultiInv(value, value, this._baseRotation);
+                deltaQuat(rotationAbs, this._baseRotation, rotationAbs);
             }
-            this._rotation.runtimeBinding.setValue(value);
+            this._rotation.runtimeBinding.setValue(rotationAbs);
         }
         if (this._scale) {
             const value = this._scale.evaluator.evaluate(time);

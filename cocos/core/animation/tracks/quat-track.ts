@@ -3,7 +3,7 @@ import { QuatCurve } from '../../curves';
 import { CLASS_NAME_PREFIX_ANIM, createEvalSymbol } from '../define';
 import { SingleChannelTrack } from './track';
 import { Quat } from '../../math';
-import { quatMultiInv } from '../math';
+import { deltaQuat } from '../math';
 
 /**
  * @en
@@ -48,7 +48,7 @@ class AdditiveQuatTrackEval {
 
     public evaluate (time: number) {
         this._curve.evaluate(time, this._result);
-        quatMultiInv(this._result, this._result, this._base);
+        deltaQuat(this._result, this._base, this._result);
         return this._result;
     }
 
