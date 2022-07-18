@@ -614,7 +614,11 @@ export abstract class SingleChannelTrack<TCurve extends Curve> extends Track {
      */
     public [createEvalSymbol] (_runtimeBinding: RuntimeBinding, additive: boolean): TrackEval {
         const { curve } = this._channel;
-        return new SingleChannelTrackEval(curve);
+        if (additive) {
+            return new SingleChannelAdditiveTrackEval(curve);
+        } else {
+            return new SingleChannelTrackEval(curve);
+        }
     }
 
     @serializable
@@ -627,5 +631,20 @@ class SingleChannelTrackEval<TCurve extends Curve> implements TrackEval {
 
     public evaluate (time: number) {
         return this._curve.evaluate(time);
+    }
+}
+
+class SingleChannelAdditiveTrackEval<TCurve extends Curve> implements TrackEval {
+    constructor (private _curve: TCurve) {
+    }
+
+    public evaluate (time: number) {
+        const val = this._curve.evaluate(time);
+        const base = this._curve.evaluate(0.0);
+        if (typeof val === 'number' && typeof base === 'number') {
+            return val - base;
+        } else {
+            return val;
+        }
     }
 }

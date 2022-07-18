@@ -22,6 +22,7 @@ import type { AnimationController } from './animation-controller';
 import { StateMachineComponent } from './state-machine-component';
 import { InteractiveState } from './state';
 import { applyRootMotionOutput, resetRootMotionOutput, RootMotionOutput } from './root-motion';
+import { popMotionStateName, pushMotionStateName } from './hack-xx';
 
 export class AnimationGraphEval {
     private declare _layerEvaluations: LayerEval[];
@@ -1597,7 +1598,13 @@ export class MotionStateEval extends StateEval {
         const sourceEvalContext: MotionEvalContext = {
             ...context,
         };
+        //#region HACK
+        pushMotionStateName(node.name);
+        //#endregion
         const sourceEval = node.motion?.[createEval](sourceEvalContext) ?? null;
+        //#region HACK
+        popMotionStateName();
+        //#endregion
         if (sourceEval) {
             Object.defineProperty(sourceEval, '__DEBUG_ID__', { value: this.name });
         }

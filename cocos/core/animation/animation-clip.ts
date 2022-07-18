@@ -52,6 +52,7 @@ import type { AnimationMask } from './marionette/animation-mask';
 import { getGlobalAnimationManager } from './global-animation-manager';
 import { EmbeddedPlayableState, EmbeddedPlayer } from './embedded-player/embedded-player';
 import { RootMotionOutput } from './marionette/root-motion';
+import { getHackNamedTracks } from './marionette/hack-xx';
 
 export declare namespace AnimationClip {
     export interface IEvent {
@@ -742,6 +743,24 @@ export class AnimationClip extends Asset {
                 trackEval,
             });
         }
+
+        //#region HACK
+        // eslint-disable-next-line no-lone-blocks
+        {
+            const hackNamedTracks = getHackNamedTracks();
+            for (const track of hackNamedTracks) {
+                const trackTarget = binder(track[trackBindingTag]);
+                if (!trackTarget) {
+                    continue;
+                }
+                const trackEval = track[createEvalSymbol](trackTarget, additive);
+                trackEvalStatues.push({
+                    binding: trackTarget,
+                    trackEval,
+                });
+            }
+        }
+        //#endregion
 
         if (this._exoticAnimation) {
             exoticAnimationEvaluator = this._exoticAnimation.createEvaluator(binder, additive, rootBonePath);
