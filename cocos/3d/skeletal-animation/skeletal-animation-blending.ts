@@ -189,15 +189,21 @@ class NamedCurveBlendState implements PropertyBlendState<number> {
     public commitLayerChange (weight: number, additive: boolean) {
         const {
             result,
-            _clipBlendResult: clipBlendResult,
             _accumulatedWeight: accumulatedWeight,
         } = this;
         if (additive) {
+            const {
+                _clipBlendResult: clipBlendResult,
+            } = this;
             this.result += clipBlendResult * weight;
         } else {
             if (accumulatedWeight < 1.0) {
                 this.blend(0.0, 1.0 - accumulatedWeight);
             }
+            // Note the clipBlendResult may be flushed due to above.
+            const {
+                _clipBlendResult: clipBlendResult,
+            } = this;
             this.result = lerp(result, clipBlendResult, weight);
         }
         this._clipBlendResult = 0.0;
