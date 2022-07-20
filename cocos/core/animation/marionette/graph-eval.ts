@@ -101,6 +101,20 @@ export class AnimationGraphEval {
             clearWeightsStats();
         }
 
+        //#region HACK Auto update curve variable bindings...
+        for (const [name, varInstance] of Object.entries(this._varInstances)) {
+            if (!name.startsWith('#') || varInstance.type !== VariableType.FLOAT) {
+                continue;
+            }
+            const curveName = name.slice(1);
+            if (!this._namedCurveHost.has(curveName)) {
+                continue;
+            }
+            const value = this._namedCurveHost.get(curveName);
+            varInstance.value = value;
+        }
+        //#endregion
+
         resetRootMotionOutput(rootMotionOutput);
         const nLayers = layerEvaluations.length;
         // #region TODO partition
