@@ -14,7 +14,7 @@ import { VariableNotDefinedError, VariableTypeMismatchedError } from './errors';
 import { MotionState } from './motion-state';
 import { AnimationMask } from './animation-mask';
 import { debug, warnID } from '../../platform/debug';
-import { BlendStateBuffer, LayeredBlendStateBuffer, NamedCurveHost } from '../../../3d/skeletal-animation/skeletal-animation-blending';
+import { BlendStateBuffer, LayeredBlendStateBuffer, NamedCurveHost, NamedCurveWriter, ReplacingNamedCurveWriter } from '../../../3d/skeletal-animation/skeletal-animation-blending';
 import { MAX_ANIMATION_LAYER } from '../../../3d/skeletal-animation/limits';
 import { clearWeightsStats, getWeightsStats, graphDebug, graphDebugGroup, graphDebugGroupEnd, GRAPH_DEBUG_ENABLED } from './graph-debug';
 import { AnimationClip, AnimationClipEvalContext } from '../animation-clip';
@@ -22,7 +22,7 @@ import type { AnimationController } from './animation-controller';
 import { StateMachineComponent } from './state-machine-component';
 import { InteractiveState } from './state';
 import { applyRootMotionOutput, resetRootMotionOutput, RootMotionOutput } from './root-motion';
-import { popMotionStateName, pushMotionStateName } from './hack-xx';
+import { parseModifyCurveState, popMotionStateName, pushMotionStateName } from './hack-xx';
 
 export class AnimationGraphEval {
     private declare _layerEvaluations: LayerEval[];
@@ -90,6 +90,7 @@ export class AnimationGraphEval {
     }
 
     public update (deltaTime: number) {
+        deltaTime *= (globalThis.slomo ?? 1.0);
         const {
             _blendBuffer: blendBuffer,
             _layerEvaluations: layerEvaluations,
@@ -428,6 +429,9 @@ class LayerEval {
             this._currentTransitionToNode && this._currentTransitionToNode.kind !== NodeKind.empty,
             'There is no transition currently in layer.',
         );
+        //#region TODO
+        assertIsTrue(this._currentTransitionToNode.kind !== NodeKind.modifyCurve);
+        //#endregion
         return this._currentTransitionToNode.getToPortStatus();
     }
 
@@ -445,7 +449,7 @@ class LayerEval {
     private _topLevelEntry: NodeEval;
     private _topLevelExit: NodeEval;
     private _currentNode: NodeEval;
-    private _currentTransitionToNode: EmptyStateEval | MotionStateEval | null = null;
+    private _currentTransitionToNode: EmptyStateEval | MotionStateEval | ModifyCurveStateEval | null = null;
     private _currentTransitionPath: TransitionEval[] = [];
     private _transitionProgress = 0;
     private declare _triggerReset: TriggerResetFn;
@@ -470,6 +474,15 @@ class LayerEval {
 
         const nodeEvaluations = nodes.map((node): NodeEval | null => {
             if (node instanceof MotionState) {
+                //#region HACK
+                const modifyCurveState = parseModifyCurveState(node);
+                if (modifyCurveState) {
+                    return new ModifyCurveStateEval(
+                        modifyCurveState,
+                        context,
+                    );
+                }
+                //#endregion
                 return new MotionStateEval(node, context);
             } else if (node === graph.entryState) {
                 return entryEval = new SpecialStateEval(node, NodeKind.entry, node.name);
@@ -742,6 +755,13 @@ class LayerEval {
             _fromWeight: fromWeight,
             _toWeight: toWeight,
         } = this;
+
+        //#region TODO
+        if (currentNode.kind !== NodeKind.animation) {
+            assertIsTrue(!currentTransitionToNode || currentTransitionToNode.kind !== NodeKind.modifyCurve);
+        }
+        //#endregion
+
         if (currentNode.kind === NodeKind.empty) {
             this.passthroughWeight = toWeight;
             if (currentTransitionToNode && currentTransitionToNode.kind === NodeKind.animation) {
@@ -752,9 +772,15 @@ class LayerEval {
             this._sampleSource(1.0);
         } else {
             this.passthroughWeight = 1.0;
-            this._sampleSource(fromWeight);
-            if (currentTransitionToNode && currentTransitionToNode.kind === NodeKind.animation) {
+            if (currentTransitionToNode && currentTransitionToNode.kind === NodeKind.modifyCurve) {
+                // Motion -> ModifyCurve
+                this._sampleSource(1.0);
                 currentTransitionToNode.sampleToPort(toWeight);
+            } else {
+                this._sampleSource(fromWeight);
+                if (currentTransitionToNode && currentTransitionToNode.kind === NodeKind.animation) {
+                    currentTransitionToNode.sampleToPort(toWeight);
+                }
             }
         }
     }
@@ -767,6 +793,8 @@ class LayerEval {
             currentNode.sampleFromPort(weight);
         } else if (currentNode.kind === NodeKind.transitionSnapshot) {
             currentNode.sample(weight);
+        } else if (currentNode.kind === NodeKind.modifyCurve) {
+            currentNode.sampleFromPort(weight);
         }
     }
 
@@ -973,7 +1001,7 @@ class LayerEval {
 
         const lastTransition = currentTransitionPath[lenCurrentTransitionPath - 1];
         let tailNode = lastTransition.to;
-        for (; tailNode.kind !== NodeKind.animation && tailNode.kind !== NodeKind.empty;) {
+        for (; tailNode.kind !== NodeKind.animation && tailNode.kind !== NodeKind.empty && tailNode.kind !== NodeKind.modifyCurve;) {
             const transitionMatch = transitionMatchCache.reset();
             this._matchTransition(
                 tailNode,
@@ -991,7 +1019,7 @@ class LayerEval {
             tailNode = transition.to;
         }
 
-        return tailNode.kind === NodeKind.animation || tailNode.kind === NodeKind.empty ? tailNode : null;
+        return tailNode.kind === NodeKind.animation || tailNode.kind === NodeKind.empty || tailNode.kind === NodeKind.modifyCurve ? tailNode : null;
     }
 
     private _consumeTransition (transition: TransitionEval) {
@@ -1013,7 +1041,7 @@ class LayerEval {
         }
     }
 
-    private _doTransitionToMotion (targetNode: MotionStateEval | EmptyStateEval) {
+    private _doTransitionToMotion (targetNode: MotionStateEval | EmptyStateEval | ModifyCurveStateEval) {
         const {
             _currentTransitionPath: currentTransitionPath,
         } = this;
@@ -1038,6 +1066,10 @@ class LayerEval {
                     ? 0.0
                     : destinationStart / targetNode.duration;
             targetNode.resetToPort(destinationStartRatio);
+        }
+        if (targetNode.kind === NodeKind.modifyCurve) {
+            assertIsTrue(this._currentNode.kind === NodeKind.animation);
+            targetNode.startTransition(this._currentNode);
         }
         this._callEnterMethods(targetNode);
     }
@@ -1073,12 +1105,23 @@ class LayerEval {
             contrib = 0.0;
             ratio = 1.0;
         } else {
-            assertIsTrue(fromNode.kind === NodeKind.animation || fromNode.kind === NodeKind.empty || fromNode.kind === NodeKind.transitionSnapshot);
+            assertIsTrue(
+                fromNode.kind === NodeKind.animation
+                || fromNode.kind === NodeKind.empty
+                || fromNode.kind === NodeKind.transitionSnapshot
+                || fromNode.kind === NodeKind.modifyCurve,
+            );
             const { _transitionProgress: transitionProgress } = this;
             const durationSeconds = fromNode.kind === NodeKind.empty
                 ? transitionDuration
                 : normalizedDuration
-                    ? transitionDuration * (fromNode.kind === NodeKind.animation ? fromNode.duration : fromNode.first.duration)
+                    ? transitionDuration * (
+                        fromNode.kind === NodeKind.animation
+                            ? fromNode.duration
+                            : fromNode.kind === NodeKind.modifyCurve
+                                ? fromNode.owned.duration
+                                : fromNode.first.duration
+                    )
                     : transitionDuration;
             const progressSeconds = transitionProgress * durationSeconds;
             const remain = durationSeconds - progressSeconds;
@@ -1161,6 +1204,9 @@ class LayerEval {
         assertIsNonNullable(currentTransitionToNode);
         if (currentTransitionToNode.kind === NodeKind.animation) {
             currentTransitionToNode.finishTransition();
+        } else if (currentTransitionToNode.kind === NodeKind.modifyCurve) {
+            assertIsTrue(this._currentNode.kind === NodeKind.animation);
+            currentTransitionToNode.finishTransition(this._currentNode);
         }
         this._currentTransitionToNode = null;
         this._currentTransitionPath.length = 0;
@@ -1354,6 +1400,10 @@ class LayerEval {
             node.components.callMotionStateEnterMethods(controller, node.getToPortStatus());
             break;
         }
+        case NodeKind.modifyCurve: {
+            node.components.callMotionStateEnterMethods(controller, node.getToPortStatus());
+            break;
+        }
         case NodeKind.entry:
             node.stateMachine.components?.callStateMachineEnterMethods(controller);
             break;
@@ -1489,6 +1539,7 @@ enum NodeKind {
     entry, exit, any, animation,
     empty,
     transitionSnapshot,
+    modifyCurve,
 }
 
 export class StateEval {
@@ -1772,6 +1823,84 @@ interface MotionEvalPort {
     statusCache: MotionStateStatus;
 }
 
+class ModifyCurveStateEval extends StateEval {
+    public readonly kind = NodeKind.modifyCurve;
+
+    public declare components: InstantiatedComponents;
+
+    constructor (state: {
+        name: string;
+        curves: Readonly<Record<string, number>>;
+        __original: MotionState;
+    }, context: MotionContext) {
+        super(state);
+        for (const [curveName, curveValue] of Object.entries(state.curves)) {
+            const curveWriter = context.blendBuffer.createReplacingNamedCurveWriter(curveName, this._blendStateWriterHost);
+            this._curveWriterRecords.push({
+                writer: curveWriter,
+                value: curveValue,
+            });
+        }
+        this.components = new InstantiatedComponents(state.__original);
+    }
+
+    get owned () {
+        assertIsTrue(this._owned);
+        return this._owned;
+    }
+
+    public getToPortStatus () {
+        assertIsTrue(this._source);
+        return this._source.getFromPortStatus();
+    }
+
+    public updateFromPort (deltaTime: number) {
+        assertIsTrue(this._owned);
+        this._owned.updateFromPort(deltaTime);
+    }
+
+    public sampleFromPort (weight: number) {
+        // TODO: bugly
+        assertIsTrue(this._owned, 'Current');
+        this._owned.sampleFromPort(weight);
+        this._replace(weight, false);
+    }
+
+    public sampleToPort (weight: number) {
+        this._replace(weight, true);
+    }
+
+    public startTransition (source: MotionStateEval) {
+        this._source = source;
+    }
+
+    public finishTransition (owned: MotionStateEval) {
+        this._owned = owned;
+    }
+
+    private _alpha = 1.0;
+
+    private _curveWriterRecords: ReplacingCurveWriterRecord[] = [];
+
+    private _blendStateWriterHost = { weight: 0.0 };
+
+    private _source: MotionStateEval | null = null;
+
+    private _owned: MotionStateEval | null = null;
+
+    private _replace (weight: number, additiveWeight: boolean) {
+        const { _alpha: alpha } = this;
+        for (const { writer, value } of this._curveWriterRecords) {
+            writer.replace(value, alpha, weight, additiveWeight);
+        }
+    }
+}
+
+interface ReplacingCurveWriterRecord {
+    writer: ReplacingNamedCurveWriter;
+    value: number;
+}
+
 export class SpecialStateEval extends StateEval {
     constructor (node: State, kind: SpecialStateEval['kind'], name: string) {
         super(node);
@@ -1841,7 +1970,7 @@ class TransitionSnapshotEval extends StateEval {
     private _queue: QueuedMotion[] = [];
 }
 
-export type NodeEval = MotionStateEval | SpecialStateEval | EmptyStateEval | TransitionSnapshotEval;
+export type NodeEval = MotionStateEval | SpecialStateEval | EmptyStateEval | TransitionSnapshotEval | ModifyCurveStateEval;
 
 interface TransitionEval {
     to: NodeEval;

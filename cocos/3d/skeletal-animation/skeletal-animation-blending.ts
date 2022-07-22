@@ -186,6 +186,16 @@ class NamedCurveBlendState implements PropertyBlendState<number> {
         this._accumulatedWeight = newSum;
     }
 
+    replace (value: number, alpha: number, weight: number, additiveWeight: boolean) {
+        // Accumulated weight keep unchanged.
+        this._clipBlendResult = lerp(this._clipBlendResult, value, alpha);
+        if (additiveWeight) {
+            this._accumulatedWeight += weight;
+        } else {
+            this._accumulatedWeight = weight;
+        }
+    }
+
     public commitLayerChange (weight: number, additive: boolean) {
         const {
             result,
@@ -237,7 +247,28 @@ class NamedCurveWriterInternal implements RuntimeBinding {
     }
 }
 
+class ReplacingNamedCurveWriterInternal implements ReplacingNamedCurveWriter {
+    constructor (private _blendState: NamedCurveBlendState, private _host: BlendStateWriterHost, public curveName: string) {
+
+    }
+
+    public replace (value: number, alpha: number, weight: number, additiveWeight: boolean) {
+        const {
+            _blendState: blendState,
+        } = this;
+        blendState.replace(value,  alpha, weight, additiveWeight);
+    }
+
+    public destroy () {
+        --this._blendState.refCount;
+    }
+}
+
 export type NamedCurveWriter = RuntimeBinding;
+
+export type ReplacingNamedCurveWriter = {
+    replace(value: number, alpha: number, weight: number, additiveWeight: boolean): void;
+};
 
 enum TransformApplyFlag {
     POSITION = 1,
@@ -688,6 +719,17 @@ export class LayeredBlendStateBuffer extends BlendStateBuffer<LayeredNodeBlendSt
         const writer = new NamedCurveWriterInternal(blendState, host, name);
         ++blendState.refCount;
         return writer as NamedCurveWriter;
+    }
+
+    public createReplacingNamedCurveWriter (name: string, host: BlendStateWriterHost) {
+        let blendState = this._namedCurveBlendStates.get(name);
+        if (!blendState) {
+            blendState = new NamedCurveBlendState();
+            this._namedCurveBlendStates.set(name, blendState);
+        }
+        const writer = new ReplacingNamedCurveWriterInternal(blendState, host, name);
+        ++blendState.refCount;
+        return writer as ReplacingNamedCurveWriter;
     }
 
     public destroyNamedCurveWriter (writer: NamedCurveWriter) {

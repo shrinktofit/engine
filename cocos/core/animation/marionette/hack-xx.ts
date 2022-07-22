@@ -1,4 +1,5 @@
 import { RealTrack } from '../tracks/real-track';
+import { MotionState } from './motion-state';
 
 const motionStateStack: string[] = [];
 
@@ -26,4 +27,29 @@ export function getHackNamedTracks (): RealTrack[] {
         tracks.push(track);
     }
     return tracks;
+}
+
+export function parseModifyCurveState (state: MotionState): null | {
+    name: string;
+    curves: Record<string, number>;
+    __original: MotionState;
+} {
+    const regex1 = /.*#ModifyCurve(\(.*\))$/;
+    const matches = regex1.exec(state.name);
+    if (!matches) {
+        return null;
+    }
+    const spec = matches[1];
+    const curves: Record<string, number> = {};
+    // eslint-disable-next-line no-cond-assign
+    for (let regex = /\(#(\w+):(\d+)\)/g, match: RegExpMatchArray | null = null; (match = regex.exec(spec)) !== null;) {
+        const curveName = match[1];
+        const curveValue = parseFloat(match[2]);
+        curves[curveName] = curveValue;
+    }
+    return {
+        name: state.name,
+        curves,
+        __original: state,
+    };
 }
