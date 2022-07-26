@@ -2,24 +2,40 @@ import { Node } from '../../scene-graph';
 import { AnimationMask } from './animation-mask';
 import { createEval } from './create-eval';
 import type { BindContext } from './parametric';
-import type { BlendStateBuffer, LayeredBlendStateBuffer } from '../../../3d/skeletal-animation/skeletal-animation-blending';
 import type { ClipStatus } from './graph-eval';
 import type { RuntimeID } from './graph-debug';
 import { RootMotionOutput } from './root-motion';
 
 import './motion-function';
-import { AnimationClipEvalContext } from '../animation-clip';
+import { AnimationBindContext, AnimationOutput, AnimationOutputContext } from '../animation-output-context';
+import type { AnimationController } from '../animation';
+import { __StatsText } from './__print_stats';
+
+type TriggerResetFn = (name: string) => void;
 
 export interface MotionEvalContext extends BindContext {
-    node: Node;
-
-    blendBuffer: LayeredBlendStateBuffer;
-
-    mask?: AnimationMask;
+    controller: AnimationController;
 
     rootMotionOutput?: RootMotionOutput;
 
     additive: boolean;
+
+    bindContext: AnimationBindContext;
+
+    /**
+     * TODO: A little hacky.
+     * A function which resets specified trigger. This function can be stored.
+     */
+    triggerResetFn: TriggerResetFn;
+
+    __linkStash(stashName: string): __StashLink | null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface __StashLink {
+    update(deltaTime: number): void;
+
+    evaluate(outputContext: AnimationOutputContext): AnimationOutput;
 }
 
 export interface MotionEval {
@@ -29,8 +45,12 @@ export interface MotionEval {
     readonly runtimeId?: RuntimeID;
 
     readonly duration: number;
-    sample(progress: number, baseWeight: number, lastProgress: number): void;
+
+    sample(progress: number, outputContext: AnimationOutputContext): AnimationOutput;
+
     getClipStatuses(baseWeight: number): Iterator<ClipStatus>;
+
+    __printStats(): __StatsText;
 }
 
 export interface Motion {

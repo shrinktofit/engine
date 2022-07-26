@@ -25,7 +25,7 @@
 
 import { EDITOR } from 'internal:constants';
 import { Node } from '../scene-graph/node';
-import { AnimationClip, AnimationClipEvalContext } from './animation-clip';
+import { AnimationClip } from './animation-clip';
 import { Playable } from './playable';
 import { WrapMode, WrapModeMask, WrappedInfo } from './types';
 import { legacyCC } from '../global-exports';
@@ -36,7 +36,6 @@ import { AnimationMask } from './marionette/animation-mask';
 import { PoseOutput } from './pose-output';
 import { BlendStateBuffer } from '../../3d/skeletal-animation/skeletal-animation-blending';
 import { getGlobalAnimationManager } from './global-animation-manager';
-import { RootMotionOutput } from './marionette/root-motion';
 
 /**
  * @en The event type supported by Animation
@@ -333,19 +332,7 @@ export class AnimationState extends Playable {
         return this._curveLoaded;
     }
 
-    /**
-     * TODO
-     * @param originNode
-     */
-    public initialize (originNode: Node): void;
-
-    /**
-     *
-     * @internal TODO
-     */
-    public initialize (clipEvalContext: AnimationClipEvalContext): void;
-
-    public initialize (clipEvalContextOrOriginNode: Node | AnimationClipEvalContext) {
+    public initialize (root: Node, blendStateBuffer?: BlendStateBuffer, mask?: AnimationMask) {
         if (this._curveLoaded) { return; }
         this._curveLoaded = true;
         if (this._poseOutput) {
@@ -363,6 +350,7 @@ export class AnimationState extends Playable {
             this._clipEmbeddedPlayerEval.destroy();
             this._clipEmbeddedPlayerEval = undefined;
         }
+        this._targetNode = root;
         const clip = this._clip;
 
         this.duration = clip.duration;
@@ -380,27 +368,16 @@ export class AnimationState extends Playable {
             this.repeatCount = 1;
         }
 
-        const originNode = clipEvalContextOrOriginNode instanceof Node
-            ? clipEvalContextOrOriginNode
-            : clipEvalContextOrOriginNode.originNode;
-
         if (!this._doNotCreateEval) {
-            let clipEvalContext: AnimationClipEvalContext;
-            if (!(clipEvalContextOrOriginNode instanceof Node)) {
-                clipEvalContext = clipEvalContextOrOriginNode;
-            } else {
-                const pose = getGlobalAnimationManager()?.blendState ?? null;
-                let poseOutput: PoseOutput | undefined;
-                if (poseOutput) {
-                    poseOutput = new PoseOutput(pose);
-                    this._poseOutput = poseOutput;
-                }
-                clipEvalContext = {
-                    originNode,
-                    poseOutput,
-                };
+            const pose = blendStateBuffer ?? getGlobalAnimationManager()?.blendState ?? null;
+            if (pose) {
+                this._poseOutput = new PoseOutput(pose);
             }
-            this._clipEval = clip.createEvaluator(clipEvalContext);
+            this._clipEval = clip.createEvaluator({
+                target: root,
+                pose: this._poseOutput ?? undefined,
+                mask,
+            });
         }
 
         if (!(EDITOR && !legacyCC.GAME_VIEW)) {
@@ -413,8 +390,6 @@ export class AnimationState extends Playable {
             this._clipEmbeddedPlayerEval = clip.createEmbeddedPlayerEvaluator(this._targetNode);
             this._clipEmbeddedPlayerEval.notifyHostSpeedChanged(this._speed);
         }
-
-        this._targetNode = originNode;
     }
 
     public destroy () {
@@ -536,17 +511,6 @@ export class AnimationState extends Playable {
         }
         this._sampleEmbeddedPlayers(info);
         return info;
-    }
-
-    public __sampleRootMotion (from: number, length: number, weight: number) {
-        assertIsTrue(this._wrapMode === WrapMode.Normal || this._wrapMode === WrapMode.Loop, 'TODO: more wrap mode support?');
-        if (this._wrapMode === WrapMode.Loop) {
-            this._clipEval?.evaluateRootMotion(from, length, weight);
-        } else {
-            const fromNormalized = Math.min(from, this.duration);
-            const lengthNormalized = Math.min(this.duration - fromNormalized, length);
-            this._clipEval?.evaluateRootMotion(fromNormalized, lengthNormalized, weight);
-        }
     }
 
     protected onPlay () {

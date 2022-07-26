@@ -2,7 +2,8 @@ import { ccclass, serializable } from 'cc.decorator';
 import { RealCurve } from '../../curves';
 import { Size } from '../../math';
 import { CLASS_NAME_PREFIX_ANIM, createEvalSymbol } from '../define';
-import { Channel, RealChannel, RuntimeBinding, Track } from './track';
+import { RuntimeBinding } from '../runtime-binding';
+import { Channel, RealChannel, Track } from './track';
 import { maskIfEmpty } from './utils';
 
 const CHANNEL_NAMES: ReadonlyArray<string> = ['Width', 'Height'];

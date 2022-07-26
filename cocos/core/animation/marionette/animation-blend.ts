@@ -8,6 +8,9 @@ import { ClipStatus } from './graph-eval';
 import { EditorExtendable } from '../../data/editor-extendable';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
 import { getMotionRuntimeID, RUNTIME_ID_ENABLED } from './graph-debug';
+import { AnimationOutput, AnimationOutputContext, blendAnimationOutputInto } from '../animation-output-context';
+import { blendInto } from '../pose';
+import { __prependToHead, __StatsText } from './__print_stats';
 
 export interface AnimationBlend extends Motion, EditorExtendable {
     [createEval] (_context: MotionEvalContext): MotionEval | null;
@@ -104,15 +107,49 @@ export class AnimationBlendEval implements MotionEval {
         };
     }
 
-    public sample (progress: number, weight: number, lastProgress: number) {
-        for (let iChild = 0; iChild < this._childEvaluators.length; ++iChild) {
-            this._childEvaluators[iChild]?.sample(progress, weight * this._weights[iChild], lastProgress);
+    public sample (progress: number, outputContext: AnimationOutputContext) {
+        const nChild = this._childEvaluators.length;
+        let sumWeight = 0.0;
+        let finalOutput: AnimationOutput | null = null;
+        for (let iChild = 0; iChild < nChild; ++iChild) {
+            const childWeight = this._weights[iChild];
+            const childOutput = this._childEvaluators[iChild]?.sample(progress, outputContext);
+            if (!childOutput) {
+                continue;
+            }
+            sumWeight += childWeight;
+            if (!finalOutput) {
+                finalOutput = childOutput;
+            } else {
+                if (sumWeight) {
+                    const t = childWeight / sumWeight;
+                    blendAnimationOutputInto(finalOutput, childOutput, t);
+                }
+                outputContext.deleteOutput(childOutput);
+            }
         }
+        if (finalOutput) {
+            return finalOutput;
+        }
+        return outputContext.createDefaultedOutput();
     }
 
     public setInput (value: number, index: number) {
         this._inputs[index] = value;
         this.doEval();
+    }
+
+    __printStats (): __StatsText {
+        return {
+            0: `[[M]]AnimationBlend`,
+            // eslint-disable-next-line arrow-body-style
+            1: this._childEvaluators.map((childEval, itemIndex) => {
+                return __prependToHead(
+                    childEval?.__printStats() ?? { 0: '[[null]]' },
+                    `Item ${itemIndex} ${+(this._weights[itemIndex] * 100.0).toFixed(2)}% | `,
+                );
+            }),
+        };
     }
 
     protected doEval () {

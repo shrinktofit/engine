@@ -24,11 +24,11 @@
  */
 
 import { DEBUG } from 'internal:constants';
-import { Vec3, Quat, lerp } from '../../core/math';
+import { Vec3, Quat } from '../../core/math';
 import { Node } from '../../core/scene-graph';
-import { RuntimeBinding } from '../../core/animation/tracks/track';
 import { assertIsTrue } from '../../core/data/utils/asserts';
 import { MAX_ANIMATION_LAYER } from './limits';
+import { RuntimeBinding } from '../../core/animation/runtime-binding';
 
 export abstract class BlendStateBuffer<
     TNodeBlendState extends NodeBlendState<PropertyBlendState<Vec3>, PropertyBlendState<Quat>> =
@@ -43,21 +43,13 @@ export abstract class BlendStateBuffer<
         constants: boolean,
     ): BlendStateWriter<P> {
         const propertyBlendState = this.ref(node, property);
-        if (property === 'eulerAngles') {
-            return new EulerAnglesWriterInternal(
-                node,
-                propertyBlendState as PropertyBlendState<Quat>,
-                host,
-            ) as unknown as BlendStateWriter<P>;
-        } else {
-            return new BlendStateWriterInternal<P>(
-                node,
-                property,
-                propertyBlendState,
-                host,
-                constants,
-            ) as BlendStateWriter<P>;
-        }
+        return new BlendStateWriterInternal<P>(
+            node,
+            property,
+            propertyBlendState,
+            host,
+            constants,
+        );
     }
 
     public destroyWriter<P extends BlendingPropertyName> (writer: BlendStateWriter<P>) {
@@ -105,7 +97,7 @@ interface PropertyBlendStateTypeMap<TVec3PropertyBlendState, TQuatPropertyBlendS
     'rotation': TQuatPropertyBlendState;
     'position': TVec3PropertyBlendState;
     'scale': TVec3PropertyBlendState;
-    'eulerAngles': TQuatPropertyBlendState;
+    'eulerAngles': TVec3PropertyBlendState;
 }
 
 class BlendStateWriterInternal<P extends BlendingPropertyName> implements RuntimeBinding {
@@ -141,144 +133,19 @@ class BlendStateWriterInternal<P extends BlendingPropertyName> implements Runtim
     }
 }
 
-const EULER_ANGLES_WRITER_INTERNAL_QUAT_CACHE = new Quat();
-
-class EulerAnglesWriterInternal implements RuntimeBinding<Readonly<Vec3>> {
-    constructor (
-        protected _node: Node,
-        protected _propertyBlendState: PropertyBlendState<Quat>,
-        protected _host: BlendStateWriterHost,
-    ) {
-
-    }
-
-    public getValue () {
-        return this._node.eulerAngles;
-    }
-
-    public setValue (value: Vec3) {
-        const {
-            _propertyBlendState: propertyBlendState,
-            _host: host,
-        } = this;
-        const weight = host.weight;
-        const quat = Quat.fromEuler(EULER_ANGLES_WRITER_INTERNAL_QUAT_CACHE, value.x, value.y, value.z);
-        propertyBlendState.blend(quat, weight);
-    }
-}
-
-export type BlendStateWriter<P extends BlendingPropertyName> = RuntimeBinding<P extends 'rotation' ? Readonly<Quat> : Readonly<Vec3>>;
-
-class NamedCurveBlendState implements PropertyBlendState<number> {
-    refCount = 0;
-
-    result = 0.0;
-
-    blend (value: number, weight: number): void {
-        const { _accumulatedWeight: accumulatedWeight } = this;
-        const newSum = accumulatedWeight + weight;
-        if (weight === 1.0 && !accumulatedWeight) {
-            this._clipBlendResult = value;
-        } else if (newSum) {
-            const t = weight / newSum;
-            this._clipBlendResult =  lerp(this._clipBlendResult, value, t);
-        }
-        this._accumulatedWeight = newSum;
-    }
-
-    replace (value: number, alpha: number, weight: number, additiveWeight: boolean) {
-        // Accumulated weight keep unchanged.
-        this._clipBlendResult = lerp(this._clipBlendResult, value, alpha);
-        if (additiveWeight) {
-            this._accumulatedWeight += weight;
-        } else {
-            this._accumulatedWeight = weight;
-        }
-    }
-
-    public commitLayerChange (weight: number, additive: boolean) {
-        const {
-            result,
-            _accumulatedWeight: accumulatedWeight,
-        } = this;
-        if (additive) {
-            const {
-                _clipBlendResult: clipBlendResult,
-            } = this;
-            this.result += clipBlendResult * weight;
-        } else {
-            if (accumulatedWeight < 1.0) {
-                this.blend(0.0, 1.0 - accumulatedWeight);
-            }
-            // Note the clipBlendResult may be flushed due to above.
-            const {
-                _clipBlendResult: clipBlendResult,
-            } = this;
-            this.result = lerp(result, clipBlendResult, weight);
-        }
-        this._clipBlendResult = 0.0;
-        this._accumulatedWeight = 0.0;
-    }
-
-    public reset () {
-        this.result = 0.0;
-    }
-
-    private _clipBlendResult = 0.0;
-    private _accumulatedWeight = 0.0;
-}
-
-class NamedCurveWriterInternal implements RuntimeBinding {
-    constructor (private _blendState: NamedCurveBlendState, private _host: BlendStateWriterHost, public curveName: string) {
-
-    }
-
-    public setValue (value: number) {
-        const {
-            _blendState: blendState,
-            _host: host,
-        } = this;
-        const weight = host.weight;
-        blendState.blend(value, weight);
-    }
-
-    public destroy () {
-        --this._blendState.refCount;
-    }
-}
-
-class ReplacingNamedCurveWriterInternal implements ReplacingNamedCurveWriter {
-    constructor (private _blendState: NamedCurveBlendState, private _host: BlendStateWriterHost, public curveName: string) {
-
-    }
-
-    public replace (value: number, alpha: number, weight: number, additiveWeight: boolean) {
-        const {
-            _blendState: blendState,
-        } = this;
-        blendState.replace(value,  alpha, weight, additiveWeight);
-    }
-
-    public destroy () {
-        --this._blendState.refCount;
-    }
-}
-
-export type NamedCurveWriter = RuntimeBinding;
-
-export type ReplacingNamedCurveWriter = {
-    replace(value: number, alpha: number, weight: number, additiveWeight: boolean): void;
-};
+export type BlendStateWriter<P extends BlendingPropertyName> = Omit<BlendStateWriterInternal<P>, 'node' | 'property'>;
 
 enum TransformApplyFlag {
     POSITION = 1,
     ROTATION = 2,
     SCALE = 4,
+    EULER_ANGLES = 8,
 }
 
 const TRANSFORM_APPLY_FLAGS_ALL = TransformApplyFlag.POSITION
     | TransformApplyFlag.ROTATION
-    | TransformApplyFlag.SCALE;
+    | TransformApplyFlag.SCALE
+    | TransformApplyFlag.EULER_ANGLES;
 
 interface PropertyBlendState<TValue> {
     /**
@@ -342,23 +209,24 @@ abstract class NodeBlendState<TVec3PropertyBlendState extends PropertyBlendState
         const { _properties: properties } = this;
         return !properties.position
             && !properties.rotation
+            && !properties.eulerAngles
             && !properties.scale;
     }
 
     public refProperty<P extends BlendingPropertyName> (
         node: Node, property: BlendingPropertyName,
-    ): PropertyBlendStateTypeMap<TVec3PropertyBlendState, TQuatPropertyBlendState>[P] {
+    ): NodeBlendState<TVec3PropertyBlendState, TQuatPropertyBlendState>['_properties'][P] {
         const { _properties: properties } = this;
         let propertyBlendState: TVec3PropertyBlendState | TQuatPropertyBlendState;
         switch (property) {
         default:
         case 'position':
         case 'scale':
+        case 'eulerAngles':
             propertyBlendState = properties[property] ??= this._createVec3BlendState(node[property]);
             break;
-        case 'eulerAngles':
         case 'rotation':
-            propertyBlendState = properties.rotation ??= this._createQuatBlendState(node.rotation);
+            propertyBlendState = properties[property] ??= this._createQuatBlendState(node.rotation);
             break;
         }
         ++propertyBlendState.refCount;
@@ -384,7 +252,7 @@ abstract class NodeBlendState<TVec3PropertyBlendState extends PropertyBlendState
     public apply (node: Node) {
         const {
             _transformApplyFlags: transformApplyFlags,
-            _properties: { position, scale, rotation },
+            _properties: { position, scale, rotation, eulerAngles },
         } = this;
 
         if (!transformApplyFlags) {
@@ -403,6 +271,10 @@ abstract class NodeBlendState<TVec3PropertyBlendState extends PropertyBlendState
             s = scale.result;
         }
 
+        if (eulerAngles && (transformApplyFlags & TransformApplyFlag.EULER_ANGLES)) {
+            r = eulerAngles.result;
+        }
+
         if (rotation && (transformApplyFlags & TransformApplyFlag.ROTATION)) {
             r = rotation.result;
         }
@@ -419,6 +291,7 @@ abstract class NodeBlendState<TVec3PropertyBlendState extends PropertyBlendState
     protected _properties: {
         position?: TVec3PropertyBlendState;
         rotation?: TQuatPropertyBlendState;
+        eulerAngles?: TVec3PropertyBlendState;
         scale?: TVec3PropertyBlendState;
     } = {};
 
@@ -429,7 +302,7 @@ abstract class NodeBlendState<TVec3PropertyBlendState extends PropertyBlendState
 
 class LegacyNodeBlendState extends NodeBlendState<LegacyVec3PropertyBlendState, LegacyQuatPropertyBlendState> {
     public apply (node: Node) {
-        const { _properties: { position, scale, rotation } } = this;
+        const { _properties: { position, scale, rotation, eulerAngles } } = this;
 
         if (position && position.accumulatedWeight) {
             this._transformApplyFlags |= TransformApplyFlag.POSITION;
@@ -445,6 +318,13 @@ class LegacyNodeBlendState extends NodeBlendState<LegacyVec3PropertyBlendState, 
             }
         }
 
+        if (eulerAngles && eulerAngles.accumulatedWeight) {
+            this._transformApplyFlags |= TransformApplyFlag.EULER_ANGLES;
+            if (eulerAngles.accumulatedWeight < 1.0) {
+                eulerAngles.blend(node.eulerAngles, 1.0 - eulerAngles.accumulatedWeight);
+            }
+        }
+
         if (rotation && rotation.accumulatedWeight) {
             this._transformApplyFlags |= TransformApplyFlag.ROTATION;
             if (rotation.accumulatedWeight < 1.0) {
@@ -457,6 +337,7 @@ class LegacyNodeBlendState extends NodeBlendState<LegacyVec3PropertyBlendState, 
         position?.reset();
         scale?.reset();
         rotation?.reset();
+        eulerAngles?.reset();
     }
 
     protected _createVec3BlendState (_currentValue: Readonly<Vec3>) {
@@ -494,20 +375,16 @@ class LayeredVec3PropertyBlendState implements PropertyBlendState<Vec3> {
         );
     }
 
-    public commitLayerChange (weight: number, additive: boolean) {
+    public commitLayerChange (weight: number) {
         const {
             result,
             _clipBlendResult: clipBlendResult,
             _accumulatedWeight: accumulatedWeight,
         } = this;
-        if (additive) {
-            Vec3.scaleAndAdd(result, result, clipBlendResult, weight);
-        } else {
-            if (accumulatedWeight < 1.0) {
-                this.blend(this._defaultValue, 1.0 - accumulatedWeight);
-            }
-            Vec3.lerp(result, result, clipBlendResult, weight);
+        if (accumulatedWeight < 1.0) {
+            this.blend(this._defaultValue, 1.0 - accumulatedWeight);
         }
+        Vec3.lerp(result, result, clipBlendResult, weight);
         Vec3.zero(this._clipBlendResult);
         this._accumulatedWeight = 0.0;
     }
@@ -541,21 +418,16 @@ class LayeredQuatPropertyBlendState implements PropertyBlendState<Quat> {
         );
     }
 
-    public commitLayerChange (weight: number, additive: boolean) {
+    public commitLayerChange (weight: number) {
         const {
             result,
             _clipBlendResult: clipBlendResult,
             _accumulatedWeight: accumulatedWeight,
         } = this;
-        if (additive) {
-            Quat.slerp(clipBlendResult, Quat.IDENTITY, clipBlendResult, weight);
-            Quat.multiply(result, result, clipBlendResult);
-        } else {
-            if (accumulatedWeight < 1.0) {
-                this.blend(this._defaultValue, 1.0 - accumulatedWeight);
-            }
-            Quat.slerp(result, result, clipBlendResult, weight);
+        if (accumulatedWeight < 1.0) {
+            this.blend(this._defaultValue, 1.0 - accumulatedWeight);
         }
+        Quat.slerp(result, result, clipBlendResult, weight);
         Quat.identity(this._clipBlendResult);
         this._accumulatedWeight = 0.0;
     }
@@ -574,19 +446,22 @@ class LayeredNodeBlendState extends NodeBlendState<LayeredVec3PropertyBlendState
         this._layerMask &= ~(1 << layerIndex);
     }
 
-    public commitLayerChanges (layerIndex: number, weight: number, additive: boolean) {
+    public commitLayerChanges (layerIndex: number, weight: number) {
         if (!(this._layerMask & (1 << layerIndex))) {
             return;
         }
-        const { _properties: { position, scale, rotation } } = this;
+        const { _properties: { position, scale, rotation, eulerAngles } } = this;
         if (position) {
-            position.commitLayerChange(weight, additive);
+            position.commitLayerChange(weight);
         }
         if (scale) {
-            scale.commitLayerChange(weight, additive);
+            scale.commitLayerChange(weight);
         }
         if (rotation) {
-            rotation.commitLayerChange(weight, additive);
+            rotation.commitLayerChange(weight);
+        }
+        if (eulerAngles) {
+            eulerAngles.commitLayerChange(weight);
         }
     }
 
@@ -596,11 +471,12 @@ class LayeredNodeBlendState extends NodeBlendState<LayeredVec3PropertyBlendState
 
         super.apply(node);
 
-        const { _properties: { position, scale, rotation } } = this;
+        const { _properties: { position, scale, rotation, eulerAngles } } = this;
 
         position?.reset();
         scale?.reset();
         rotation?.reset();
+        eulerAngles?.reset();
     }
 
     protected _createVec3BlendState (currentValue: Readonly<Vec3>) {
@@ -705,43 +581,6 @@ class LayeredNodeBlendState extends NodeBlendState<LayeredVec3PropertyBlendState
  * ```
  */
 export class LayeredBlendStateBuffer extends BlendStateBuffer<LayeredNodeBlendState> {
-    constructor (namedCurveHost: NamedCurveHost) {
-        super();
-        this._namedCurveHost = namedCurveHost;
-    }
-
-    public createNamedCurveWriter (name: string, host: BlendStateWriterHost) {
-        let blendState = this._namedCurveBlendStates.get(name);
-        if (!blendState) {
-            blendState = new NamedCurveBlendState();
-            this._namedCurveBlendStates.set(name, blendState);
-        }
-        const writer = new NamedCurveWriterInternal(blendState, host, name);
-        ++blendState.refCount;
-        return writer as NamedCurveWriter;
-    }
-
-    public createReplacingNamedCurveWriter (name: string, host: BlendStateWriterHost) {
-        let blendState = this._namedCurveBlendStates.get(name);
-        if (!blendState) {
-            blendState = new NamedCurveBlendState();
-            this._namedCurveBlendStates.set(name, blendState);
-        }
-        const writer = new ReplacingNamedCurveWriterInternal(blendState, host, name);
-        ++blendState.refCount;
-        return writer as ReplacingNamedCurveWriter;
-    }
-
-    public destroyNamedCurveWriter (writer: NamedCurveWriter) {
-        const internalWriter = writer as NamedCurveWriterInternal;
-        const blendState = this._namedCurveBlendStates.get(internalWriter.curveName);
-        assertIsTrue(blendState);
-        --blendState.refCount;
-        if (blendState.refCount === 0) {
-            this._namedCurveBlendStates.delete(internalWriter.curveName);
-        }
-    }
-
     public setMask (layerIndex: number, excludeNodes: Set<Node>) {
         if (DEBUG) {
             checkLayerIndex(layerIndex);
@@ -753,52 +592,18 @@ export class LayeredBlendStateBuffer extends BlendStateBuffer<LayeredNodeBlendSt
         });
     }
 
-    public commitLayerChanges (layerIndex: number, weight: number, additive: boolean) {
+    public commitLayerChanges (layerIndex: number, weight: number) {
         if (DEBUG) {
             checkLayerIndex(layerIndex);
         }
         this._nodeBlendStates.forEach((nodeBlendState, node) => {
-            nodeBlendState.commitLayerChanges(layerIndex, weight, additive);
+            nodeBlendState.commitLayerChanges(layerIndex, weight);
         });
-        this._namedCurveBlendStates.forEach((namedCurveBlendState) => {
-            namedCurveBlendState.commitLayerChange(weight, additive);
-        });
-    }
-
-    public apply (): void {
-        super.apply();
-        for (const [name, state] of this._namedCurveBlendStates) {
-            this._namedCurveHost.set(name, state.result);
-            state.reset();
-        }
     }
 
     protected createNodeBlendState () {
         return new LayeredNodeBlendState();
     }
-
-    private _namedCurveHost: NamedCurveHost;
-    protected _namedCurveBlendStates: Map<string, NamedCurveBlendState> = new Map();
-}
-
-export class NamedCurveHost {
-    public names () {
-        return this._namedCurves.keys();
-    }
-
-    public has (name: string) {
-        return this._namedCurves.has(name);
-    }
-
-    public get (name: string) {
-        return this._namedCurves.get(name) ?? 0.0;
-    }
-
-    public set (name: string, value: number) {
-        this._namedCurves.set(name, value);
-    }
-
-    private _namedCurves: Map<string, number> = new Map();
 }
 
 function checkLayerIndex (layerIndex: number) {

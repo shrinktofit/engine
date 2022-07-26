@@ -5,6 +5,9 @@ import './animation-blend-2d';
 import './animation-blend-direct';
 import './animation-mask';
 
+import './functors/state-machine-functor';
+import './functors/modify-named-curves-functor';
+
 import type { MotionStateStatus } from './animation-controller';
 
 export type { AnimationGraphRunTime } from './animation-graph';

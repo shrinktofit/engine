@@ -21,4 +21,7 @@
     "files.associations": {
         "iterator": "cpp"
     },
+    "cSpell.words": [
+        "Functors"
+    ],
 }

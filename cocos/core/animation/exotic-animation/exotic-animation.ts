@@ -4,9 +4,12 @@ import { ccclass, serializable } from '../../data/decorators';
 import { assertIsTrue } from '../../data/utils/asserts';
 import { clamp, lerp, Quat, Vec3 } from '../../math';
 import { error } from '../../platform/debug';
+import { AnimationBindContext, PoseBoneBindingPoint } from '../animation-output-context';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
 import { deltaQuat } from '../math';
-import { Binder, RuntimeBinding, TrackBinding, TrackPath } from '../tracks/track';
+import { Pose } from '../pose';
+import { RuntimeBinding } from '../runtime-binding';
+import { Binder, TrackBinding, TrackPath } from '../tracks/track';
 
 const SPLIT_METHOD_ENABLED = TEST || EDITOR;
 
@@ -24,16 +27,12 @@ function throwIfSplitMethodIsNotValid (): never {
  */
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}ExoticAnimation`)
 export class ExoticAnimation {
-    public createEvaluator (binder: Binder, additive: boolean, ignoreRoot?: string) {
-        return new ExoticTrsAnimationEvaluator(
-            typeof ignoreRoot === 'string' ? this._nodeAnimations.filter(({ path }) => path !== ignoreRoot) : this._nodeAnimations,
-            binder,
-            additive,
-        );
+    public createEvaluator (binder: Binder) {
+        return new ExoticTrsAnimationEvaluator(this._nodeAnimations, binder);
     }
 
-    public __createEvaluatorOnlyRoot (binder: Binder, root: string, additive: boolean) {
-        return new ExoticTrsAnimationEvaluator(this._nodeAnimations.filter(({ path }) => path === root), binder, additive);
+    public createEvaluatorX (bindContext: AnimationBindContext, additive: boolean) {
+        return new ExoticTrsAnimationEvaluatorX(this._nodeAnimations, bindContext, additive);
     }
 
     public addNodeAnimation (path: string) {
@@ -87,13 +86,23 @@ class ExoticNodeAnimation {
         this._scale = new ExoticTrack(times, new ExoticVec3TrackValues(values));
     }
 
-    public createEvaluator (binder: Binder, additive: boolean) {
+    public createEvaluator (binder: Binder) {
         return new ExoticNodeAnimationEvaluator(
             this._path,
             this._position,
             this._rotation,
             this._scale,
             binder,
+        );
+    }
+
+    public createEvaluatorX (bindContext: AnimationBindContext, additive: boolean) {
+        const boneBindingPoint = bindContext.bindBone(this._path);
+        return new ExoticNodeAnimationEvaluatorX(
+            boneBindingPoint,
+            this._position,
+            this._rotation,
+            this._scale,
             additive,
         );
     }
@@ -577,8 +586,8 @@ function binarySearchRatio (values: ArrayLike<number>, value: number) {
 }
 
 class ExoticTrsAnimationEvaluator {
-    constructor (nodeAnimations: ExoticNodeAnimation[], binder: Binder, additive: boolean) {
-        this._nodeEvaluations = nodeAnimations.map((nodeAnimation) => nodeAnimation.createEvaluator(binder, additive));
+    constructor (nodeAnimations: ExoticNodeAnimation[], binder: Binder) {
+        this._nodeEvaluations = nodeAnimations.map((nodeAnimation) => nodeAnimation.createEvaluator(binder));
     }
 
     public evaluate (time: number) {
@@ -590,6 +599,20 @@ class ExoticTrsAnimationEvaluator {
     private _nodeEvaluations: ExoticNodeAnimationEvaluator[];
 }
 
+class ExoticTrsAnimationEvaluatorX {
+    constructor (nodeAnimations: ExoticNodeAnimation[], bindContext: AnimationBindContext, additive: boolean) {
+        this._nodeEvaluations = nodeAnimations.map((nodeAnimation) => nodeAnimation.createEvaluatorX(bindContext, additive));
+    }
+
+    public evaluate (time: number, pose: Pose) {
+        this._nodeEvaluations.forEach((nodeEvaluator) => {
+            nodeEvaluator.evaluate(time, pose);
+        });
+    }
+
+    private _nodeEvaluations: ExoticNodeAnimationEvaluatorX[];
+}
+
 class ExoticNodeAnimationEvaluator {
     constructor (
         path: string,
@@ -597,72 +620,120 @@ class ExoticNodeAnimationEvaluator {
         rotation: ExoticQuatTrack | null,
         scale: ExoticVec3Track | null,
         binder: Binder,
-        additive: boolean,
     ) {
         if (position) {
-            const positionEval = this._position = createExoticTrackEvaluationRecord(
-                position.times, position.values, Vec3, path, 'position', binder, additive,
+            this._position = createExoticTrackEvaluationRecord(
+                position.times, position.values, Vec3, path, 'position', binder,
             );
+        }
+        if (rotation) {
+            this._rotation = createExoticTrackEvaluationRecord(
+                rotation.times, rotation.values, Quat, path, 'rotation', binder,
+            );
+        }
+        if (scale) {
+            this._scale = createExoticTrackEvaluationRecord(
+                scale.times, scale.values, Vec3, path, 'scale', binder,
+            );
+        }
+    }
+
+    public evaluate (time: number) {
+        if (this._position) {
+            const value = this._position.evaluator.evaluate(time);
+            this._position.runtimeBinding.setValue(value);
+        }
+        if (this._rotation) {
+            const value = this._rotation.evaluator.evaluate(time);
+            this._rotation.runtimeBinding.setValue(value);
+        }
+        if (this._scale) {
+            const value = this._scale.evaluator.evaluate(time);
+            this._scale.runtimeBinding.setValue(value);
+        }
+    }
+
+    private _position: ExoticTrackEvaluationRecord<Vec3> | null = null;
+    private _rotation: ExoticTrackEvaluationRecord<Quat> | null = null;
+    private _scale: ExoticTrackEvaluationRecord<Vec3> | null = null;
+}
+
+class ExoticNodeAnimationEvaluatorX {
+    constructor (
+        boneBinding: PoseBoneBindingPoint,
+        position: ExoticVec3Track | null,
+        rotation: ExoticQuatTrack | null,
+        scale: ExoticVec3Track | null,
+        additive: boolean,
+    ) {
+        this._boneBinding = boneBinding;
+        if (position) {
+            const positionEval = this._position = new ExoticTrackEvaluator(position.times, position.values, Vec3);
             if (positionEval && additive) {
-                const basePosition = positionEval.evaluator.evaluate(0.0);
+                const basePosition = positionEval.evaluate(0.0);
                 Vec3.copy(this._basePosition, basePosition);
             }
         }
         if (rotation) {
-            const rotationEval = this._rotation = createExoticTrackEvaluationRecord(
-                rotation.times, rotation.values, Quat, path, 'rotation', binder, additive,
-            );
+            const rotationEval = this._rotation = new ExoticTrackEvaluator(rotation.times, rotation.values, Quat);
             if (rotationEval && additive) {
-                const baseRotation = rotationEval.evaluator.evaluate(0.0);
+                const baseRotation = rotationEval.evaluate(0.0);
                 Quat.copy(this._baseRotation, baseRotation);
             }
         }
         if (scale) {
-            const scaleEval = this._scale = createExoticTrackEvaluationRecord(
-                scale.times, scale.values, Vec3, path, 'scale', binder, additive,
-            );
+            const scaleEval = this._scale = new ExoticTrackEvaluator(scale.times, scale.values, Vec3);
             if (scaleEval && additive) {
-                const baseScale = scaleEval.evaluator.evaluate(0.0);
+                const baseScale = scaleEval.evaluate(0.0);
                 Vec3.copy(this._baseScale, baseScale);
             }
         }
         this._additive = additive;
     }
 
-    public evaluate (time: number) {
-        const { _additive: additive } = this;
-        if (this._position) {
-            const value = this._position.evaluator.evaluate(time);
+    public evaluate (time: number, pose: Pose) {
+        const {
+            _additive: additive,
+            _boneBinding: boneHandle,
+            _position: position,
+            _rotation: rotation,
+            _scale: scale,
+        } = this;
+        const {
+            transforms: poseTransforms,
+        } = pose;
+        if (position) {
+            const value = position.evaluate(time);
             if (additive) {
                 Vec3.subtract(value, value, this._basePosition);
             }
-            this._position.runtimeBinding.setValue(value);
+            poseTransforms.setPosition(boneHandle, value);
         }
-        if (this._rotation) {
-            const rotationAbs = this._rotation.evaluator.evaluate(time);
+        if (rotation) {
+            const rotationAbs = rotation.evaluate(time);
             if (additive) {
                 deltaQuat(rotationAbs, this._baseRotation, rotationAbs);
             }
-            this._rotation.runtimeBinding.setValue(rotationAbs);
+            poseTransforms.setRotation(boneHandle, rotationAbs);
         }
-        if (this._scale) {
-            const value = this._scale.evaluator.evaluate(time);
+        if (scale) {
+            const value = scale.evaluate(time);
             if (additive) {
                 Vec3.subtract(value, value, this._baseScale);
             }
-            this._scale.runtimeBinding.setValue(value);
+            poseTransforms.setScale(boneHandle, value);
         }
     }
 
     private _additive = false;
-    private _position: ExoticTrackEvaluationRecord<Vec3> | null = null;
+    private _position: ExoticTrackEvaluator<Vec3> | null = null;
     private _basePosition = new Vec3();
-    private _rotation: ExoticTrackEvaluationRecord<Quat> | null = null;
+    private _rotation: ExoticTrackEvaluator<Quat> | null = null;
     private _baseRotation = new Quat();
-    private _scale: ExoticTrackEvaluationRecord<Vec3> | null = null;
+    private _scale: ExoticTrackEvaluator<Vec3> | null = null;
     private _baseScale = new Vec3();
+    private _boneBinding = -1;
 }
-
 class ExoticTrackEvaluator<TValue> {
     constructor (times: FloatArray, values: ExoticTrackValues<TValue>, ValueConstructor: new () => TValue) {
         this._times = times;
@@ -713,12 +784,6 @@ class ExoticTrackEvaluator<TValue> {
     private _prevValue: TValue;
     private _nextValue: TValue;
     private _resultValue: TValue;
-}
-
-class AdditiveExoticTrackEvaluator<TValue> {
-    constructor (evaluator: ExoticTrackEvaluator<TValue>) {
-
-    }
 }
 
 interface ExoticTrackEvaluationRecord<TValue> {
@@ -882,16 +947,12 @@ function createExoticTrackEvaluationRecord<TValue> (
     path: string,
     property: 'position' | 'scale' | 'rotation',
     binder: Binder,
-    additive: boolean,
 ) {
     const trackBinding = new TrackBinding();
     trackBinding.path = new TrackPath().toHierarchy(path).toProperty(property);
     const runtimeBinding = binder(trackBinding);
     if (!runtimeBinding) {
         return null;
-    }
-    if (additive) {
-
     }
     const evaluator =  new ExoticTrackEvaluator(times, values, ValueConstructor);
     return {

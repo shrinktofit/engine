@@ -3,10 +3,11 @@ import { RealCurve } from '../../curves';
 import { Color, Size, Vec2, Vec3, Vec4 } from '../../math';
 import { getError } from '../../platform';
 import { CLASS_NAME_PREFIX_ANIM, createEvalSymbol } from '../define';
+import { RuntimeBinding } from '../runtime-binding';
 import { IValueProxyFactory } from '../value-proxy';
 import { ColorTrack, ColorTrackEval } from './color-track';
 import { SizeTrackEval } from './size-track';
-import { Channel, RealChannel, RuntimeBinding, Track, TrackPath } from './track';
+import { Channel, RealChannel, Track, TrackPath } from './track';
 import { Vec2TrackEval, Vec3TrackEval, Vec4TrackEval, VectorTrack } from './vector-track';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}UntypedTrackChannel`)

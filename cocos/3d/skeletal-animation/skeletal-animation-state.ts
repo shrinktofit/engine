@@ -71,9 +71,9 @@ export class SkeletalAnimationState extends AnimationState {
         this._animInfoMgr = legacyCC.director.root.dataPoolManager.jointAnimationInfo;
     }
 
-    public initialize (root: Node | AnimationClipEvalContext) {
+    public initialize (root: Node) {
         if (this._curveLoaded) { return; }
-        const originNode = root instanceof Node ? root : root.originNode;
+        const originNode = root;
         this._parent = originNode.getComponent('cc.SkeletalAnimation') as SkeletalAnimation;
         const baked = this._parent.useBakedAnimation;
         this._doNotCreateEval = baked;

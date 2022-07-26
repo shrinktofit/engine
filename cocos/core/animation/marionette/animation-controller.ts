@@ -198,4 +198,10 @@ export class AnimationController extends Component {
         assertIsNonNullable(graphEval);
         return graphEval.getNamedCurveValue(curveName);
     }
+
+    __printStats () {
+        const { _graphEval: graphEval } = this;
+        assertIsNonNullable(graphEval);
+        return graphEval.__printStats();
+    }
 }

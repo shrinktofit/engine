@@ -7,24 +7,20 @@ import { error, errorID, warn, warnID } from '../../platform';
 import { Node } from '../../scene-graph';
 import { js } from '../../utils/js';
 import { AnimationClipEvalContext } from '../animation-clip';
+import { AnimationBindContext, AnimationOutput, NamedCurveBinding, PoseBonePositionBinding, PoseBoneRotationBinding, PoseBoneRotationEulerAnglesBinding, PoseBoneScaleBinding } from '../animation-output-context';
 import { CLASS_NAME_PREFIX_ANIM, createEvalSymbol } from '../define';
 import type { AnimationMask } from '../marionette/animation-mask';
 import { PoseOutput } from '../pose-output';
 import { ComponentPath, HierarchyPath, isPropertyPath, TargetPath } from '../target-path';
 import { IValueProxyFactory } from '../value-proxy';
 import { Range } from './utils';
+import { RuntimeBinding } from '../runtime-binding';
 
 const normalizedFollowTag = Symbol('NormalizedFollow');
 
 const parseTrsPathTag = Symbol('ConvertAsTrsPath');
 
 export const trackBindingTag = Symbol('TrackBinding');
-
-export type RuntimeBinding<TValue = unknown> = {
-    setValue(value: TValue): void;
-
-    getValue?(): TValue;
-};
 
 export type Binder = (binding: TrackBinding) => undefined | RuntimeBinding;
 
@@ -280,16 +276,16 @@ class TrackPath {
         let result = root;
         for (let iPath = beginIndex; iPath < endIndex; ++iPath) {
             const path = paths[iPath];
-            if (isPropertyPath(path)) {
+            if (path instanceof NamedCurvePath) {
+                // TODO error
+                return null;
+            } else if (isPropertyPath(path)) {
                 if (!(path in (result as any))) {
                     warnID(3929, path);
                     return null;
                 } else {
                     result = (result as any)[path];
                 }
-            } else if (path instanceof NamedCurvePath) {
-                // TODO error
-                return null;
             } else {
                 result = path.get(result);
             }
@@ -338,12 +334,59 @@ export class TrackBinding {
         }
     }
 
-    public createRuntimeBinding (evalContext: AnimationClipEvalContext) {
+    public createRuntimeBinding (target: unknown, poseOutput: PoseOutput | undefined, isConstant: boolean) {
+        const { path, proxy } = this;
+        const nPaths = path.length;
+        const iLastPath = nPaths - 1;
+        if (nPaths !== 0 && (path.isPropertyAt(iLastPath) || path.isElementAt(iLastPath)) && !proxy) {
+            const lastPropertyKey = path.isPropertyAt(iLastPath)
+                ? path.parsePropertyAt(iLastPath)
+                : path.parseElementAt(iLastPath);
+            const resultTarget = path[normalizedFollowTag](target, 0, nPaths - 1) as any;
+            if (resultTarget === null) {
+                return null;
+            }
+            if (poseOutput && resultTarget instanceof Node && isTrsPropertyName(lastPropertyKey)) {
+                const blendStateWriter = poseOutput.createPoseWriter(resultTarget, lastPropertyKey, isConstant);
+                return blendStateWriter;
+            }
+            return {
+                setValue: (value: unknown) => {
+                    resultTarget[lastPropertyKey] = value;
+                },
+                // eslint-disable-next-line arrow-body-style
+                getValue: () => {
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+                    return resultTarget[lastPropertyKey];
+                },
+            };
+        } else if (!proxy) {
+            errorID(3921);
+            return null;
+        } else {
+            const resultTarget = path[normalizedFollowTag](target, 0, nPaths);
+            if (resultTarget === null) {
+                return null;
+            }
+            const runtimeProxy = proxy.forTarget(resultTarget);
+            const binding: RuntimeBinding = {
+                setValue: (value) => {
+                    runtimeProxy.set(value);
+                },
+            };
+            const proxyGet = runtimeProxy.get;
+            if (proxyGet) {
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+                binding.getValue = () => proxyGet.call(runtimeProxy);
+            }
+            return binding;
+        }
+    }
+
+    public createRuntimeBindingX (bindContext: AnimationBindContext) {
         const {
-            originNode,
-            poseOutput,
-            namedCurveOutput,
-        } = evalContext;
+            origin,
+        } = bindContext;
         const { path, proxy } = this;
         const nPaths = path.length;
         const iLastPath = nPaths - 1;
@@ -351,35 +394,53 @@ export class TrackBinding {
         //#region HACK
         if (path.isComponentAt(0) && path.parseComponentAt(0) === 'GlobalNamedCurveRegistry') {
             const curveName = path.parsePropertyAt(1);
-            if (!namedCurveOutput) {
-                return null;
-            } else {
-                const writer = namedCurveOutput.bind(curveName);
-                return writer ?? null;
-            }
+            const bindingPoint = bindContext.bindNamedCurve(curveName);
+            return new NamedCurveBinding(bindingPoint);
         }
         //#endregion
 
         if (nPaths === 1 && path.isNamedCurveAt(0) && !proxy) {
-            if (!namedCurveOutput) {
-                return null;
-            } else {
-                const curveName = path.parseNamedCurveAt(0);
-                const writer = namedCurveOutput.bind(curveName);
-                return writer ?? null;
-            }
+            const curveName = path.parseNamedCurveAt(0);
+            const bindingPoint = bindContext.bindNamedCurve(curveName);
+            return new NamedCurveBinding(bindingPoint);
         }
         if (nPaths !== 0 && (path.isPropertyAt(iLastPath) || path.isElementAt(iLastPath)) && !proxy) {
             const lastPropertyKey = path.isPropertyAt(iLastPath)
                 ? path.parsePropertyAt(iLastPath)
                 : path.parseElementAt(iLastPath);
-            const resultTarget = path[normalizedFollowTag](originNode, 0, nPaths - 1) as any;
+            const resultTarget = path[normalizedFollowTag](origin, 0, nPaths - 1) as any;
             if (resultTarget === null) {
                 return null;
             }
-            if (poseOutput && resultTarget instanceof Node && isTrsPropertyName(lastPropertyKey)) {
-                const blendStateWriter = poseOutput.createPoseWriter(resultTarget, lastPropertyKey, false);
-                return blendStateWriter;
+
+            if (resultTarget instanceof Node && isTrsPropertyName(lastPropertyKey)) {
+                const bonePath = (() => {
+                    const segments = [] as string[];
+                    let node: Node | null = resultTarget;
+                    for (; node && node !== origin; node = node.parent) {
+                        segments.unshift(node.name);
+                    }
+                    if (node === origin) {
+                        return segments.join('/');
+                    } else {
+                        return undefined;
+                    }
+                })();
+                if (typeof bonePath === 'string') {
+                    const boneBinding = bindContext.bindBone(bonePath);
+                    switch (lastPropertyKey) {
+                    case 'position':
+                        return new PoseBonePositionBinding(boneBinding);
+                    case 'rotation':
+                        return new PoseBoneRotationBinding(boneBinding);
+                    case 'eulerAngles':
+                        return new PoseBoneRotationEulerAnglesBinding(boneBinding);
+                    case 'scale':
+                        return new PoseBoneScaleBinding(boneBinding);
+                    default:
+                        break;
+                    }
+                }
             }
             let setValue; let getValue;
             if (SUPPORT_JIT) {
@@ -416,12 +477,12 @@ export class TrackBinding {
             errorID(3921);
             return null;
         } else {
-            const resultTarget = path[normalizedFollowTag](originNode, 0, nPaths);
+            const resultTarget = path[normalizedFollowTag](origin, 0, nPaths);
             if (resultTarget === null) {
                 return null;
             }
             const runtimeProxy = proxy.forTarget(resultTarget);
-            const binding: RuntimeBinding = {
+            const binding: RuntimeBinding<unknown> = {
                 setValue: (value) => {
                     runtimeProxy.set(value);
                 },
@@ -530,7 +591,7 @@ export abstract class Track {
     /**
      * @internal
      */
-    public abstract [createEvalSymbol] (runtimeBinding: RuntimeBinding, additive: boolean): TrackEval;
+    public abstract [createEvalSymbol] (runtimeBinding: RuntimeBinding<unknown>, additive: boolean): TrackEval;
 
     @serializable
     private _binding = new TrackBinding();
@@ -541,7 +602,7 @@ export interface TrackEval {
       * Evaluates the track.
       * @param time The time.
       */
-    evaluate(time: number, runtimeBinding: RuntimeBinding): unknown;
+    evaluate(time: number, runtimeBinding: RuntimeBinding<unknown>): unknown;
 }
 
 export type Curve = RealCurve | QuatCurve | ObjectCurve<unknown>;
@@ -612,7 +673,7 @@ export abstract class SingleChannelTrack<TCurve extends Curve> extends Track {
     /**
      * @internal
      */
-    public [createEvalSymbol] (_runtimeBinding: RuntimeBinding, additive: boolean): TrackEval {
+    public [createEvalSymbol] (_runtimeBinding: RuntimeBinding<unknown>, additive: boolean): TrackEval {
         const { curve } = this._channel;
         if (additive) {
             return new SingleChannelAdditiveTrackEval(curve);

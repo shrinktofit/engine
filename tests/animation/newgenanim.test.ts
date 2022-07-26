@@ -1,7 +1,7 @@
 
 import { Component, lerp, Node, Vec2, Vec3, warnID } from '../../cocos/core';
 import { AnimationBlend1D, AnimationBlend2D, Condition, InvalidTransitionError, VariableNotDefinedError, ClipMotion, AnimationBlendDirect, VariableType } from '../../cocos/core/animation/marionette/asset-creation';
-import { AnimationGraph, StateMachine, Transition, isAnimationTransition, AnimationTransition, TransitionInterruptionSource } from '../../cocos/core/animation/marionette/animation-graph';
+import { AnimationGraph, StateMachine, Transition, isAnimationTransition, AnimationTransition, TransitionInterruptionSource, FunctorStash } from '../../cocos/core/animation/marionette/animation-graph';
 import { createEval } from '../../cocos/core/animation/marionette/create-eval';
 import { VariableTypeMismatchedError } from '../../cocos/core/animation/marionette/errors';
 import { AnimationGraphEval, MotionStateStatus, ClipStatus } from '../../cocos/core/animation/marionette/graph-eval';
@@ -26,6 +26,14 @@ import { assertIsTrue } from '../../cocos/core/data/utils/asserts';
 import { AnimationClip } from '../../cocos/core/animation/animation-clip';
 import { TriggerResetMode } from '../../cocos/core/animation/marionette/variable';
 import { MotionState } from '../../cocos/core/animation/marionette/motion-state';
+import { AnimationFunctor, FunctorEval } from '../../cocos/core/animation/marionette/functors/animation-functor';
+import { MotionEvalContext } from '../../cocos/core/animation/marionette/motion';
+import { AnimationOutputContext, AnimationOutput, PoseBoneBindingPoint } from '../../cocos/core/animation/animation-output-context';
+import { UseStashFunctor } from '../../cocos/core/animation/marionette/functors/use-stash-functor';
+import { MotionFunctor } from '../../cocos/core/animation/marionette/functors/motion-functor';
+import { ModifyNamedCurvesFunctor, NamedCurveModifyItem } from '../../cocos/core/animation/marionette/functors/modify-named-curves-functor';
+import { __StatsText } from '../../cocos/core/animation/marionette/__print_stats';
+import { StateMachineFunctor } from '../../cocos/core/animation/marionette/functors/state-machine-functor';
 
 describe('NewGen Anim', () => {
     test('Defaults', () => {
@@ -3189,6 +3197,292 @@ describe('NewGen Anim', () => {
                     0.17 / INTERRUPTING_TRANSITION_DURATION,
                 ),
             );
+        });
+    });
+
+    describe('Blending', () => {
+        test('Transition AnimationBlend -> AnimationBlend', () => {
+            const animationGraph = new AnimationGraph();
+            const { stateMachine } = animationGraph.addLayer();
+            const m1 = stateMachine.addMotion();
+            m1.motion = createClipMotionPositionXLinear(7.0, 6.0, 8.0);
+            const m2 = stateMachine.addMotion();
+            {
+                const m2Blend = m2.motion = new AnimationBlend1D();
+                const item1 = new AnimationBlend1D.Item();
+                item1.motion = createClipMotionPositionXLinear(2.0, 0.5, 0.9);
+                item1.threshold = 0.0;
+                const item2 = new AnimationBlend1D.Item();
+                item2.threshold = 1.0;
+                item2.motion = createClipMotionPositionXLinear(2.0, -0.3, 0.6);
+                m2Blend.items = [item1, item2];
+                animationGraph.addFloat('Blend', 0.45);
+                m2Blend.param.variable = 'Blend';
+            }
+            stateMachine.connect(stateMachine.entryState, m1);
+            const transition = stateMachine.connect(m1, m2);
+            transition.exitConditionEnabled = true;
+            transition.exitCondition = 0.0;
+            transition.duration = 0.3;
+            const node = new Node();
+            const graphEval = createAnimationGraphEval(animationGraph, node);
+            const graphUpdater = new GraphUpdater(graphEval);
+            graphUpdater.goto(0.2);
+            expect(node.position.x).toBeCloseTo(lerp(
+                lerp(6.0, 8.0, 0.2 / 7.0),
+                lerp(
+                    lerp(0.5, 0.9, 0.2 / 2.0),
+                    lerp(-0.3, 0.6, 0.2 / 2.0),
+                    0.45,
+                ),
+                0.2 / 0.3,
+            ));
+        });
+    });
+
+    test('Functor contexts', () => {
+        const NODE_DEFAULT_VALUE = 9.0;
+        const rootNode = new Node();
+        rootNode.setPosition(NODE_DEFAULT_VALUE, 0.0, 0.0);
+
+        class FunctorMock extends AnimationFunctor {
+            createEval = jest.fn<FunctorEvalMock, [context: MotionEvalContext]>((
+                context: MotionEvalContext,
+            ) => {
+                expect(this.evalMockCreated).toBeNull();
+                expect(context.bindContext.origin === rootNode);
+                const boneBindingPoint = context.bindContext.bindBone('');
+                const evalMock = new FunctorEvalMock(boneBindingPoint);
+                this.evalMockCreated = evalMock;
+                return evalMock;
+            });
+
+            public evalMockCreated: FunctorEvalMock | null = null;
+        }
+
+        class FunctorEvalMock implements FunctorEval {
+            constructor(private _boneBindingPoint: PoseBoneBindingPoint) {
+
+            }
+            __printStats(): __StatsText {
+                throw new Error('Method not implemented.');
+            }
+
+            resetTime = jest.fn<void, []>();
+
+            update = jest.fn<void, [deltaTime: number]>();
+
+            evaluate = jest.fn<AnimationOutput, [context: AnimationOutputContext]>((
+                outputContext: AnimationOutputContext): AnimationOutput => {
+
+                const defaultedOutput = outputContext.createDefaultedOutput();
+                expect(defaultedOutput.pose.transforms.length).toBe(1);
+                const defaultPosePosition = new Vec3();
+                defaultedOutput.pose.transforms.getPosition(this._boneBindingPoint, defaultPosePosition)
+                expect(defaultPosePosition.x).toBe(NODE_DEFAULT_VALUE);
+                outputContext.deleteOutput(defaultedOutput);
+
+                const resultOutput = outputContext.createOutput();
+                return resultOutput;
+            });
+        }
+
+        const animationGraph = new AnimationGraph();
+        const mainLayer = animationGraph.addLayer();
+        const { stateMachine } = mainLayer;
+        const functorMock = new FunctorMock();
+        const functorState = stateMachine.addFunctorState(functorMock);
+        stateMachine.connect(stateMachine.entryState, functorState);
+
+        const graphEval = createAnimationGraphEval(animationGraph, rootNode);
+        expect(functorMock.evalMockCreated).not.toBeNull();
+        const graphUpdater = new GraphUpdater(graphEval);
+        graphUpdater.goto(0.2);
+        expect(functorMock.evalMockCreated!.update).toBeCalledTimes(1);
+        expect(functorMock.evalMockCreated!.update.mock.calls[0][0]).toBeCloseTo(0.2);
+        expect(functorMock.evalMockCreated!.evaluate).toBeCalledTimes(1);
+    });
+
+    describe('Additive layer', () => {
+        test('Single clip motion', () => {
+            const NODE_DEFAULT_VALUE = 9.0;
+            const rootNode = new Node();
+            rootNode.setPosition(NODE_DEFAULT_VALUE, 0.0, 0.0);
+
+            const animationGraph = new AnimationGraph();
+            const mainLayer = animationGraph.addLayer();
+            // TODO
+            mainLayer.name = '+';
+            const { stateMachine } = mainLayer;
+            const motionState = stateMachine.addMotion();
+            motionState.motion = createClipMotionPositionXLinear(1.3, 0.6, 0.8);
+            stateMachine.connect(stateMachine.entryState, motionState);
+
+            const graphEval = createAnimationGraphEval(animationGraph, rootNode);
+            const graphUpdater = new GraphUpdater(graphEval);
+            graphUpdater.goto(0.22);
+
+            expect(rootNode.position.x).toBeCloseTo(
+                NODE_DEFAULT_VALUE + (lerp(0.6, 0.8, 0.22 / 1.3) - 0.6),
+            );
+        });
+    });
+
+    describe('Functor stash', () => {
+        test('Simplest', () => {
+            const NODE_DEFAULT_VALUE = 9.0;
+            const rootNode = new Node();
+            rootNode.setPosition(NODE_DEFAULT_VALUE, 0.0, 0.0);
+
+            const animationGraph = new AnimationGraph();
+            const mainLayer = animationGraph.addLayer();
+
+            const stashedFunctor = new MotionFunctor();
+            stashedFunctor.motion = createClipMotionPositionXLinear(1.3, 0.6, 0.8);
+
+            const functorStash = new FunctorStash();
+            functorStash.stashName = 'stash1';
+            functorStash.functor = stashedFunctor;
+            mainLayer.addFunctorStash(functorStash);
+
+            const { stateMachine } = mainLayer;
+
+            const useStashFunctor = new UseStashFunctor('stash1');
+            const functorState1 = stateMachine.addFunctorState(useStashFunctor);
+            stateMachine.connect(stateMachine.entryState, functorState1);
+
+            const useStashFunctor2 = new UseStashFunctor('stash1');
+            const functor2 = new ModifyNamedCurvesFunctor();
+            functor2.input = useStashFunctor2;
+            {
+                const item = new NamedCurveModifyItem();
+                item.curveName = 'NamedCurve1';
+                item.value = 0.666;
+                functor2.items = [item];
+            }
+            const functorState2 = stateMachine.addFunctorState(functor2);
+            const transition = stateMachine.connect(functorState1, functorState2);
+            transition.duration = 0.3;
+            const [condition] = transition.conditions = [new UnaryCondition()];
+            condition.operator = UnaryCondition.Operator.TRUTHY;
+            condition.operand.variable = 't';
+            animationGraph.addBoolean('t', true);
+
+            const graphEval = createAnimationGraphEval(animationGraph, rootNode);
+            const graphUpdater = new GraphUpdater(graphEval);
+            graphUpdater.goto(0.22);
+
+            expect(rootNode.position.x).toBeCloseTo(
+                lerp(0.6, 0.8, 0.22 / 1.3),
+            );
+            expect(graphEval.getNamedCurveValue('NamedCurve1')).toBeCloseTo(
+                lerp(0.0, 0.666, 0.22 / 0.3),
+            );
+        });
+    });
+
+    describe('State machine functor', () => {
+        test.only('Re-entrant', () => {
+            const animationGraph = new AnimationGraph();
+            const mainLayer = animationGraph.addLayer();
+
+            const MOTION1 = { from : 2.8, to: 1.7, duration: 2.6 };
+            const SMF_ENTRY_MOTION = { from: 0.0, to: 1.0, duration: 1.0 };
+            const SMF_MOTION1 = { from : 0.6, to: 0.7, duration: 0.88 };
+            const SMF_MOTION2 = { from : 1.1 , to: 1.3, duration: 1.66 };
+            const SMF_ENTRY_MOTION_TO_MOTION_X_DURATION = 0.15;
+            const SMF_TO_MOTION1_DURATION = 0.3;
+            const MOTION1_TO_SMF_DURATION = 0.2;
+
+            // Main layer State machine:
+            // Entry -> SMFunctor
+            // SMFunctor -> motion1, if (forward === true), duration: 0.3
+            // motion1 -> SMFunctor, if (forward === false), duration: 0.2
+            const mainLayerSM = mainLayer.stateMachine;
+            const smf1 = new StateMachineFunctor();
+            const smf1State = mainLayerSM.addFunctorState(smf1);
+            const motion1 = mainLayerSM.addMotion();
+            motion1.motion = createClipMotionPositionXLinear(MOTION1.duration, MOTION1.from, MOTION1.to);
+            mainLayerSM.connect(mainLayerSM.entryState, smf1State);
+            const smf1State_motion1 = mainLayerSM.connect(smf1State, motion1);
+            smf1State_motion1.duration = SMF_TO_MOTION1_DURATION;
+            const [smf1State_motion1_condition] = smf1State_motion1.conditions = [new UnaryCondition()];
+            smf1State_motion1_condition.operator = UnaryCondition.Operator.TRUTHY;
+            smf1State_motion1_condition.operand.variable = 'forward';
+            const motion1_smf1State = mainLayerSM.connect(motion1, smf1State);
+            motion1_smf1State.duration = MOTION1_TO_SMF_DURATION;
+            motion1_smf1State.exitConditionEnabled = false;
+            const [motion1_smf1State_condition] = motion1_smf1State.conditions = [new UnaryCondition()];
+            motion1_smf1State_condition.operator = UnaryCondition.Operator.FALSY;
+            motion1_smf1State_condition.operand.variable = 'forward';
+            animationGraph.addBoolean('forward', true);
+
+            // In StateMachine Functor:
+            // <entry> -> EntryMotion
+            // EntryMotion -> motion1, if (select-motion-1-in-smf1 === true), duration: 0.1
+            // EntryMotion -> motion2, if (select-motion-1-in-smf1 === false), duration: 0.1
+            const smf1EntryMotion = smf1.stateMachine.addMotion();
+            smf1EntryMotion.motion = createClipMotionPositionXLinear(SMF_ENTRY_MOTION.duration, SMF_ENTRY_MOTION.from, SMF_ENTRY_MOTION.to);
+            smf1.stateMachine.connect(smf1.stateMachine.entryState, smf1EntryMotion);
+            const smf1Motion1 = smf1.stateMachine.addMotion();
+            smf1Motion1.motion = createClipMotionPositionXLinear(SMF_MOTION1.duration, SMF_MOTION1.from, SMF_MOTION1.to);
+            const smf1Motion2 = smf1.stateMachine.addMotion();
+            smf1Motion2.motion = createClipMotionPositionXLinear(SMF_MOTION2.duration, SMF_MOTION2.from, SMF_MOTION2.to);
+            const smf1EntryMotion_motion1 = smf1.stateMachine.connect(smf1EntryMotion, smf1Motion1);
+            smf1EntryMotion_motion1.duration = SMF_ENTRY_MOTION_TO_MOTION_X_DURATION;
+            smf1EntryMotion_motion1.exitConditionEnabled = false;
+            const [smf1EntryMotion_motion1_condition] = smf1EntryMotion_motion1.conditions = [new UnaryCondition()];
+            smf1EntryMotion_motion1_condition.operator = UnaryCondition.Operator.TRUTHY;
+            smf1EntryMotion_motion1_condition.operand.variable = 'select-motion-1-in-smf1';
+            const smf1EntryMotion_motion2 = smf1.stateMachine.connect(smf1EntryMotion, smf1Motion2);
+            smf1EntryMotion_motion2.duration = SMF_ENTRY_MOTION_TO_MOTION_X_DURATION;
+            smf1EntryMotion_motion2.exitConditionEnabled = false;
+            const [smf1EntryMotion_motion2_condition] = smf1EntryMotion_motion2.conditions = [new UnaryCondition()];
+            smf1EntryMotion_motion2_condition.operator = UnaryCondition.Operator.FALSY;
+            smf1EntryMotion_motion2_condition.operand.variable = 'select-motion-1-in-smf1';
+            animationGraph.addBoolean('select-motion-1-in-smf1', true);
+
+            const node = new Node();
+            const graphEval = createAnimationGraphEval(animationGraph, node);
+            const graphUpdater = new GraphUpdater(graphEval);
+
+            graphUpdater.goto(0.05);
+            expect(node.position.x).toBeCloseTo(
+                lerp(
+                    lerp( // SMF
+                        lerp(SMF_ENTRY_MOTION.from, SMF_ENTRY_MOTION.to, 0.05 / SMF_ENTRY_MOTION.duration), // SMF Entry Motion
+                        lerp(SMF_MOTION1.from, SMF_MOTION1.to, 0.05 / SMF_MOTION1.duration), // SMF Motion1
+                        0.05 / SMF_ENTRY_MOTION_TO_MOTION_X_DURATION,
+                    ),
+                    lerp(MOTION1.from, MOTION1.to, 0.05 / MOTION1.duration), // Motion1
+                    0.05 / SMF_TO_MOTION1_DURATION,
+                ),
+            );
+
+            graphUpdater.goto(0.4);
+            expect(node.position.x).toBeCloseTo(
+                lerp(MOTION1.from, MOTION1.to, 0.4 / MOTION1.duration), // SMF Entry Motion
+            );
+
+            graphEval.setValue('forward', false);
+            graphEval.setValue('select-motion-1-in-smf1', false);
+            // Step 0.1
+            graphUpdater.goto(0.5);
+            expect(node.position.x).toBeCloseTo(
+                lerp(
+                    lerp(MOTION1.from, MOTION1.to, 0.5 / MOTION1.duration), // Motion1
+                    lerp( // SMF
+                        lerp(SMF_ENTRY_MOTION.from, SMF_ENTRY_MOTION.to, 0.1 / SMF_ENTRY_MOTION.duration), // SMF Entry Motion
+                        lerp(SMF_MOTION2.from, SMF_MOTION2.to, 0.1 / SMF_MOTION2.duration), // SMF Motion1
+                        0.1 / SMF_ENTRY_MOTION_TO_MOTION_X_DURATION,
+                    ),
+                    0.1 / MOTION1_TO_SMF_DURATION,
+                ),
+            );
+        });
+
+        test.todo('Re-entrant to the exit', () => {
+            
         });
     });
 });

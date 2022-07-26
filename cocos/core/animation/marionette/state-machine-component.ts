@@ -65,4 +65,26 @@ export class StateMachineComponent {
     public onStateMachineExit (controller: AnimationController) {
         // Can be overrode
     }
+
+    /**
+     * @en
+     * Called when a state machine right after it entered.
+     * @zh
+     * 在刚刚进入状态机时调用。
+     * @param controller The animation controller it within.
+     */
+    public onFunctorStateEnter (controller: AnimationController) {
+        // Can be overrode
+    }
+
+    /**
+     * @en
+     * Called when a state machine right after it entered.
+     * @zh
+     * 在即将退出状态机时调用。
+     * @param controller The animation controller it within.
+     */
+    public onFunctorStateExit (controller: AnimationController) {
+        // Can be overrode
+    }
 }

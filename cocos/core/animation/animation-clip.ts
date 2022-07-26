@@ -40,7 +40,7 @@ import { assertIsTrue } from '../data/utils/asserts';
 import type { PoseOutput } from './pose-output';
 import * as legacy from './legacy-clip-data';
 import { BAKE_SKELETON_CURVE_SYMBOL } from './internal-symbols';
-import { Binder, RuntimeBinding, Track, TrackBinding, trackBindingTag, TrackEval, TrackPath, TrsTrackPath } from './tracks/track';
+import { Binder, Track, TrackBinding, trackBindingTag, TrackEval, TrackPath, TrsTrackPath } from './tracks/track';
 import { createEvalSymbol } from './define';
 import { UntypedTrack, UntypedTrackRefine } from './tracks/untyped-track';
 import { Range } from './tracks/utils';
@@ -52,7 +52,12 @@ import type { AnimationMask } from './marionette/animation-mask';
 import { getGlobalAnimationManager } from './global-animation-manager';
 import { EmbeddedPlayableState, EmbeddedPlayer } from './embedded-player/embedded-player';
 import { RootMotionOutput } from './marionette/root-motion';
-import { getHackNamedTracks } from './marionette/hack-xx';
+import {
+    AnimationBindContext,
+    AnimationOutput,
+} from './animation-output-context';
+import { RuntimeBinding } from './runtime-binding';
+import { AnimationClipCreateEvalContextX, AnimationClipEvaluationX, TrackEvalStatusX } from './animation-clip-eval-x';
 
 export declare namespace AnimationClip {
     export interface IEvent {
@@ -363,23 +368,19 @@ export class AnimationClip extends Asset {
      */
     public createEvaluator (context: AnimationClipEvalContext) {
         const {
-            originNode: target,
-            additive = false,
+            target,
         } = context;
-
-        // We now only enable pose blend on clips imported from external(for those `this.enableTrsBlending === true`)
-        const outputToPose = this.enableTrsBlending || this.name.includes('_as_skeletal_anim');
-        const contextTrimmed: AnimationClipEvalContext = {
-            ...context,
-            poseOutput: outputToPose ? context.poseOutput : undefined,
-        };
 
         const binder: Binder = (binding: TrackBinding) => {
             if (context.mask && binding.isMaskedOff(context.mask)) {
                 return undefined;
             }
 
-            const trackTarget = binding.createRuntimeBinding(contextTrimmed);
+            const trackTarget = binding.createRuntimeBinding(
+                target,
+                this.enableTrsBlending ? context.pose : undefined,
+                false,
+            );
             if (DEBUG && !trackTarget) {
                 // If we got a null track target here, we should already have warn logged,
                 // To elaborate on error details, we warn here as well.
@@ -388,13 +389,57 @@ export class AnimationClip extends Asset {
                 warnID(
                     3937,
                     this.name,
-                    (context.originNode instanceof Node) ? context.originNode.name : context.originNode,
+                    (context.target instanceof Node) ? context.target.name : context.target,
                 );
             }
             return trackTarget ?? undefined;
         };
 
-        return this._createEvalWithBinder(target, binder, additive, context.rootMotion);
+        return this._createEvalWithBinder(target, binder, context.rootMotion);
+    }
+
+    public createEvaluatorX (context: AnimationClipCreateEvalContextX) {
+        const {
+            bindContext,
+            additive,
+        } = context;
+
+        if (this._legacyDataDirty) {
+            this._legacyDataDirty = false;
+            this.syncLegacyData();
+        }
+
+        const trackEvalStatues: TrackEvalStatusX[] = [];
+        let exoticAnimationEvaluator: ExoticAnimationEvaluatorX | undefined;
+
+        const { _tracks: tracks } = this;
+        const nTracks = tracks.length;
+        for (let iTrack = 0; iTrack < nTracks; ++iTrack) {
+            const track = tracks[iTrack];
+            if (Array.from(track.channels()).every(({ curve }) => curve.keyFramesCount === 0)) {
+                continue;
+            }
+            const trackTarget = this._bindTrackHintedX(track, bindContext);
+            if (!trackTarget) {
+                continue;
+            }
+            const trackEval = track[createEvalSymbol](trackTarget as RuntimeBinding, additive);
+            trackEvalStatues.push({
+                binding: trackTarget,
+                trackEval,
+            });
+        }
+
+        if (this._exoticAnimation) {
+            exoticAnimationEvaluator = this._exoticAnimation.createEvaluatorX(bindContext, additive);
+        }
+
+        const evaluation = new AnimationClipEvaluationX(
+            trackEvalStatues,
+            exoticAnimationEvaluator,
+        );
+
+        return evaluation;
     }
 
     public destroy () {
@@ -453,7 +498,7 @@ export class AnimationClip extends Asset {
             return createBoneTransformBinding(jointFrame, trsPath.property);
         };
 
-        const evaluator = this._createEvalWithBinder(undefined, binder, false, undefined);
+        const evaluator = this._createEvalWithBinder(undefined, binder, undefined);
 
         for (let iFrame = 0; iFrame < frames; ++iFrame) {
             const time = start + step * iFrame;
@@ -691,27 +736,20 @@ export class AnimationClip extends Asset {
         eventGroups: [],
     };
 
-    private _createEvalWithBinder (target: unknown, binder: Binder, additive: boolean, rootMotionOptions: RootMotionOptions | undefined) {
+    private _createEvalWithBinder (target: unknown, binder: Binder, rootMotionOptions: RootMotionOptions | undefined) {
         if (this._legacyDataDirty) {
             this._legacyDataDirty = false;
             this.syncLegacyData();
         }
 
-        if (!TEST && !(this.name === 'Standing Run Forward Stop')) {
-            rootMotionOptions = undefined;
-        }
-        let rootBonePath = '';
+        const rootMotionTrackExcludes: Track[] = [];
         let rootMotionEvaluation: RootMotionEvaluation | undefined;
-        if (rootMotionOptions && target instanceof Node) {
-            const rootMotionInfo = this._getRootBoneInfo(target);
-            if (rootMotionInfo) {
-                rootBonePath = rootMotionInfo.rootBonePath;
-                rootMotionEvaluation = this._createRootMotionEvaluation(
-                    rootMotionInfo.rootBonePath,
-                    rootMotionOptions.output,
-                    additive,
-                );
-            }
+        if (rootMotionOptions) {
+            rootMotionEvaluation = this._createRootMotionEvaluation(
+                target,
+                rootMotionOptions,
+                rootMotionTrackExcludes,
+            );
         }
 
         const trackEvalStatues: TrackEvalStatus[] = [];
@@ -721,15 +759,9 @@ export class AnimationClip extends Asset {
         const nTracks = tracks.length;
         for (let iTrack = 0; iTrack < nTracks; ++iTrack) {
             const track = tracks[iTrack];
-
-            if (rootBonePath) {
-                const { [trackBindingTag]: trackBinding } = track;
-                const trsPath = trackBinding.parseTrsPath();
-                if (trsPath && trsPath.node === rootBonePath) {
-                    continue;
-                }
+            if (rootMotionTrackExcludes.includes(track)) {
+                continue;
             }
-
             if (Array.from(track.channels()).every(({ curve }) => curve.keyFramesCount === 0)) {
                 continue;
             }
@@ -737,33 +769,15 @@ export class AnimationClip extends Asset {
             if (!trackTarget) {
                 continue;
             }
-            const trackEval = track[createEvalSymbol](trackTarget, additive);
+            const trackEval = track[createEvalSymbol](trackTarget, false);
             trackEvalStatues.push({
                 binding: trackTarget,
                 trackEval,
             });
         }
 
-        //#region HACK
-        // eslint-disable-next-line no-lone-blocks
-        {
-            const hackNamedTracks = getHackNamedTracks();
-            for (const track of hackNamedTracks) {
-                const trackTarget = binder(track[trackBindingTag]);
-                if (!trackTarget) {
-                    continue;
-                }
-                const trackEval = track[createEvalSymbol](trackTarget, additive);
-                trackEvalStatues.push({
-                    binding: trackTarget,
-                    trackEval,
-                });
-            }
-        }
-        //#endregion
-
         if (this._exoticAnimation) {
-            exoticAnimationEvaluator = this._exoticAnimation.createEvaluator(binder, additive, rootBonePath);
+            exoticAnimationEvaluator = this._exoticAnimation.createEvaluator(binder);
         }
 
         const evaluation = new AnimationClipEvaluation(
@@ -800,13 +814,32 @@ export class AnimationClip extends Asset {
     }
 
     private _createRootMotionEvaluation (
-        rootBonePath: string,
-        rootMotionOutput: RootMotionOutput,
-        additive: boolean,
+        target: unknown,
+        rootMotionOptions: RootMotionOptions,
+        rootMotionTrackExcludes: Track[],
     ) {
+        if (!(target instanceof Node)) {
+            errorID(3920);
+            return undefined;
+        }
+
+        const rootBonePath = this._searchForRootBonePath();
+        if (!rootBonePath) {
+            warnID(3923);
+            return undefined;
+        }
+
+        const rootBone = target.getChildByPath(rootBonePath);
+        if (!rootBone) {
+            warnID(3924);
+            return undefined;
+        }
+
+        // const { } = rootMotionOptions;
+
         const boneTransform = new BoneTransform();
         const rootMotionsTrackEvaluations: TrackEvalStatus[] = [];
-        const { _tracks: tracks, _exoticAnimation: exoticAnimation } = this;
+        const { _tracks: tracks } = this;
         const nTracks = tracks.length;
         for (let iTrack = 0; iTrack < nTracks; ++iTrack) {
             const track = tracks[iTrack];
@@ -819,38 +852,23 @@ export class AnimationClip extends Asset {
             if (bonePath !== rootBonePath) {
                 continue;
             }
+            rootMotionTrackExcludes.push(track);
             const property = trsPath.property;
             const trackTarget = createBoneTransformBinding(boneTransform, property);
             if (!trackTarget) {
                 continue;
             }
-            const trackEval = track[createEvalSymbol](trackTarget, additive);
+            const trackEval = track[createEvalSymbol](trackTarget, false);
             rootMotionsTrackEvaluations.push({
                 binding: trackTarget,
                 trackEval,
             });
         }
-        let exoticRootMotionEvaluation: ExoticAnimationEvaluator | undefined;
-        if (exoticAnimation) {
-            exoticRootMotionEvaluation = exoticAnimation.__createEvaluatorOnlyRoot((trackBinding) => {
-                const trsPath = trackBinding.parseTrsPath();
-                if (!trsPath) {
-                    return undefined;
-                }
-                const { property } = trsPath;
-                const trackTarget = createBoneTransformBinding(boneTransform, property);
-                if (!trackTarget) {
-                    return undefined;
-                }
-                return trackTarget;
-            }, rootBonePath, additive);
-        }
         const rootMotionEvaluation = new RootMotionEvaluation(
-            rootMotionOutput,
+            rootBone,
             this._duration,
             boneTransform,
             rootMotionsTrackEvaluations,
-            exoticRootMotionEvaluation,
         );
 
         return rootMotionEvaluation;
@@ -950,6 +968,40 @@ export class AnimationClip extends Asset {
 
         return Array.from(joints);
     }
+
+    private _bindTrackHinted (track: Track, bindContext: AnimationBindContext) {
+        const trackBinding = track[trackBindingTag];
+        const trackTarget = trackBinding.createRuntimeBinding(bindContext, undefined, false);
+        if (DEBUG && !trackTarget) {
+            // If we got a null track target here, we should already have warn logged,
+            // To elaborate on error details, we warn here as well.
+            // Note: if in the future this log appears alone,
+            // it must be a BUG which break promise by above statement.
+            warnID(
+                3937,
+                this.name,
+                bindContext.origin.name,
+            );
+        }
+        return trackTarget ?? undefined;
+    }
+
+    private _bindTrackHintedX (track: Track, bindContext: AnimationBindContext) {
+        const trackBinding = track[trackBindingTag];
+        const trackTarget = trackBinding.createRuntimeBindingX(bindContext);
+        if (DEBUG && !trackTarget) {
+            // If we got a null track target here, we should already have warn logged,
+            // To elaborate on error details, we warn here as well.
+            // Note: if in the future this log appears alone,
+            // it must be a BUG which break promise by above statement.
+            warnID(
+                3937,
+                this.name,
+                bindContext.origin.name,
+            );
+        }
+        return trackTarget ?? undefined;
+    }
 }
 
 type WrapMode_ = WrapMode;
@@ -961,35 +1013,29 @@ export declare namespace AnimationClip {
 legacyCC.AnimationClip = AnimationClip;
 
 interface TrackEvalStatus {
-    binding: RuntimeBinding;
+    binding: RuntimeBinding<unknown>;
     trackEval: TrackEval;
 }
 
 export interface AnimationClipEvalContext {
     /**
-     * The root animating target(should be scene node now).
+     * The output pose.
      */
-    originNode: Node;
+    pose?: PoseOutput;
 
     /**
-     * The pose output.
-     */
-    poseOutput?: PoseOutput;
-
-    namedCurveOutput?: {
-        bind(curveName: string): RuntimeBinding | null;
-    };
+      * The root animating target(should be scene node now).
+      */
+    target: unknown;
 
     /**
-     * The animation mask applied.
-     */
+      * The animation mask applied.
+      */
     mask?: AnimationMask;
 
-    additive?: boolean;
-
     /**
-     * Path to the root bone.
-     */
+      * Path to the root bone.
+      */
     rootMotion?: RootMotionOptions;
 }
 
@@ -999,6 +1045,8 @@ interface RootMotionOptions {
 }
 
 type ExoticAnimationEvaluator = ReturnType<ExoticAnimation['createEvaluator']>;
+
+type ExoticAnimationEvaluatorX = ReturnType<ExoticAnimation['createEvaluatorX']>;
 
 class EmbeddedPlayerEvaluation {
     constructor (embeddedPlayers: ReadonlyArray<EmbeddedPlayer>, rootNode: Node) {
@@ -1227,10 +1275,10 @@ class AnimationClipEvaluation {
      * @param startTime Start time.
      * @param endTime End time.
      */
-    public evaluateRootMotion (time: number, motionLength: number, weight: number) {
+    public evaluateRootMotion (time: number, motionLength: number) {
         const { _rootMotionEvaluation: rootMotionEvaluation } = this;
         if (rootMotionEvaluation) {
-            rootMotionEvaluation.evaluate(time, motionLength, weight);
+            rootMotionEvaluation.evaluate(time, motionLength);
         }
     }
 
@@ -1277,35 +1325,39 @@ const motionTransformCache = new Mat4();
 
 class RootMotionEvaluation {
     constructor (
-        private _output: RootMotionOutput,
+        private _rootBone: Node,
         private _duration: number,
         private _boneTransform: BoneTransform,
         private _trackEvalStatuses: TrackEvalStatus[],
-        private _exoticRootMotionEvaluation: ExoticAnimationEvaluator | undefined,
     ) {
 
     }
 
-    public evaluate (time: number, motionLength: number, weight: number) {
+    public evaluate (time: number, motionLength: number) {
         const motionTransform = this._calcMotionTransform(time, motionLength, this._motionTransformCache);
 
         const {
             _translationMotionCache: translationMotion,
             _rotationMotionCache: rotationMotion,
             _scaleMotionCache: scaleMotion,
-            _output: output,
+            _rootBone: rootBone,
         } = this;
 
         Mat4.toRTS(motionTransform, rotationMotion, translationMotion, scaleMotion);
 
-        Vec3.add(output.position, output.position, translationMotion);
-        Quat.multiply(output.rotation, output.rotation, rotationMotion);
+        Vec3.add(translationMotion, translationMotion, rootBone.position);
+        rootBone.setPosition(translationMotion);
+
+        Quat.multiply(rotationMotion, rotationMotion, rootBone.rotation);
+        rootBone.setRotation(rotationMotion);
+
+        Vec3.multiply(scaleMotion, scaleMotion, rootBone.scale);
+        rootBone.setScale(scaleMotion);
     }
 
     private _calcMotionTransform (time: number, motionLength: number, outTransform: Mat4) {
         const { _duration: duration } = this;
-        assertIsTrue(time >= 0 && motionLength >= 0);
-        const remainLength = (1.0 - frac(time / duration)) * duration;
+        const remainLength = duration - time;
         assertIsTrue(remainLength >= 0);
         const startTransform = this._evaluateAt(time, this._startTransformCache);
         if (motionLength < remainLength) {
@@ -1344,27 +1396,14 @@ class RootMotionEvaluation {
     private _evaluateAt (time: number, outTransform: Mat4) {
         const {
             _trackEvalStatuses: trackEvalStatuses,
-            _exoticRootMotionEvaluation: exoticRootMotionEvaluation,
-            _duration: duration,
         } = this;
-
-        const exclusiveRemainder = (x : number, y: number) => {
-            if (x === 0) {
-                return x;
-            }
-            const remainder = x % y;
-            return remainder === 0 ? y : remainder;
-        };
-
-        const clipTime = exclusiveRemainder(time, duration);
 
         const nTrackEvalStatuses = trackEvalStatuses.length;
         for (let iTrackEvalStatus = 0; iTrackEvalStatus < nTrackEvalStatuses; ++iTrackEvalStatus) {
             const { trackEval, binding } = trackEvalStatuses[iTrackEvalStatus];
-            const value = trackEval.evaluate(clipTime, binding);
+            const value = trackEval.evaluate(time, binding);
             binding.setValue(value);
         }
-        exoticRootMotionEvaluation?.evaluate(clipTime);
 
         this._boneTransform.getTransform(outTransform);
         return outTransform;
@@ -1378,10 +1417,6 @@ class RootMotionEvaluation {
     private _translationMotionCache = new Vec3();
     private _rotationMotionCache = new Quat();
     private _scaleMotionCache = new Vec3();
-}
-
-function frac (v: number) {
-    return v - Math.trunc(v);
 }
 
 function relativeTransform (out: Mat4, from: Mat4, to: Mat4) {
@@ -1418,6 +1453,10 @@ function createBoneTransformBinding (boneTransform: BoneTransform, property: Trs
             },
         };
     }
+}
+
+function frac (v: number) {
+    return v - Math.trunc(v);
 }
 
 // #region Events

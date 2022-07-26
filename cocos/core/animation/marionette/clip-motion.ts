@@ -2,12 +2,14 @@ import { editorExtrasTag } from '../../data';
 import { ccclass, type } from '../../data/class-decorator';
 import { EditorExtendable } from '../../data/editor-extendable';
 import { AnimationClip, AnimationClipEvalContext } from '../animation-clip';
-import { AnimationState } from '../animation-state';
-import { PoseOutput } from '../pose-output';
+import { AnimationOutput, AnimationOutputContext, calculateDeltaAnimationOutput } from '../animation-output-context';
 import { createEval } from './create-eval';
-import { getMotionRuntimeID, graphDebug, GRAPH_DEBUG_ENABLED, pushWeight, RUNTIME_ID_ENABLED } from './graph-debug';
+import { getMotionRuntimeID, RUNTIME_ID_ENABLED } from './graph-debug';
 import { ClipStatus } from './graph-eval';
 import { MotionEvalContext, Motion, MotionEval } from './motion';
+import { wrap } from '../wrap';
+import { WrapModeMask, WrappedInfo } from '../types';
+import { __StatsText } from './__print_stats';
 
 @ccclass('cc.animation.ClipMotion')
 export class ClipMotion extends EditorExtendable implements Motion {
@@ -40,31 +42,26 @@ class ClipMotionEval implements MotionEval {
 
     public declare runtimeId?: number;
 
-    private declare _state: AnimationState;
-
     public declare readonly duration: number;
 
     constructor (context: MotionEvalContext, clip: AnimationClip) {
         this.duration = clip.duration / clip.speed;
-        this._state = new AnimationState(clip);
-        const poseOutput = new PoseOutput(context.blendBuffer);
-        this._poseOutput = poseOutput;
-        const clipEvalContext: AnimationClipEvalContext = {
-            originNode: context.node,
-            poseOutput,
-            namedCurveOutput: {
-                bind: (curveName) => {
-                    const writer = context.blendBuffer.createNamedCurveWriter(curveName, this._state);
-                    return writer;
-                },
-            },
-            mask: context.mask,
-            additive: context.additive,
-            rootMotion: context.rootMotionOutput ? {
-                output: context.rootMotionOutput,
-            } : undefined,
-        };
-        this._state.initialize(clipEvalContext);
+        const clipEval = clip.createEvaluatorX({
+            bindContext: context.bindContext,
+            additive: false,
+        });
+        this._clipEval = clipEval;
+        if (clip.containsAnyEmbeddedPlayer()) {
+            this._clipEmbeddedPlayerEval = clip.createEmbeddedPlayerEvaluator(context.bindContext.origin);
+        }
+        this._clip = clip;
+        if (context.additive) {
+            // TODO: use base clip
+            this._baseClipEval = clip.createEvaluatorX({
+                bindContext: context.bindContext,
+                additive: false,
+            });
+        }
     }
 
     public getClipStatuses (baseWeight: number): Iterator<ClipStatus, any, undefined> {
@@ -82,7 +79,7 @@ class ClipMotionEval implements MotionEval {
                         done: false,
                         value: {
                             __DEBUG_ID__: this.__DEBUG__ID__,
-                            clip: this._state.clip,
+                            clip: this._clip,
                             weight: baseWeight,
                         },
                     };
@@ -92,25 +89,65 @@ class ClipMotionEval implements MotionEval {
     }
 
     get progress () {
-        return this._state.time / this.duration;
+        return this._lastProgress;
     }
 
-    public sample (progress: number, weight: number, lastProgress: number) {
-        if (weight === 0.0) {
-            return;
+    public sample (progress: number, outputContext: AnimationOutputContext) {
+        const {
+            duration,
+            _clipEval: clipEval,
+            _baseClipEval: baseClipEval,
+        } = this;
+
+        const elapsedTime = duration * progress;
+
+        const { wrapMode } = this._clip;
+        const repeatCount = (wrapMode & WrapModeMask.Loop) === WrapModeMask.Loop
+            ? Infinity : 1;
+        const wrapInfo = wrap(
+            elapsedTime,
+            duration,
+            wrapMode,
+            repeatCount,
+            false,
+            this._wrapInfo,
+        );
+
+        // Evaluate tracks.
+        const output = outputContext.createDefaultedOutput();
+        clipEval.evaluate(wrapInfo.time, output);
+
+        if (baseClipEval) {
+            const baseOutput = outputContext.createDefaultedOutput();
+            baseClipEval.evaluate(0.0, baseOutput);
+            calculateDeltaAnimationOutput(output, baseOutput);
+            outputContext.deleteOutput(baseOutput);
         }
-        if (GRAPH_DEBUG_ENABLED) {
-            pushWeight(this._state.name, weight);
-        }
-        const time = this._state.duration * progress;
-        this._state.time = time;
-        this._state.weight = weight;
-        this._poseOutput.weight = weight;
-        this._state.sample();
-        const rootMotionLength = (progress - lastProgress) * this._state.duration;
-        this._state.__sampleRootMotion(time, rootMotionLength, weight);
-        this._state.weight = 0.0;
+
+        // Evaluate root motions.
+        // TODO:
+        // const rootMotionLength = (progress - lastProgress) * duration;
+        // clipEval.evaluateRootMotion(time, rootMotionLength, weight);
+
+        // Evaluate embedded players.
+        // TODO:
+        // this._clipEmbeddedPlayerEval?.evaluate();
+
+        this._lastProgress = progress;
+
+        return output;
     }
 
-    private declare _poseOutput: PoseOutput;
+    __printStats (): __StatsText {
+        return {
+            0: `[[M]]ClipMotion ${this._clip.name}`,
+        };
+    }
+
+    private _clip: AnimationClip;
+    private _clipEval: ReturnType<AnimationClip['createEvaluatorX']>;
+    private _clipEmbeddedPlayerEval: ReturnType<AnimationClip['createEmbeddedPlayerEvaluator']> | null = null;
+    private _lastProgress = 0.0;
+    private _wrapInfo = new WrappedInfo();
+    private _baseClipEval: ReturnType<AnimationClip['createEvaluatorX']> | null = null;
 }

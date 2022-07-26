@@ -19,6 +19,8 @@ import { onAfterDeserializedTag } from '../../data/deserialize-symbols';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
 import { StateMachineComponent } from './state-machine-component';
 import { clamp } from '../../math';
+import { FunctorState } from './functor-state';
+import { AnimationFunctor } from './functors/animation-functor';
 
 export { State };
 
@@ -183,6 +185,11 @@ export class EmptyStateTransition extends Transition {
     public relativeDestinationStart = false;
 }
 
+export class FunctorStateTransition extends Transition {
+    @serializable
+    public duration = 0.3;
+}
+
 @ccclass('cc.animation.StateMachine')
 export class StateMachine extends EditorExtendable {
     @serializable
@@ -333,6 +340,11 @@ export class StateMachine extends EditorExtendable {
         return this._addState(new EmptyState());
     }
 
+    public addFunctorState (functor: AnimationFunctor): FunctorState {
+        const functorState = new FunctorState(functor);
+        return this._addState(functorState);
+    }
+
     /**
      * Removes specified state from this state machine.
      * @param state The state to remove.
@@ -373,6 +385,14 @@ export class StateMachine extends EditorExtendable {
      * @param from Source state.
      * @param to Target state.
      * @param condition The transition condition.
+     */
+    public connect (from: FunctorState, to: State, conditions?: Condition[]): FunctorStateTransition;
+
+    /**
+     * Connect two states.
+     * @param from Source state.
+     * @param to Target state.
+     * @param condition The transition condition.
      * @throws `InvalidTransitionError` if:
      * - the target state is entry or any, or
      * - the source state is exit.
@@ -397,7 +417,9 @@ export class StateMachine extends EditorExtendable {
             ? new AnimationTransition(from, to, conditions)
             : from instanceof EmptyState
                 ? new EmptyStateTransition(from, to, conditions)
-                : new Transition(from, to, conditions);
+                : from instanceof FunctorState
+                    ? new FunctorStateTransition(from, to, conditions)
+                    : new Transition(from, to, conditions);
 
         own(transition, this);
         this._transitions.push(transition);
@@ -592,6 +614,12 @@ export class SubStateMachine extends InteractiveState {
     private _stateMachine: StateMachine = new StateMachine();
 }
 
+export class FunctorStash {
+    public stashName = '';
+
+    public functor: AnimationFunctor | null = null;
+}
+
 @ccclass('cc.animation.Layer')
 export class Layer implements OwnedBy<AnimationGraph> {
     [ownerSymbol]: AnimationGraph | undefined;
@@ -618,6 +646,22 @@ export class Layer implements OwnedBy<AnimationGraph> {
     get stateMachine () {
         return this._stateMachine;
     }
+
+    get functorStashes (): Iterable<FunctorStash> {
+        return this._functorStashes;
+    }
+
+    public addFunctorStash (functorStash: FunctorStash) {
+        const { _functorStashes: functorStashes } = this;
+        const { stashName } = functorStash;
+        const existing = functorStashes.find(({ stashName: stashName_ }) => stashName_ === stashName);
+        if (existing) {
+            throw new Error(`Stash ${stashName} already exists`);
+        }
+        this._functorStashes.push(functorStash);
+    }
+
+    private _functorStashes: FunctorStash[] = [];
 }
 
 export enum LayerBlending {
