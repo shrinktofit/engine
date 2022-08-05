@@ -885,6 +885,9 @@ export class Game extends EventTarget {
     // @Methods
 
     private _calculateDT () {
+        if (globalThis) {
+            return 1.0 / 60.0;
+        }
         const now = performance.now();
         this._deltaTime = now > this._startTime ? (now - this._startTime) / 1000 : 0;
         if (this._deltaTime > Game.DEBUG_DT_THRESHOLD) {
