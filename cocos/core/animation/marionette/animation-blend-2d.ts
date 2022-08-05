@@ -70,6 +70,11 @@ export class AnimationBlend2D extends AnimationBlend {
     }
 
     public [createEval] (context: MotionEvalContext) {
+        //#region HACK
+        if (this.name.endsWith('#FreeformCartesian')) {
+            this.algorithm = Algorithm.FREEFORM_CARTESIAN;
+        }
+        //#endregion
         const evaluation = new AnimationBlend2DEval(
             context,
             this,

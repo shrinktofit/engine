@@ -6,7 +6,7 @@ const EXPECT_NUM_DIGITS = 5;
 
 describe('Simple directional 2D', () => {
     function calcSimpleDirectional (samples: readonly Vec2[], input: Vec2) {
-        const weights = new Array(samples.length).fill(0);
+        const weights = new Array<number>(samples.length).fill(0);
         blendSimpleDirectional(weights, samples, input);
         return weights;
     }
