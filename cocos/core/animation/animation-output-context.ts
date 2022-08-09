@@ -81,6 +81,9 @@ export abstract class AnimationBindContext {
 
     public abstract bindNamedCurve(name: string): NamedCurveBindingPoint;
 
+    // TODO: refactor
+    public abstract getBoneChildren(bone: string): string[];
+
     private _origin: Node;
 }
 

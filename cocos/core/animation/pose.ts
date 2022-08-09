@@ -1,5 +1,4 @@
 import { TransformArray } from './transform-array';
-import { BoneLayout } from './bone-layout';
 import { assertIsTrue } from '../data/utils/asserts';
 import { Transform } from './transform';
 import { Quat, Vec3 } from '../math';

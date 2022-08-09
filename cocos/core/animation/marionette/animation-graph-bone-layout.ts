@@ -1,8 +1,10 @@
 import { assertIsTrue } from '../../data/utils/asserts';
 import { Pool } from '../../memop';
 import { Node } from '../../scene-graph';
-import { AnimationBindContext, AnimationOutput, AnimationOutputContext, nullPoseBoneBinding, PoseBoneBindingPoint, zeroClearAnimationOutput } from '../animation-output-context';
-import {} from '../bone-layout';
+import {
+    AnimationBindContext,
+    AnimationOutput, AnimationOutputContext, nullPoseBoneBinding, zeroClearAnimationOutput,
+} from '../animation-output-context';
 import { NamedCurveOutput } from '../named-curve-output';
 import { Pose, PoseFilter } from '../pose';
 import { Transform } from '../transform';
@@ -49,6 +51,13 @@ export class AnimationGraphBindContext extends AnimationBindContext {
         return this._layout.getOrCreateBoneBinding(boneNode);
     }
 
+    public getBoneChildren (bone: string): string[] {
+        const boneNode = findBoneByNameRecurse(this.origin, bone);
+        if (!boneNode) {
+            return [];
+        }
+        return boneNode.children.map((childNode) => childNode.name);
+    }
     public bindNamedCurve (name: string): number {
         return this._layout.getOrCreateNamedCurveBinding(name);
     }
