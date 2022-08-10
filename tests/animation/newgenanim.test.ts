@@ -1,6 +1,6 @@
 
 import { Component, lerp, Node, Vec2, Vec3, warnID } from '../../cocos/core';
-import { AnimationBlend1D, AnimationBlend2D, Condition, InvalidTransitionError, VariableNotDefinedError, ClipMotion, AnimationBlendDirect, VariableType } from '../../cocos/core/animation/marionette/asset-creation';
+import { AnimationBlend1D, AnimationBlend2D, Condition, InvalidTransitionError, VariableNotDefinedError, ClipMotion, AnimationBlendDirect, VariableType, AnimationMask } from '../../cocos/core/animation/marionette/asset-creation';
 import { AnimationGraph, StateMachine, Transition, isAnimationTransition, AnimationTransition, TransitionInterruptionSource } from '../../cocos/core/animation/marionette/animation-graph';
 import { createEval } from '../../cocos/core/animation/marionette/create-eval';
 import { VariableTypeMismatchedError } from '../../cocos/core/animation/marionette/errors';
@@ -3190,6 +3190,46 @@ describe('NewGen Anim', () => {
                 ),
             );
         });
+    });
+
+    test.only('Mask off a bone', () => {
+        const DEFAULT_VALUE = 0.3;
+        const LAYER0_VALUE = 0.7;
+        const LAYER1_VALUE = 0.8;
+
+        const node = new Node();
+        node.position = new Vec3(DEFAULT_VALUE);
+        const animationGraph = new AnimationGraph();
+        {
+            const layer0 = animationGraph.addLayer();
+            const layer0Motion = layer0.stateMachine.addMotion();
+            layer0Motion.motion = createClipMotionPositionX(1.0, LAYER0_VALUE);
+            layer0.stateMachine.connect(layer0.stateMachine.entryState, layer0Motion);
+        }
+        {
+            const layer1 = animationGraph.addLayer();
+            const layer1Motion = layer1.stateMachine.addMotion();
+            layer1Motion.motion = createClipMotionPositionX(1.0, LAYER1_VALUE);
+            const transition = layer1.stateMachine.connect(layer1.stateMachine.entryState, layer1Motion);
+            const [condition] = transition.conditions = [new UnaryCondition()];
+            condition.operator = UnaryCondition.Operator.TRUTHY;
+            condition.operand.variable = 'b';
+            animationGraph.addBoolean('b', false);
+            const mask = layer1.mask = new AnimationMask();
+            mask.addJoint('', false);
+        }
+
+        const graphEval = createAnimationGraphEval(animationGraph, node);
+        const graphUpdater = new GraphUpdater(graphEval);
+        graphUpdater.step(0.1);
+        expect(node.position.x).toBeCloseTo(LAYER0_VALUE);
+
+        graphEval.setValue('b', true);
+        graphUpdater.step(0.1);
+        expect(node.position.x).toBeCloseTo(LAYER0_VALUE);
+
+        graphUpdater.step(0.1);
+        expect(node.position.x).toBeCloseTo(LAYER0_VALUE);
     });
 });
 

@@ -389,6 +389,11 @@ class LayeredVec3PropertyBlendState implements PropertyBlendState<Vec3> {
         this._accumulatedWeight = 0.0;
     }
 
+    public dropLayerChange () {
+        Vec3.zero(this._clipBlendResult);
+        this._accumulatedWeight = 0.0;
+    }
+
     public reset () {
         Vec3.copy(this.result, this._defaultValue);
     }
@@ -432,6 +437,11 @@ class LayeredQuatPropertyBlendState implements PropertyBlendState<Quat> {
         this._accumulatedWeight = 0.0;
     }
 
+    public dropLayerChange () {
+        Quat.identity(this._clipBlendResult);
+        this._accumulatedWeight = 0.0;
+    }
+
     public reset () {
         Quat.copy(this.result, this._defaultValue);
     }
@@ -448,6 +458,14 @@ class LayeredNodeBlendState extends NodeBlendState<LayeredVec3PropertyBlendState
 
     public commitLayerChanges (layerIndex: number, weight: number) {
         if (!(this._layerMask & (1 << layerIndex))) {
+            // TODO: potential BUG?? What if this node has been sampled but not committed?
+            // Seems won't problem by now... Since if a node is masked, there would be no "layer change" on that node.
+            // Shall we asserts or force clear like:
+            const { _properties: { position, scale, rotation, eulerAngles } } = this;
+            position?.dropLayerChange();
+            rotation?.dropLayerChange();
+            eulerAngles?.dropLayerChange();
+            scale?.dropLayerChange();
             return;
         }
         const { _properties: { position, scale, rotation, eulerAngles } } = this;
