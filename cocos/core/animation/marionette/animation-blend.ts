@@ -70,9 +70,41 @@ export class AnimationBlendEval implements MotionEval {
     }
 
     get duration () {
+        const {
+            _childEvaluators: childEvaluators,
+            _weights: weights,
+        } = this;
+        const nChildEvaluators = childEvaluators.length;
         let uniformDuration = 0.0;
-        for (let iChild = 0; iChild < this._childEvaluators.length; ++iChild) {
-            uniformDuration += (this._childEvaluators[iChild]?.duration ?? 0.0) * this._weights[iChild];
+        let nonZeroDurationChildWeightSum = 0.0;
+        let hasZeroDurationChild = false;
+        for (let iChild = 0; iChild < nChildEvaluators; ++iChild) {
+            const childDuration = childEvaluators[iChild]?.duration ?? 0.0;
+            const childWeight = weights[iChild];
+            uniformDuration += childDuration * childWeight;
+            if (childDuration === 0.0) {
+                hasZeroDurationChild = true;
+            } else {
+                nonZeroDurationChildWeightSum += childWeight;
+            }
+        }
+        // If some children have zero duration, we want to recalculate the result in a different fashion.
+        if (hasZeroDurationChild) {
+            // But we only need the recalculates the result if
+            // there is at least one non-zero child having non-zero weight(so `uniformDuration === 0`).
+            if (uniformDuration) {
+                // Think about that!
+                assertIsTrue(nonZeroDurationChildWeightSum !== 0);
+
+                uniformDuration = 0.0;
+                for (let iChild = 0; iChild < nChildEvaluators; ++iChild) {
+                    const childDuration = childEvaluators[iChild]?.duration ?? 0.0;
+                    const childWeight = weights[iChild];
+                    if (childDuration !== 0.0) {
+                        uniformDuration += childDuration * (childWeight / nonZeroDurationChildWeightSum);
+                    }
+                }
+            }
         }
         return uniformDuration;
     }
