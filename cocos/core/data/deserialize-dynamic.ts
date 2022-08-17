@@ -319,6 +319,23 @@ type SerializedTypedArrayRef = {
     length: number;
 };
 
+type SerializedMap = {
+    __id__: never;
+    __uuid__: never;
+    __type__: 'Map';
+    entries: Array<[
+        unknown,
+        unknown,
+    ]>;
+};
+
+type SerializedSet = {
+    __id__: never;
+    __uuid__: never;
+    __type__: 'Set';
+    values: unknown[];
+};
+
 type SerializedGeneralTypedObject = {
     __id__: never;
     __uuid__: never;
@@ -338,7 +355,7 @@ type SerializedUUIDReference = {
     __expectedType__: string;
 };
 
-type SerializedObject = SerializedTypedArray | SerializedTypedArrayRef | SerializedGeneralTypedObject;
+type SerializedObject = SerializedTypedArray | SerializedTypedArrayRef | SerializedMap | SerializedSet | SerializedGeneralTypedObject;
 
 type SerializedValue = SerializedObject | SerializedValue[] | string | number | boolean | null;
 
@@ -486,6 +503,10 @@ class _Deserializer {
             return this._deserializeTypedArrayView(serialized);
         case 'TypedArrayRef':
             return this._deserializeTypedArrayViewRef(serialized);
+        case 'Map':
+            return this._deserializeMap(serialized);
+        case 'Set':
+            return this._deserializeSet(serialized);
         default:
             if (serialized.__type__) { // Typed object (including CCClass)
                 return this._deserializeTypeTaggedObject(serialized, globalIndex, owner, propName);
@@ -509,6 +530,29 @@ class _Deserializer {
             length,
         );
         return obj;
+    }
+
+    private _deserializeMap (value: SerializedMap) {
+        return new Map<unknown, unknown>(value.entries.map(([keySerialized, valueSerialized]) => {
+            const key = this._deserializeCollectionKeyValue(keySerialized);
+            const value = this._deserializeCollectionKeyValue(valueSerialized);
+            return [key, value];
+        }));
+    }
+
+    private _deserializeSet (value: SerializedSet) {
+        return new Set<unknown>(value.values.map((valueSerialized) => {
+            const value = this._deserializeCollectionKeyValue(valueSerialized);
+            return value;
+        }));
+    }
+
+    private _deserializeCollectionKeyValue (keyOrValueSerialized: unknown): unknown {
+        if (typeof keyOrValueSerialized !== 'object' || !keyOrValueSerialized) {
+            return keyOrValueSerialized;
+        } else {
+            return this._deserializeObjectField(keyOrValueSerialized) as unknown;
+        }
     }
 
     private _deserializeArray (value: SerializedValue[]) {
