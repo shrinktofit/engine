@@ -885,8 +885,8 @@ export class Game extends EventTarget {
     // @Methods
 
     private _calculateDT () {
-        if (globalThis) {
-            return 1.0 / 60.0;
+        if (typeof globalThis.__FIXED_FPS === 'number') {
+            return 1.0 / globalThis.__FIXED_FPS;
         }
         const now = performance.now();
         this._deltaTime = now > this._startTime ? (now - this._startTime) / 1000 : 0;
