@@ -3,6 +3,7 @@ import { ccclass, type } from '../../data/class-decorator';
 import { EditorExtendable } from '../../data/editor-extendable';
 import { AnimationClip } from '../animation-clip';
 import { AnimationState } from '../animation-state';
+import { cloneAnimationGraphEditorExtrasFrom } from './animation-graph-editor-extras-clone-helper';
 import { createEval } from './create-eval';
 import { getMotionRuntimeID, graphDebug, GRAPH_DEBUG_ENABLED, pushWeight, RUNTIME_ID_ENABLED } from './graph-debug';
 import { ClipStatus } from './graph-eval';
@@ -27,6 +28,7 @@ export class ClipMotion extends EditorExtendable implements Motion {
     public clone () {
         const that = new ClipMotion();
         that.clip = this.clip;
+        that[editorExtrasTag] = cloneAnimationGraphEditorExtrasFrom(this);
         return that;
     }
 }

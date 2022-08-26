@@ -1,4 +1,12 @@
-import { EmptyStateTransition, State, StateMachine, Transition, isAnimationTransition, EmptyState, SubStateMachine } from "../../../cocos/core/animation/marionette/animation-graph";
+import {
+    EmptyStateTransition,
+    State,
+    StateMachine,
+    Transition,
+    isAnimationTransition,
+    EmptyState,
+    SubStateMachine,
+} from "../../../cocos/core/animation/marionette/animation-graph";
 import { MotionState } from "../../../cocos/core/animation/marionette/motion-state";
 import { assertIsTrue } from "../../../cocos/core/data/utils/asserts";
 
@@ -24,8 +32,19 @@ function assignTransition<T extends Transition>(lhs: T, rhs: T) {
  * @param state The state.
  * @param includeTransitions If true, transitions are also cloned.
  * @returns The newly created state.
+ * 
+ * For each editor extras object attached on animation-graph-specific objects,
+ * if the editor extras object has a method called `clone`,
+ * that method would be called to perform a clone operation on that editor extras object.
+ * The return value would be used as the clone result.
+ * The method `clone` has the signature: `(host: EditorExtendableObject) => unknown`.
+ * Otherwise, if no `clone` method provide, the new editor extras would be set to undefined.
  */
-export function cloneState(stateMachine: StateMachine, state: MotionState | EmptyState | SubStateMachine, includeTransitions: boolean): SubStateMachine;
+export function cloneState<TState extends MotionState | EmptyState | SubStateMachine>(
+    stateMachine: StateMachine,
+    state: TState,
+    includeTransitions: boolean,
+): TState;
 
 /**
  * Clones a state into maybe another state machine.
@@ -33,8 +52,19 @@ export function cloneState(stateMachine: StateMachine, state: MotionState | Empt
  * @param state The state.
  * @param targetStateMachine Target state machine
  * @returns The newly created state.
+ * 
+ * For each editor extras object attached on animation-graph-specific objects,
+ * if the editor extras object has a method called `clone`,
+ * that method would be called to perform a clone operation on that editor extras object.
+ * The return value would be used as the clone result.
+ * The method `clone` has the signature: `(host: EditorExtendableObject) => unknown`.
+ * Otherwise, if no `clone` method provide, the new editor extras would be set to undefined.
  */
-export function cloneState(stateMachine: StateMachine, state: MotionState | EmptyState | SubStateMachine, targetStateMachine: StateMachine): SubStateMachine;
+export function cloneState(
+    stateMachine: StateMachine,
+    state: MotionState | EmptyState | SubStateMachine,
+    targetStateMachine: StateMachine,
+): SubStateMachine;
 
 export function cloneState(stateMachine: StateMachine, state: MotionState | EmptyState | SubStateMachine, includeTransitions: boolean | StateMachine) {
     const newStateOwner = typeof includeTransitions === 'boolean' ? stateMachine : includeTransitions;
