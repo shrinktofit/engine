@@ -21,6 +21,7 @@ export function* visitAnimationGraphEditorExtras(animationGraph: AnimationGraph)
     }
 
     function* visitStateMachine(stateMachine: StateMachine): Generator<EditorExtendableObject> {
+        yield stateMachine;
         for (const state of stateMachine.states()) {
             yield state;
             if (state instanceof MotionState) {
@@ -34,6 +35,9 @@ export function* visitAnimationGraphEditorExtras(animationGraph: AnimationGraph)
             } else if (state instanceof SubStateMachine) {
                 yield* visitStateMachine(state.stateMachine);
             }
+        }
+        for (const transition of stateMachine.transitions()) {
+            yield transition;
         }
     }
 }
