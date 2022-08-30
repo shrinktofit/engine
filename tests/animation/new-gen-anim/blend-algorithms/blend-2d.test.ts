@@ -191,3 +191,31 @@ describe('Simple directional 2D', () => {
         }), EXPECT_NUM_DIGITS);
     });
 });
+
+describe('Gradient Band interpolation in Cartesian space', () => {
+    function calc (samples: readonly Vec2[], input: Vec2) {
+        const weights = new Array(samples.length).fill(0);
+        sampleFreeformDirectional(weights, samples, input);
+        return weights;
+    }
+
+    test('Zero or one sample', () => {
+        expect(() => calc([], new Vec2(3.14, 6.18))).not.toThrow();
+        
+        expect(calc([new Vec2(-12.3, 45.6)], new Vec2(78.9, 3.14))).toBeDeepCloseTo([1.0], EXPECT_NUM_DIGITS);
+    });
+});
+
+describe.only('Gradient Band interpolation in polar space', () => {
+    function calc (samples: readonly Vec2[], input: Vec2) {
+        const weights = new Array(samples.length).fill(0);
+        sampleFreeformDirectional(weights, samples, input);
+        return weights;
+    }
+
+    test('Zero or one sample', () => {
+        expect(() => calc([], new Vec2(3.14, 6.18))).not.toThrow();
+        
+        expect(calc([new Vec2(-12.3, 45.6)], new Vec2(78.9, 3.14))).toBeDeepCloseTo([1.0], EXPECT_NUM_DIGITS);
+    });
+});
