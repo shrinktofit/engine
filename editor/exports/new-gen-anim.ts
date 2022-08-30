@@ -1,4 +1,3 @@
-
 export {
     blend1D,
 } from '../../cocos/core/animation/marionette/blend-1d';
@@ -28,3 +27,8 @@ export type {
     MotionPreviewerTimelineStats,
     TransitionPreviewerTimelineStats,
 } from '../src/marionette/preview';
+
+export {
+    cloneState,
+    turnMotionStateIntoSubStateMachine,
+} from '../src/marionette/state-machine-operation';

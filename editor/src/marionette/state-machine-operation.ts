@@ -87,7 +87,7 @@ export function cloneState(stateMachine: StateMachine, state: MotionState | Empt
         }
         const outgoings = stateMachine.getOutgoings(state);
         for (const outgoing of outgoings) {
-            const newOutgoing = stateMachine.connect(state, outgoing.to);
+            const newOutgoing = stateMachine.connect(newState, outgoing.to);
             assignTransition(newOutgoing, outgoing);
         }
     }
@@ -103,6 +103,7 @@ export function cloneState(stateMachine: StateMachine, state: MotionState | Empt
 export function turnMotionStateIntoSubStateMachine(stateMachine: StateMachine, state: MotionState) {
     // Create new state.
     const subStateMachine = stateMachine.addSubStateMachine();
+    subStateMachine.name = state.name;
     const newMotionState = subStateMachine.stateMachine.addMotion();
     state.assign(newMotionState);
     subStateMachine.stateMachine.connect(subStateMachine.stateMachine.entryState, newMotionState);
