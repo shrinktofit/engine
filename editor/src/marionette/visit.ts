@@ -4,6 +4,7 @@ import { AnimationBlend } from "../../../cocos/core/animation/marionette/animati
 import { AnimationBlend1D } from "../../../cocos/core/animation/marionette/animation-blend-1d";
 import { AnimationBlend2D } from "../../../cocos/core/animation/marionette/animation-blend-2d";
 import { AnimationBlendDirect } from "../../../cocos/core/animation/marionette/animation-blend-direct";
+import { AnimationController } from "../../../cocos/core/animation/marionette/animation-controller";
 import {
     StateMachine,
     SubStateMachine,
@@ -67,5 +68,14 @@ export function* visitAnimationClips(animationGraph: AnimationGraph): Generator<
                 }
             }
         }
+    }
+}
+
+export function* visitAnimationClipsInController(animationController: AnimationController): Generator<AnimationClip> {
+    const {
+        graph,
+    } = animationController;
+    if (graph) {
+        yield* visitAnimationClips(graph as AnimationGraph);
     }
 }

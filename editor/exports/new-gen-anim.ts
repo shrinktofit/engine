@@ -36,5 +36,6 @@ export {
 
 export {
     visitAnimationClips,
+    visitAnimationClipsInController,
     visitAnimationGraphEditorExtras,
 } from '../src/marionette/visit';
