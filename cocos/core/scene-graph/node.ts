@@ -621,6 +621,51 @@ export class Node extends BaseNode implements CustomSerializable {
     }
 
     /**
+     * @zh 设置所有局部变换（平移、旋转、缩放）信息，
+     * 但在 `invalidateChildren` 被调用（或其父节点的 `invalidateChildren` 被调用）之前都不让其奏效。
+     *
+     * ⚠️ 注意，这是一个非常危险的方法。
+     * 在 `invalidateChildren` 被调用之前，不应查询此节点上递归子节点的任何变换信息。
+     *
+     * @en Set local transformation with rotation, position and scale,
+     * but it would only take effect once an `invalidateChildren` invocation(on this node or on ancestor nodes) is made.
+     *
+     * ⚠️ Note, this is a very dangerous method.
+     * Before the invocation of `invalidateChildren`,
+     * any query to the transform of this node should not be made.
+     *
+     * @param rot The rotation.
+     * @param pos The position.
+     * @param scale The scale.
+     *
+     * @internal
+     */
+    public __stashRTS (rot?: Quat | Vec3, pos?: Vec3, scale?: Vec3) {
+        if (rot) {
+            if ((rot as Quat).w !== undefined) {
+                Quat.copy(this._lrot, rot as Quat);
+                this._eulerDirty = true;
+            } else {
+                Vec3.copy(this._euler, rot);
+                Quat.fromEuler(this._lrot, rot.x, rot.y, rot.z);
+                this._eulerDirty = false;
+            }
+        }
+        if (pos) {
+            Vec3.copy(this._lpos, pos);
+        }
+        if (scale) {
+            Vec3.copy(this._lscale, scale);
+        }
+    }
+
+    public __fireTransformChangeEvent (bits: TransformBit) {
+        if (this._eventMask & TRANSFORM_ON) {
+            this.emit(NodeEventType.TRANSFORM_CHANGED, bits);
+        }
+    }
+
+    /**
      * @en Update the world transform information if outdated
      * @zh 更新节点的世界变换信息
      */

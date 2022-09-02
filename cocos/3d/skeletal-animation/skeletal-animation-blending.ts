@@ -25,10 +25,11 @@
 
 import { DEBUG } from 'internal:constants';
 import { Vec3, Quat } from '../../core/math';
-import { Node } from '../../core/scene-graph';
+import { Node, TransformBit } from '../../core/scene-graph';
 import { RuntimeBinding } from '../../core/animation/tracks/track';
 import { assertIsTrue } from '../../core/data/utils/asserts';
 import { MAX_ANIMATION_LAYER } from './limits';
+import { remove } from '../../core/utils/array';
 
 export abstract class BlendStateBuffer<
     TNodeBlendState extends NodeBlendState<PropertyBlendState<Vec3>, PropertyBlendState<Quat>> =
@@ -61,6 +62,7 @@ export abstract class BlendStateBuffer<
         let nodeBlendState = this._nodeBlendStates.get(node);
         if (!nodeBlendState) {
             nodeBlendState = this.createNodeBlendState();
+            this._tryAddIntoRootList(node);
             this._nodeBlendStates.set(node, nodeBlendState);
         }
         const propertyBlendState = nodeBlendState.refProperty(node, property);
@@ -74,14 +76,58 @@ export abstract class BlendStateBuffer<
         }
         nodeBlendState.deRefProperty(property);
         if (nodeBlendState.empty) {
+            this._tryRemoveFromRootList(node);
             this._nodeBlendStates.delete(node);
         }
     }
 
     public apply () {
+        // Set TRS.
         this._nodeBlendStates.forEach((nodeBlendState, node) => {
             nodeBlendState.apply(node);
         });
+        // Invalidate children recursively from root.
+        for (const root of this._roots) {
+            root.invalidateChildren(TransformBit.TRS);
+        }
+        // Fire events.
+        for (const node of this._nodeBlendStates.keys()) {
+            node.__fireTransformChangeEvent(TransformBit.TRS);
+        }
+    }
+
+    private _roots: Node[] = [];
+
+    private _tryAddIntoRootList (node: Node) {
+        const { _roots: roots } = this;
+        // If any of the ancestors is root, it's not a root.
+        for (let currentNode: Node | null = node;
+            currentNode !== null;
+            currentNode = currentNode.parent) {
+            if (roots.includes(currentNode)) {
+                return;
+            }
+        }
+        // Otherwise, it becomes a root.
+        this._roots.push(node);
+    }
+
+    private _tryRemoveFromRootList (node: Node) {
+        const removed = remove(this._roots, node);
+        if (removed) {
+            this._promoteChildren(node);
+        }
+    }
+
+    private _promoteChildren (node: Node) {
+        for (const child of node.children) {
+            // If it's our managed nodes, promote it as root and never go ahead.
+            if (this._nodeBlendStates.has(child)) {
+                this._roots.push(child);
+            } else {
+                this._promoteChildren(child);
+            }
+        }
     }
 
     protected abstract createNodeBlendState (): TNodeBlendState;
@@ -280,7 +326,7 @@ abstract class NodeBlendState<TVec3PropertyBlendState extends PropertyBlendState
         }
 
         if (r || t || s) {
-            node.setRTS(r, t, s);
+            node.__stashRTS(r, t, s);
         }
 
         this._transformApplyFlags = 0;

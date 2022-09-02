@@ -606,17 +606,22 @@ class ExoticNodeAnimationEvaluator {
     }
 
     public evaluate (time: number) {
-        if (this._position) {
-            const value = this._position.evaluator.evaluate(time);
-            this._position.runtimeBinding.setValue(value);
+        const {
+            _position: position,
+            _rotation: rotation,
+            _scale: scale,
+        } = this;
+        if (position) {
+            const value = position.evaluator.evaluate(time);
+            position.runtimeBinding.setValue(value);
         }
-        if (this._rotation) {
-            const value = this._rotation.evaluator.evaluate(time);
-            this._rotation.runtimeBinding.setValue(value);
+        if (rotation) {
+            const value = rotation.evaluator.evaluate(time);
+            rotation.runtimeBinding.setValue(value);
         }
-        if (this._scale) {
-            const value = this._scale.evaluator.evaluate(time);
-            this._scale.runtimeBinding.setValue(value);
+        if (scale) {
+            const value = scale.evaluator.evaluate(time);
+            scale.runtimeBinding.setValue(value);
         }
     }
 
