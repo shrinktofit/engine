@@ -20,6 +20,7 @@ export function* visitAnimationGraphEditorExtras(animationGraph: AnimationGraph)
         yield* visitStateMachine(layer.stateMachine);
     }
 
+
     function* visitStateMachine(stateMachine: StateMachine): Generator<EditorExtendableObject> {
         yield stateMachine;
         for (const state of stateMachine.states()) {
@@ -29,15 +30,26 @@ export function* visitAnimationGraphEditorExtras(animationGraph: AnimationGraph)
                 if (!motion) {
                     continue;
                 }
-                if (motion instanceof AnimationBlend || motion instanceof ClipMotion) {
-                    yield motion;
-                }
+                yield* visitMotion(motion);
             } else if (state instanceof SubStateMachine) {
                 yield* visitStateMachine(state.stateMachine);
             }
         }
         for (const transition of stateMachine.transitions()) {
             yield transition;
+        }
+    }
+
+    function* visitMotion(motion: Motion) {
+        yield motion;
+        if (motion instanceof AnimationBlend1D ||
+            motion instanceof AnimationBlend2D ||
+            motion instanceof AnimationBlendDirect) {
+            for (const { motion:childMotion } of motion.items) {
+                if (childMotion) {
+                    yield* visitMotion(childMotion);
+                }
+            }
         }
     }
 }
