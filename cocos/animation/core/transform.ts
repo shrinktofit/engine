@@ -166,3 +166,45 @@ function invScaleOrZero (out: Vec3, scale: Readonly<Vec3>, epsilon: number) {
         Math.abs(z) <= epsilon ? 0.0 : 1.0 / z,
     );
 }
+
+export function __calculateDeltaTransform (out: Transform, target: Readonly<Transform>, base: Readonly<Transform>) {
+    Vec3.subtract(out.position, target.position, base.position);
+    deltaQuat(out.rotation, base.rotation, target.rotation);
+    Vec3.subtract(out.scale, target.scale, base.scale);
+}
+
+export const __applyDeltaTransform = (() => {
+    const cacheQuat = new Quat();
+    return (out: Transform, base: Readonly<Transform>, delta: Readonly<Transform>, alpha: number) => {
+        Vec3.scaleAndAdd(out.position, base.position, delta.position, alpha);
+        const weightedDeltaRotation = Quat.slerp(cacheQuat, Quat.IDENTITY, delta.rotation, alpha);
+        // TODO: order??
+        Quat.multiply(out.rotation, base.rotation, weightedDeltaRotation);
+        Vec3.scaleAndAdd(out.scale, base.scale, delta.scale, alpha);
+    };
+})();
+
+/**
+ * Calculates the delta(relative) rotations between two rotations represented by quaternions.
+ * @param out
+ * @param from
+ * @param to
+ */
+function deltaQuat (out: Quat, from: Quat, to: Quat) {
+    return quatMultiInv(
+        out,
+        to,
+        from,
+    );
+}
+
+/**
+ * @returns `q1 * inv(q2)`
+ */
+const quatMultiInv = (() => {
+    const cacheQuat = new Quat();
+    return (out: Quat, q1: Quat, q2: Quat) => {
+        const q2Inv = Quat.invert(cacheQuat, q2);
+        return Quat.multiply(out, q2Inv, q1);
+    };
+})();

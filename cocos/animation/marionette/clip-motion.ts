@@ -1,18 +1,23 @@
 import { ccclass, type } from '../../core/data/class-decorator';
 import { EditorExtendable } from '../../core/data/editor-extendable';
 import { AnimationClip } from '../animation-clip';
+import { AnimationClipGraphEvaluationContext } from '../animation-clip-evaluation-for-graph';
 import { AnimationState } from '../animation-state';
+import { WrapModeMask, WrappedInfo } from '../types';
+import { AnimationGraphEvaluationContext, AnimationGraphLayerWideBindingContext } from './animation-graph-context';
 import { createEval } from './create-eval';
 import { getMotionRuntimeID, GRAPH_DEBUG_ENABLED, pushWeight, RUNTIME_ID_ENABLED } from './graph-debug';
 import { ClipStatus } from './graph-eval';
-import { MotionEvalContext, Motion, MotionEval } from './motion';
+import { Motion, MotionEval } from './motion';
+import { wrap } from '../wrap';
+import { calculateDeltaPose } from '../core/pose';
 
 @ccclass('cc.animation.ClipMotion')
 export class ClipMotion extends EditorExtendable implements Motion {
     @type(AnimationClip)
     public clip: AnimationClip | null = null;
 
-    public [createEval] (context: MotionEvalContext) {
+    public [createEval] (context: AnimationGraphLayerWideBindingContext) {
         if (!this.clip) {
             return null;
         }
@@ -42,10 +47,18 @@ class ClipMotionEval implements MotionEval {
 
     public declare readonly duration: number;
 
-    constructor (context: MotionEvalContext, clip: AnimationClip) {
+    constructor (context: AnimationGraphLayerWideBindingContext, clip: AnimationClip) {
         this.duration = clip.duration / clip.speed;
-        this._state = new AnimationState(clip);
-        this._state.initialize(context.node, context.blendBuffer, context.mask);
+        const clipEval = clip.createEvaluatorForAnimationGraph(context.up);
+        this._clipEval = clipEval;
+        if (clip.containsAnyEmbeddedPlayer()) {
+            this._clipEmbeddedPlayerEval = clip.createEmbeddedPlayerEvaluator(context.up.origin);
+        }
+        this._clip = clip;
+        if (context.additive) {
+            // TODO: base clip may be another clip?
+            this._baseClipEval = clip.createEvaluatorForAnimationGraph(context.up);
+        }
     }
 
     public getClipStatuses (baseWeight: number): Iterator<ClipStatus, any, undefined> {
@@ -76,17 +89,50 @@ class ClipMotionEval implements MotionEval {
         return this._state.time / this.duration;
     }
 
-    public sample (progress: number, weight: number) {
-        if (weight === 0.0) {
-            return;
+    public evaluate (progress: number, context: AnimationGraphEvaluationContext) {
+        const {
+            duration,
+            _clipEval: clipEval,
+            _baseClipEval: baseClipEval,
+        } = this;
+
+        const elapsedTime = duration * progress;
+
+        const { wrapMode } = this._clip;
+        const repeatCount = (wrapMode & WrapModeMask.Loop) === WrapModeMask.Loop
+            ? Infinity : 1;
+        const wrapInfo = wrap(
+            elapsedTime,
+            duration,
+            wrapMode,
+            repeatCount,
+            false,
+            this._wrapInfo,
+        );
+
+        // Evaluate this clip.
+        const pose = context.createDefaultedPose();
+        // TODO: allocation here!!!
+        clipEval.evaluate(wrapInfo.time, { pose });
+
+        if (baseClipEval) {
+            const basePose = context.createDefaultedPose();
+            baseClipEval.evaluate(0.0, { pose: basePose });
+            calculateDeltaPose(pose, basePose);
+            context.deletePose(basePose);
         }
-        if (GRAPH_DEBUG_ENABLED) {
-            pushWeight(this._state.name, weight);
-        }
-        const time = this._state.duration * progress;
-        this._state.time = time;
-        this._state.weight = weight;
-        this._state.sample();
-        this._state.weight = 0.0;
+
+        // TODO: Evaluate root motions.
+
+        // TODO: Evaluate embedded players.
+        // this._clipEmbeddedPlayerEval?.evaluate();
+
+        return pose;
     }
+
+    private _clip: AnimationClip;
+    private _clipEval: ReturnType<AnimationClip['createEvaluatorForAnimationGraph']>;
+    private _clipEmbeddedPlayerEval: ReturnType<AnimationClip['createEmbeddedPlayerEvaluator']> | null = null;
+    private _wrapInfo = new WrappedInfo();
+    private _baseClipEval: ReturnType<AnimationClip['createEvaluatorForAnimationGraph']> | null = null;
 }

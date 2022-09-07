@@ -180,7 +180,7 @@ export class TransformArray {
      * - the the operating objects are transforms,
      * - plain array is not allowed.
      */
-    public set (transformArray: TransformArray, targetOffset?: number) {
+    public set (transformArray: Readonly<TransformArray>, targetOffset?: number) {
         this._data.set(
             transformArray._data,
             typeof targetOffset === 'number' ? targetOffset * TRANSFORM_STRIDE_IN_FLOATS : undefined,

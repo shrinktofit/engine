@@ -7,9 +7,11 @@ import { ClipStatus } from './graph-eval';
 import { EditorExtendable } from '../../core/data/editor-extendable';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
 import { getMotionRuntimeID, RUNTIME_ID_ENABLED } from './graph-debug';
+import { AnimationGraphEvaluationContext, AnimationGraphLayerWideBindingContext } from './animation-graph-context';
+import { blendPoseInto, Pose } from '../core/pose';
 
 export interface AnimationBlend extends Motion, EditorExtendable {
-    [createEval] (_context: MotionEvalContext): MotionEval | null;
+    [createEval] (_context: AnimationGraphLayerWideBindingContext): MotionEval | null;
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}AnimationBlendItem`)
@@ -43,7 +45,7 @@ export class AnimationBlendEval implements MotionEval {
     private declare _inputs: number[];
 
     constructor (
-        context: MotionEvalContext,
+        context: AnimationGraphLayerWideBindingContext,
         base: AnimationBlend,
         children: AnimationBlendItem[],
         inputs: number[],
@@ -103,10 +105,34 @@ export class AnimationBlendEval implements MotionEval {
         };
     }
 
-    public sample (progress: number, weight: number) {
-        for (let iChild = 0; iChild < this._childEvaluators.length; ++iChild) {
-            this._childEvaluators[iChild]?.sample(progress, weight * this._weights[iChild]);
+    public evaluate (progress: number, context: AnimationGraphEvaluationContext): Pose {
+        const nChild = this._childEvaluators.length;
+        let sumWeight = 0.0;
+        let finalPose: Pose | null = null;
+        for (let iChild = 0; iChild < nChild; ++iChild) {
+            const childWeight = this._weights[iChild];
+            if (!childWeight) {
+                continue;
+            }
+            const childOutput = this._childEvaluators[iChild]?.evaluate(progress, context);
+            if (!childOutput) {
+                continue;
+            }
+            sumWeight += childWeight;
+            if (!finalPose) {
+                finalPose = childOutput;
+            } else {
+                if (sumWeight) {
+                    const t = childWeight / sumWeight;
+                    blendPoseInto(finalPose, childOutput, t);
+                }
+                context.deletePose(childOutput);
+            }
         }
+        if (finalPose) {
+            return finalPose;
+        }
+        return context.createDefaultedPose();
     }
 
     public setInput (value: number, index: number) {

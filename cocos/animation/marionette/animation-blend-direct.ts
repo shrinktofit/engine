@@ -4,6 +4,7 @@ import { createEval } from './create-eval';
 import { MotionEvalContext } from './motion';
 import { AnimationBlend, AnimationBlendEval, AnimationBlendItem } from './animation-blend';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
+import { AnimationGraphLayerWideBindingContext } from './animation-graph-context';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}AnimationBlendDirectItem`)
 class AnimationBlendDirectItem extends AnimationBlendItem {
@@ -44,7 +45,7 @@ export class AnimationBlendDirect extends AnimationBlend {
         return that;
     }
 
-    public [createEval] (context: MotionEvalContext) {
+    public [createEval] (context: AnimationGraphLayerWideBindingContext) {
         const myEval = new AnimationBlendDirectEval(
             context,
             this,

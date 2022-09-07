@@ -6,6 +6,7 @@ import { MotionEvalContext } from './motion';
 import { AnimationBlend, AnimationBlendEval, AnimationBlendItem } from './animation-blend';
 import { blend1D } from './blend-1d';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
+import { AnimationGraphLayerWideBindingContext } from './animation-graph-context';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}AnimationBlend1DItem`)
 class AnimationBlend1DItem extends AnimationBlendItem {
@@ -51,10 +52,10 @@ export class AnimationBlend1D extends AnimationBlend {
         return that;
     }
 
-    public [createEval] (context: MotionEvalContext) {
+    public [createEval] (context: AnimationGraphLayerWideBindingContext) {
         const evaluation = new AnimationBlend1DEval(context, this, this._items, this._items.map(({ threshold }) => threshold), 0.0);
         const initialValue = bindOr(
-            context,
+            context.up,
             this.param,
             VariableType.FLOAT,
             evaluation.setInput,
@@ -73,7 +74,10 @@ export declare namespace AnimationBlend1D {
 class AnimationBlend1DEval extends AnimationBlendEval {
     private declare _thresholds: readonly number[];
 
-    constructor (context: MotionEvalContext, base: AnimationBlend, items: AnimationBlendItem[], thresholds: readonly number[], input: number) {
+    constructor (
+        context: AnimationGraphLayerWideBindingContext,
+        base: AnimationBlend, items: AnimationBlendItem[], thresholds: readonly number[], input: number,
+    ) {
         super(context, base, items, [input]);
         this._thresholds = thresholds;
         this.doEval();

@@ -44,12 +44,13 @@ import { createEvalSymbol } from './define';
 import { UntypedTrack, UntypedTrackRefine } from './tracks/untyped-track';
 import { Range } from './tracks/utils';
 import { ObjectTrack } from './tracks/object-track';
-import type { ExoticAnimation } from './exotic-animation/exotic-animation';
+import type { ExoticAnimation, ExoticTrsAnimationEvaluatorX } from './exotic-animation/exotic-animation';
 import './exotic-animation/exotic-animation';
 import { array } from '../core/utils/js';
 import type { AnimationMask } from './marionette/animation-mask';
 import { getGlobalAnimationManager } from './global-animation-manager';
 import { EmbeddedPlayableState, EmbeddedPlayer } from './embedded-player/embedded-player';
+import { AnimationClipGraphEvaluationContext, AnimationClipGraphBindingContext, TrackEvalStatusX, AnimationClipEvaluationForGraph } from './animation-clip-evaluation-for-graph';
 
 export declare namespace AnimationClip {
     export interface IEvent {
@@ -388,6 +389,27 @@ export class AnimationClip extends Asset {
         };
 
         return this._createEvalWithBinder(target, binder, context.rootMotion);
+    }
+
+    public createEvaluatorForAnimationGraph (context: AnimationClipGraphBindingContext) {
+        if (this._legacyDataDirty) {
+            this._legacyDataDirty = false;
+            this.syncLegacyData();
+        }
+
+        const trackEvalStatues: TrackEvalStatusX[] = [];
+        let exoticAnimationEvaluator: ExoticTrsAnimationEvaluatorX | undefined;
+
+        if (this._exoticAnimation) {
+            exoticAnimationEvaluator = this._exoticAnimation.createEvaluatorForAnimationGraph(context);
+        }
+
+        const evaluation = new AnimationClipEvaluationForGraph(
+            trackEvalStatues,
+            exoticAnimationEvaluator,
+        );
+
+        return evaluation;
     }
 
     public destroy () {

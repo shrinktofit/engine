@@ -31,6 +31,9 @@ import './tracks/array-track';
 // TODO: remove
 import './core/transform';
 import './core/transform-array';
+import './core/pose';
+import './core/pose-allocator';
+import './marionette/animation-graph-context';
 
 export * from './target-path';
 export * from './value-proxy';

@@ -8,6 +8,7 @@ import { serializable } from '../../core/data/decorators';
 import { BindableNumber, bindOr, VariableType } from './parametric';
 import { sampleFreeformCartesian, sampleFreeformDirectional, blendSimpleDirectional } from './blend-2d';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
+import { AnimationGraphLayerWideBindingContext } from './animation-graph-context';
 
 enum Algorithm {
     SIMPLE_DIRECTIONAL,
@@ -69,7 +70,7 @@ export class AnimationBlend2D extends AnimationBlend {
         return that;
     }
 
-    public [createEval] (context: MotionEvalContext) {
+    public [createEval] (context: AnimationGraphLayerWideBindingContext) {
         const evaluation = new AnimationBlend2DEval(
             context,
             this,
@@ -79,7 +80,7 @@ export class AnimationBlend2D extends AnimationBlend {
             [0.0, 0.0],
         );
         const initialValueX = bindOr(
-            context,
+            context.up,
             this.paramX,
             VariableType.FLOAT,
             evaluation.setInput,
@@ -87,7 +88,7 @@ export class AnimationBlend2D extends AnimationBlend {
             0,
         );
         const initialValueY = bindOr(
-            context,
+            context.up,
             this.paramY,
             VariableType.FLOAT,
             evaluation.setInput,
@@ -112,7 +113,7 @@ class AnimationBlend2DEval extends AnimationBlendEval {
     private _value = new Vec2();
 
     constructor (
-        context: MotionEvalContext,
+        context: AnimationGraphLayerWideBindingContext,
         base: AnimationBlend,
         items: AnimationBlendItem[],
         thresholds: readonly Vec2[],

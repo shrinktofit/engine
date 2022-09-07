@@ -8,12 +8,13 @@ import { ccclass, serializable } from '../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
 import { createEval } from './create-eval';
 import { VariableTypeMismatchedError } from './errors';
+import { AnimationGraphBindingContext } from './animation-graph-context';
 
 export type ConditionEvalContext = BindContext;
 
 export interface Condition {
     clone (): Condition;
-    [createEval] (context: BindContext): ConditionEval;
+    [createEval] (context: AnimationGraphBindingContext): ConditionEval;
 }
 
 export interface ConditionEval {
