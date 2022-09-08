@@ -10,7 +10,8 @@ import { getMotionRuntimeID, GRAPH_DEBUG_ENABLED, pushWeight, RUNTIME_ID_ENABLED
 import { ClipStatus } from './graph-eval';
 import { Motion, MotionEval } from './motion';
 import { wrap } from '../wrap';
-import { calculateDeltaPose } from '../core/pose';
+import { calculateDeltaPose, Pose } from '../core/pose';
+import { animationEmscripten } from './animation-graph.wasm';
 
 @ccclass('cc.animation.ClipMotion')
 export class ClipMotion extends EditorExtendable implements Motion {
@@ -110,14 +111,21 @@ class ClipMotionEval implements MotionEval {
             this._wrapInfo,
         );
 
+        const evaluate = (clipEvaluator: ReturnType<AnimationClip['createEvaluatorForAnimationGraph']>, time: number, pose: Pose) => {
+            if (animationEmscripten) {
+                clipEvaluator.evaluate(time, pose as unknown as AnimationClipGraphEvaluationContext);
+            } else {
+                clipEvaluator.evaluate(time, { pose });
+            }
+        };
+
         // Evaluate this clip.
         const pose = context.createDefaultedPose();
-        // TODO: allocation here!!!
-        clipEval.evaluate(wrapInfo.time, { pose });
+        evaluate(clipEval, wrapInfo.time, pose);
 
         if (baseClipEval) {
             const basePose = context.createDefaultedPose();
-            baseClipEval.evaluate(0.0, { pose: basePose });
+            evaluate(baseClipEval, 0.0, basePose);
             calculateDeltaPose(pose, basePose);
             context.deletePose(basePose);
         }

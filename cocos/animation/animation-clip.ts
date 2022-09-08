@@ -51,6 +51,7 @@ import type { AnimationMask } from './marionette/animation-mask';
 import { getGlobalAnimationManager } from './global-animation-manager';
 import { EmbeddedPlayableState, EmbeddedPlayer } from './embedded-player/embedded-player';
 import { AnimationClipGraphEvaluationContext, AnimationClipGraphBindingContext, TrackEvalStatusX, AnimationClipEvaluationForGraph } from './animation-clip-evaluation-for-graph';
+import { animationEmscripten } from './marionette/animation-graph.wasm';
 
 export declare namespace AnimationClip {
     export interface IEvent {
@@ -239,9 +240,15 @@ export class AnimationClip extends Asset {
         this._exoticAnimation = value;
     }
 
+    private __xEval: any;
+
     public onLoaded () {
         this.frameRate = this.sample;
         this.events = this._events;
+        if (animationEmscripten) {
+            const exoticAnimationX = this.__xEval = new animationEmscripten.ExoticAnimation();
+            exoticAnimationX.fromJS(this._exoticAnimation);
+        }
     }
 
     /**
@@ -401,7 +408,9 @@ export class AnimationClip extends Asset {
         let exoticAnimationEvaluator: ExoticTrsAnimationEvaluatorX | undefined;
 
         if (this._exoticAnimation) {
-            exoticAnimationEvaluator = this._exoticAnimation.createEvaluatorForAnimationGraph(context);
+            exoticAnimationEvaluator = this.__xEval
+                ? this.__xEval.createEvaluator(context)
+                : this._exoticAnimation.createEvaluatorForAnimationGraph(context);
         }
 
         const evaluation = new AnimationClipEvaluationForGraph(

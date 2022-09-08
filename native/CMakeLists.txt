@@ -216,6 +216,18 @@ cc_inspect_values(
 
 include(${EXTERNAL_ROOT}/CMakeLists.txt)
 
+set(USE_ANIMATION ON)
+
+### animation
+if(USE_ANIMATION)
+    cocos_source_files(
+        cocos/animation/core/transform.cpp
+        cocos/animation/core/pose.cpp
+        cocos/animation/native-binding.cpp
+        cocos/animation/marionette/scene-graph-interop.cpp
+    )
+endif()
+
 ##### audio
 if(USE_AUDIO)
     cocos_source_files(

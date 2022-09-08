@@ -384,6 +384,50 @@ void Quaternion::fromMat3(const Mat3 &m, Quaternion *out) {
 }
 
 void Quaternion::slerp(float q1x, float q1y, float q1z, float q1w, float q2x, float q2y, float q2z, float q2w, float t, float *dstx, float *dsty, float *dstz, float *dstw) {
+    if (true) {
+        auto scale0 = 0.f;
+        auto scale1 = 0.f;
+        auto bx = q2x;
+        auto by = q2y;
+        auto bz = q2z;
+        auto bw = q2w;
+        const auto ax = q1x;
+        const auto ay = q1y;
+        const auto az = q1z;
+        const auto aw = q1w;
+
+        // calc cosine
+        auto cosom = ax * bx + ay * by + az * bz + aw * bw;
+        // adjust signs (if necessary)
+        if (cosom < 0.0) {
+            cosom = -cosom;
+            bx = -bx;
+            by = -by;
+            bz = -bz;
+            bw = -bw;
+        }
+        // calculate coefficients
+        if ((1.0 - cosom) > 0.000001) {
+            // standard case (slerp)
+            const auto omega = std::acos(cosom);
+            const auto sinom = std::sin(omega);
+            scale0 = std::sin((1.0 - t) * omega) / sinom;
+            scale1 = std::sin(t * omega) / sinom;
+        }
+        else {
+            // "from" and "to" quaternions are very close
+            //  ... so we can do a linear interpolation
+            scale0 = 1.0 - t;
+            scale1 = t;
+        }
+        // calculate final values
+        *dstx = scale0 * ax + scale1 * bx;
+        *dsty = scale0 * ay + scale1 * by;
+        *dstz = scale0 * az + scale1 * bz;
+        *dstw = scale0 * aw + scale1 * bw;
+        return;
+    }
+
     // Fast slerp implementation by kwhatmough:
     // It contains no division operations, no trig, no inverse trig
     // and no sqrt. Not only does this code tolerate small constraint

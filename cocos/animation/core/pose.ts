@@ -1,5 +1,6 @@
 import { lerp } from '../../core';
 import { assertIsTrue } from '../../core/data/utils/asserts';
+import { animationEmscripten } from '../marionette/animation-graph.wasm';
 import { Transform, __applyDeltaTransform, __calculateDeltaTransform } from './transform';
 import { TransformArray } from './transform-array';
 
@@ -22,6 +23,9 @@ export class Pose {
 }
 
 export function blendPoseInto (target: Pose, source: Readonly<Pose>, alpha: number) {
+    if (animationEmscripten) {
+        return animationEmscripten.blendPoseInto(target, source, alpha);
+    }
     blendTransformsInto(target.transforms, source.transforms, alpha);
 }
 
@@ -59,6 +63,10 @@ export function blendMetaValuesInto (target: Float64Array, source: Readonly<Floa
 }
 
 export function calculateDeltaPose (target: Pose, base: Pose) {
+    if (animationEmscripten) {
+        return animationEmscripten.calculateDeltaPose(target, base);
+    }
+
     calculateDeltaTransforms(target.transforms, base.transforms);
     calculateDeltaMetaValues(target.metaValues, base.metaValues);
 }
@@ -91,6 +99,10 @@ export function calculateDeltaMetaValues (target: Float64Array, base: Float64Arr
 }
 
 export function applyDeltaPose (target: Pose, base: Pose, alpha: number) {
+    if (animationEmscripten) {
+        return animationEmscripten.applyDeltaPose(target, base, alpha);
+    }
+
     applyDeltaTransforms(target.transforms, base.transforms, alpha);
     applyDeltaMetaValues(target.metaValues, base.metaValues, alpha);
 }

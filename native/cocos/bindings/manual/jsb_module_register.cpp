@@ -24,6 +24,7 @@
 ****************************************************************************/
 
 #include "cocos/bindings/manual/jsb_module_register.h"
+#include "cocos/animation/native-binding.h";
 #include "cocos/base/DeferredReleasePool.h"
 #include "cocos/bindings/auto/jsb_2d_auto.h"
 #include "cocos/bindings/auto/jsb_assets_auto.h"
@@ -141,6 +142,8 @@ bool jsb_register_all_modules() {
     se->addRegisterCallback(register_all_scene_manual);
     se->addRegisterCallback(register_all_render);
     se->addRegisterCallback(register_all_native2d);
+
+    se->addRegisterCallback(jsb_register_animations);
 
 #if (CC_PLATFORM == CC_PLATFORM_IOS || CC_PLATFORM == CC_PLATFORM_MACOS)
     se->addRegisterCallback(register_javascript_objc_bridge);

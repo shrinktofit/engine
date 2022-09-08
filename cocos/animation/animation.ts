@@ -35,6 +35,8 @@ import './core/pose';
 import './core/pose-allocator';
 import './marionette/animation-graph-context';
 
+import './marionette/animation-graph.wasm';
+
 export * from './target-path';
 export * from './value-proxy';
 export { UniformProxyFactory } from './value-proxy-factories/uniform';

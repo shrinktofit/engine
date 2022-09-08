@@ -23,6 +23,8 @@ import { InteractiveState } from './state';
 import { AnimationGraphBindingContext, AnimationGraphEvaluationContext, AnimationGraphLayerWideBindingContext, AnimationGraphPoseLayoutMaintainer, MetaValueRegistry } from './animation-graph-context';
 import { TransformArray } from '../core/transform-array';
 import { blendPoseInto, Pose } from '../core/pose';
+import { animationEmscripten } from './animation-graph.wasm';
+import { Quat, Vec3 } from '../../core';
 
 export class AnimationGraphEval {
     private declare _layerEvaluations: LayerEval[];
@@ -57,10 +59,44 @@ export class AnimationGraphEval {
             this.setValue(name, false);
         };
 
-        const poseLayoutMaintainer = new AnimationGraphPoseLayoutMaintainer(this._metaValueRegistry);
+        const poseLayoutMaintainer = animationEmscripten
+            ? (new animationEmscripten.AnimationGraphPoseLayoutMaintainer()) as unknown as AnimationGraphPoseLayoutMaintainer
+            : new AnimationGraphPoseLayoutMaintainer(this._metaValueRegistry);
         this._poseLayoutMaintainer = poseLayoutMaintainer;
 
-        const bindingContext = new AnimationGraphBindingContext(root, poseLayoutMaintainer, this._varInstances);
+        const bindingContext = animationEmscripten
+            ? ((() => {
+                const t = new Vec3();
+                const r = new Quat();
+                const s = new Vec3();
+                class NodeWrapper {
+                    constructor (private _node: Node) { }
+                    public getChildByPath (path: string) {
+                        const result = this._node.getChildByPath(path);
+                        return result ? new NodeWrapper(result) : null;
+                    }
+                    public get parent () {
+                        const result = this._node.parent;
+                        return result ? new NodeWrapper(result) : null;
+                    }
+                    public setRTS (data: Float32Array) {
+                        Vec3.fromArray(t, data, 0);
+                        Quat.fromArray(r, data, 3);
+                        Vec3.fromArray(s, data, 7);
+                        this._node.setRTS(r, t, s);
+                    }
+                    public equalTo (other: NodeWrapper) {
+                        return this._node === other._node;
+                    }
+                }
+                const bindingContext = new animationEmscripten.AnimationGraphBindingContext(
+                    new NodeWrapper(root),
+                    poseLayoutMaintainer as animationEmscripten.AnimationGraphBindingContext,
+                );
+                Object.defineProperty(bindingContext, 'getVar', { value: (id: string) => this._varInstances[id] });
+                return bindingContext;
+            })()) as unknown as AnimationGraphBindingContext
+            : new AnimationGraphBindingContext(root, poseLayoutMaintainer, this._varInstances);
         this._bindingContext = bindingContext;
 
         const layerWideBindingContext: AnimationGraphLayerWideBindingContext = {
@@ -88,15 +124,33 @@ export class AnimationGraphEval {
             }
         }
 
-        const defaultTransforms = new TransformArray(poseLayoutMaintainer.transformCount);
-        poseLayoutMaintainer.captureCurrent(defaultTransforms);
+        if (animationEmscripten) {
+            const layout = (this._poseLayoutMaintainer as animationEmscripten.AnimationGraphPoseLayoutMaintainer).generateLayout();
 
-        const evaluationContext = new AnimationGraphEvaluationContext({
-            transformCount: poseLayoutMaintainer.transformCount,
-            metaValueCount: poseLayoutMaintainer.metaValueCount,
-            defaultTransforms,
-        });
-        this._evaluationContext = evaluationContext;
+            const evaluationContext = new animationEmscripten.AnimationGraphEvaluationContext(layout);
+
+            this._evaluationContext = evaluationContext as any;
+
+            this._nodeTable = ((this._poseLayoutMaintainer as animationEmscripten.AnimationGraphPoseLayoutMaintainer).generateNodeTable() as { _node: Node }[]).map(({ _node }) => _node);
+
+            const persistentPose = evaluationContext.createDefaultedPose();
+
+            const persistentPoseView = new PoseView(persistentPose as any);
+
+            this._persistentPose = persistentPose;
+
+            this._persistentPoseView = persistentPoseView;
+        } else {
+            const defaultTransforms = new TransformArray(poseLayoutMaintainer.transformCount);
+            poseLayoutMaintainer.captureCurrent(defaultTransforms);
+
+            const evaluationContext = new AnimationGraphEvaluationContext({
+                transformCount: poseLayoutMaintainer.transformCount,
+                metaValueCount: poseLayoutMaintainer.metaValueCount,
+                defaultTransforms,
+            });
+            this._evaluationContext = evaluationContext;
+        }
     }
 
     public update (deltaTime: number) {
@@ -127,8 +181,19 @@ export class AnimationGraphEval {
             }
         }
 
-        poseLayoutMaintainer.apply(finalPose);
+        if (animationEmscripten) {
+            animationEmscripten.swapPose(finalPose as any, this._persistentPose as any);
+            this._persistentPoseView.apply(this._nodeTable);
+        } else {
+            poseLayoutMaintainer.apply(finalPose);
+        }
+
+        evaluationContext.deletePose(finalPose);
     }
+
+    private __t: Vec3 = new Vec3();
+    private __r: Quat = new Quat();
+    private __s: Vec3 = new Vec3();
 
     public getVariables (): Iterable<Readonly<[string, Readonly<{ type: VariableType }>]>> {
         return Object.entries(this._varInstances);
@@ -191,6 +256,35 @@ export class AnimationGraphEval {
     private _poseLayoutMaintainer: AnimationGraphPoseLayoutMaintainer;
     private _bindingContext: AnimationGraphBindingContext;
     private _evaluationContext: AnimationGraphEvaluationContext;
+
+    private _persistentPose: Pose;
+    private _persistentPoseView: PoseView;
+    private declare _nodeTable: Node[];
+}
+
+class PoseView {
+    constructor (pose: Pose) {
+        this._transformData = pose.transforms();
+    }
+
+    public apply (nodes: Node[]) {
+        const { _transformData: transformData } = this;
+        const nTransforms = transformData.length / 10;
+        const { _cachePosition: t, _cacheRotation: r, _cacheScale: s } = this;
+        for (let i = 0; i < nTransforms; ++i) {
+            const baseOffset = 10 * i;
+            Vec3.fromArray(t, transformData,  baseOffset + 0);
+            Quat.fromArray(r, transformData, baseOffset + 3);
+            Vec3.fromArray(s, transformData, baseOffset + 7);
+            nodes[i].setRTS(r, t, s);
+        }
+    }
+
+    private _transformData: Float32Array;
+
+    private _cachePosition = new Vec3();
+    private _cacheRotation = new Quat();
+    private _cacheScale = new Vec3();
 }
 
 /**

@@ -1,6 +1,7 @@
 import { TransformHandle } from './core/animation-handle';
 import { Pose } from './core/pose';
 import { ExoticTrsAnimationEvaluatorX } from './exotic-animation/exotic-animation';
+import { animationEmscripten } from './marionette/animation-graph.wasm';
 
 export interface AnimationClipGraphBindingContext {
     bindTransform(path: string): TransformHandle | null;
@@ -32,7 +33,11 @@ export class AnimationClipEvaluationForGraph {
         } = this;
 
         if (exoticAnimationEvaluator) {
-            exoticAnimationEvaluator.evaluate(time, output.pose);
+            if (animationEmscripten) {
+                exoticAnimationEvaluator.evaluateWithPose(time, output as unknown as Pose);
+            } else {
+                exoticAnimationEvaluator.evaluate(time, output.pose);
+            }
         }
     }
 

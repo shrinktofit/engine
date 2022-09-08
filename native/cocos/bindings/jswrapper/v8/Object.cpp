@@ -381,7 +381,7 @@ bool Object::init(Class *cls, v8::Local<v8::Object> obj) {
     return true;
 }
 
-bool Object::getProperty(const char *name, Value *data, bool cachePropertyName) {
+bool Object::getProperty(const char *name, Value *data, bool cachePropertyName) const {
     CC_ASSERT(data != nullptr);
     data->setUndefined();
 
