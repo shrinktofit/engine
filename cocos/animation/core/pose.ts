@@ -90,9 +90,9 @@ export function calculateDeltaMetaValues (target: Float64Array, base: Float64Arr
     }
 }
 
-export function applyDeltaPose (target: Pose, base: Pose) {
-    calculateDeltaTransforms(target.transforms, base.transforms);
-    calculateDeltaMetaValues(target.metaValues, base.metaValues);
+export function applyDeltaPose (target: Pose, base: Pose, alpha: number) {
+    applyDeltaTransforms(target.transforms, base.transforms, alpha);
+    applyDeltaMetaValues(target.metaValues, base.metaValues, alpha);
 }
 
 const applyDeltaTransformArrayAt = (() => {
@@ -110,7 +110,7 @@ export function applyDeltaTransforms (target: TransformArray, delta: TransformAr
     const nTransforms = target.length;
     assertIsTrue(nTransforms === delta.length);
     for (let iTransform = 0; iTransform < nTransforms; ++iTransform) {
-        applyDeltaTransformArrayAt(target, delta, alpha, iTransform);
+        applyDeltaTransformArrayAt(target, target, alpha, iTransform);
     }
 }
 
