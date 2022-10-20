@@ -1,6 +1,5 @@
 
 import { AnimationClip } from "../../../cocos/animation/animation-clip";
-import { AnimationBlend } from "../../../cocos/animation/marionette/animation-blend";
 import { AnimationBlend1D } from "../../../cocos/animation/marionette/animation-blend-1d";
 import { AnimationBlend2D } from "../../../cocos/animation/marionette/animation-blend-2d";
 import { AnimationBlendDirect } from "../../../cocos/animation/marionette/animation-blend-direct";

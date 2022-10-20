@@ -1,8 +1,7 @@
 
-import { Component, lerp, Node, Vec2, Vec3, warnID } from '../../cocos/core';
+import { lerp, Vec3, warnID } from '../../cocos/core';
 import { AnimationBlend1D, AnimationBlend2D, Condition, InvalidTransitionError, VariableNotDefinedError, ClipMotion, AnimationBlendDirect, VariableType, AnimationGraphVariant } from '../../cocos/animation/marionette/asset-creation';
 import { AnimationGraph, StateMachine, Transition, isAnimationTransition, AnimationTransition, TransitionInterruptionSource } from '../../cocos/animation/marionette/animation-graph';
-import { createEval } from '../../cocos/animation/marionette/create-eval';
 import { VariableTypeMismatchedError } from '../../cocos/animation/marionette/errors';
 import { AnimationGraphEval, MotionStateStatus, ClipStatus } from '../../cocos/animation/marionette/graph-eval';
 import { createGraphFromDescription } from '../../cocos/animation/marionette/__tmp__/graph-from-description';
@@ -26,6 +25,7 @@ import { assertIsTrue } from '../../cocos/core/data/utils/asserts';
 import { AnimationClip } from '../../cocos/animation/animation-clip';
 import { TriggerResetMode } from '../../cocos/animation/marionette/variable';
 import { MotionState } from '../../cocos/animation/marionette/motion-state';
+import { Node, Component } from '../../cocos/scene-graph';
 
 describe('NewGen Anim', () => {
     test('Defaults', () => {
