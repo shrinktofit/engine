@@ -1,9 +1,9 @@
+import { serializable } from 'cc.decorator';
 import { ccclass } from '../../core/data/class-decorator';
 import { MotionEvalContext, Motion, MotionEval, OverrideClipContext } from './motion';
 import { Value } from './variable';
 import { createEval } from './create-eval';
 import { VariableTypeMismatchedError } from './errors';
-import { serializable } from 'cc.decorator';
 import { ReadonlyClipOverrideMap, ClipStatus } from './graph-eval';
 import { EditorExtendable } from '../../core/data/editor-extendable';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
@@ -22,11 +22,11 @@ export class AnimationBlendItem {
 
     public clone () {
         const that = new AnimationBlendItem();
-        this._assign(that);
+        this._copyTo(that);
         return that;
     }
 
-    protected _assign (that: AnimationBlendItem) {
+    protected _copyTo (that: AnimationBlendItem) {
         that.motion = this.motion?.clone() ?? null;
         return that;
     }
@@ -37,7 +37,7 @@ export class AnimationBlend extends EditorExtendable implements Motion {
     @serializable
     name = '';
 
-    public assign (that: AnimationBlend) {
+    public copyTo (that: AnimationBlend) {
         that.name = this.name;
         that[editorExtrasTag] = cloneAnimationGraphEditorExtrasFrom(this);
     }
