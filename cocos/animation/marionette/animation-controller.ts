@@ -5,7 +5,7 @@ import { property, ccclass, menu } from '../../core/data/class-decorator';
 import { AnimationGraphEval } from './graph-eval';
 import type { MotionStateStatus, TransitionStatus, ClipStatus } from './graph-eval';
 import { Value } from './variable';
-import { assertIsNonNullable } from '../../core/data/utils/asserts';
+import { assertIsNonNullable, assertIsTrue } from '../../core/data/utils/asserts';
 
 export type {
     MotionStateStatus,
@@ -179,5 +179,122 @@ export class AnimationController extends Component {
         const { _graphEval: graphEval } = this;
         assertIsNonNullable(graphEval);
         return graphEval.setLayerWeight(layer, weight);
+    }
+
+    /**
+     * @zh 过渡到目标状态。
+     * 相当于 `this.transitionTo(layer, stateFullName, duration, false, 0.0, false)`。
+     * @en Transitions to destination state.
+     * Equivalent to `this.transitionTo(layer, stateFullName, duration, false, 0.0, false)`.
+     * @param layer @en Index of the layer. @zh 层级索引。
+     * @param stateFullName 状态全名。
+     * @param duration 切换周期。
+     */
+    public transitionTo (
+        layer: number,
+        stateFullName: string,
+        duration: number,
+    ): void;
+
+    /**
+     * @zh 过渡到目标状态。
+     * 相当于 `this.transitionTo(layer, stateFullName, duration, false, destinationStart, false)`。
+     * @en Transitions to destination state.
+     * Equivalent to `this.transitionTo(layer, stateFullName, duration, false, destinationStart, false)`.
+     * @param layer @en Index of the layer. @zh 层级索引。
+     * @param stateFullName 状态全名。
+     * @param duration 切换周期。
+     * @param destinationStart 目标状态起始时间。
+     */
+    public transitionTo (
+        layer: number,
+        stateFullName: string,
+        duration: number,
+        destinationStart: number,
+    ): void;
+
+    /**
+     * @zh 过渡到目标状态。
+     * 相当于 `this.transitionTo(layer, stateFullName, duration, relativeDuration, 0.0, false)`。
+     * @en Transitions to destination state.
+     * Equivalent to `this.transitionTo(layer, stateFullName, duration, relativeDuration, 0.0, false)`.
+     * @param layer @en Index of the layer. @zh 层级索引。
+     * @param stateFullName 状态全名。
+     * @param duration 切换周期。
+     * @param relativeDuration 若为 `true`，则 `duration` 将被解释为相对周期（相对于当前状态的周期）。
+     */
+    public transitionTo (
+        layer: number,
+        stateFullName: string,
+        duration: number, relativeDuration: boolean,
+    ): void;
+
+    /**
+     * @zh 过渡到目标状态。
+     * @en Transitions to destination state.
+     * @param layer @en Index of the layer. @zh 层级索引。
+     * @param stateFullName 状态全名。
+     * @param duration 切换周期。
+     * @param relativeDuration 若为 `true`，则 `duration` 将被解释为相对的（相对于当前状态的周期）。
+     * @param destinationStart 目标状态起始时间。
+     * @param relativeDestinationStart 若为 `true`，则 `destinationStart` 将被解释为相对的（相对于目标状态的周期）。
+     */
+    public transitionTo (
+        layer: number,
+        stateFullName: string,
+        duration: number, relativeDuration: boolean,
+        destinationStart: number, relativeDestinationStart: boolean,
+    ): void;
+
+    public transitionTo (
+        layer: number,
+        stateFullName: string,
+        duration: number, arg2?: number | boolean,
+        arg3?: number, arg4?: boolean,
+    ) {
+        const { _graphEval: graphEval } = this;
+        assertIsNonNullable(graphEval);
+        if (typeof arg2 === 'undefined') {
+            // transitionTo(duration)
+            graphEval.transitionTo(
+                layer,
+                stateFullName,
+                duration,
+                false,
+                0.0,
+                false,
+            );
+        } else if (typeof arg2 === 'number') {
+            // transitionTo(duration, destinationStart)
+            graphEval.transitionTo(
+                layer,
+                stateFullName,
+                duration,
+                false,
+                arg2,
+                false,
+            );
+        } else if (typeof arg3 === 'undefined') {
+            // transitionTo(duration, relativeDuration)
+            graphEval.transitionTo(
+                layer,
+                stateFullName,
+                duration,
+                arg2,
+                0.0,
+                false,
+            );
+        } else {
+            // transitionTo(duration, relativeDuration, destinationStart, relativeDestinationStart)
+            assertIsTrue(typeof arg4 === 'boolean');
+            graphEval.transitionTo(
+                layer,
+                stateFullName,
+                duration,
+                arg2,
+                arg3,
+                arg4,
+            );
+        }
     }
 }

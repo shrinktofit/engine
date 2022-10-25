@@ -27,6 +27,8 @@ import { TriggerResetMode } from '../../cocos/animation/marionette/variable';
 import { MotionState } from '../../cocos/animation/marionette/motion-state';
 import { Node, Component } from '../../cocos/scene-graph';
 
+const DEFAULT_NUM_DIGITS_EXPECTATION = 6;
+
 describe('NewGen Anim', () => {
     test('Defaults', () => {
         const graph = new AnimationGraph();
@@ -3202,6 +3204,448 @@ describe('NewGen Anim', () => {
                     0.17 / INTERRUPTING_TRANSITION_DURATION,
                 ),
             );
+        });
+    });
+
+    describe('Dynamic transition', () => {
+        /**
+         * Dynamic transition is created during runtime through `AnimationController.prototype.transitionTo`.
+         * 
+         * - Only one dynamic transition can be intersected into animation graph between two animation graph evaluation.
+         *   The later created will override previous.
+         * 
+         * - It behaves as if there is a one-time virtual transition intersected into in animation graph,
+         *   connecting from current state to destination state.
+         * 
+         * - The dynamic transition takes the highest priority over all regular transitions
+         *   and will unconditionally interrupt them.
+         * 
+         * The dynamic transition is named urgent transition internally.
+         */
+        const _note = undefined;
+
+        describe('API', () => {
+            const graph = new AnimationGraph();
+            const mainLayer = graph.addLayer();
+            const stateMachine = mainLayer.stateMachine;
+
+            const motionState1 = stateMachine.addMotion();
+            motionState1.name = 'motionState1';
+            motionState1.motion = createClipMotionPositionXLinear(0.6, 0.4, 0.5);
+
+            const motionState2 = stateMachine.addMotion();
+            motionState2.name = 'motionState2';
+            motionState2.motion = createClipMotionPositionXLinear(0.7, 0.8, 0.9);
+
+            const subStateMachine = stateMachine.addSubStateMachine();
+            subStateMachine.name = 'sm';
+            const motionState2SM = subStateMachine.stateMachine.addMotion();
+            motionState2SM.name = 'motionState2';
+            motionState2SM.motion = createClipMotionPositionXLinear(1.4, 1.2, 1.3);
+
+            stateMachine.connect(stateMachine.entryState, motionState1);
+
+            const check = (
+                callback: (animationController: AnimationController) => void,
+                expectedTransitionDuration: number,
+                expectedRelativeTransitionDuration: boolean,
+                expectedDestinationStart: number,
+                expectedRelativeDestinationStart: boolean,
+            ) => {
+                const expectedDurationAbs = expectedRelativeTransitionDuration
+                    ? expectedTransitionDuration * 0.6
+                    : expectedTransitionDuration;
+
+                const expectedDestinationStartAbs = expectedRelativeDestinationStart
+                    ? expectedDestinationStart * 0.7
+                    : expectedDestinationStart;
+
+                const node = new Node();
+                const { graphEval, newGenAnim: animationController } = createAnimationGraphEval2(graph, node);
+                const graphUpdater = new GraphUpdater(graphEval);
+
+                // Motion1
+                graphUpdater.step(0.15);
+
+                // The callback should dynamic transition to motion2.
+                callback(animationController);
+                graphUpdater.step(0.12);
+                expect(expectedDurationAbs).toBeGreaterThan(0.12); // So we won't run out of transition
+
+                expectAnimationGraphEvalStatusLayer0(graphEval, {
+                    currentNode: { __DEBUG_ID__: motionState1.name },
+                    transition: {
+                        nextNode: { __DEBUG_ID__: motionState2.name },
+                        time: 0.12,
+                        duration: expectedDurationAbs,
+                    },
+                });
+
+                expect(node.position.x).toBeCloseTo(lerp(
+                    lerp(0.4, 0.5, (0.15 + 0.12) / 0.6), // Motion1
+                    lerp(0.8, 0.9, (expectedDestinationStartAbs + 0.12) / 0.7), // Motion2,
+                    0.12 / expectedDurationAbs,
+                ), DEFAULT_NUM_DIGITS_EXPECTATION);
+
+                return node;
+            };
+
+            test(`transitionTo(layer, duration)`, () => {
+                check(
+                    (controller) => {
+                        controller.transitionTo(0, motionState2.name, 0.3);
+                    },
+                    0.3,
+                    false,
+                    0.0,
+                    false,
+                );
+            });
+
+            test(`transitionTo(layer, duration, destinationStart)`, () => {
+                check(
+                    (controller) => {
+                        controller.transitionTo(0, motionState2.name, 0.3, 0.2);
+                    },
+                    0.3,
+                    false,
+                    0.2,
+                    false,
+                );
+            });
+
+            test(`transitionTo(layer, duration, relativeDuration)`, () => {
+                check(
+                    (controller) => {
+                        controller.transitionTo(0, motionState2.name, 0.3, false);
+                    },
+                    0.3,
+                    false,
+                    0.0,
+                    false,
+                );
+                check(
+                    (controller) => {
+                        controller.transitionTo(0, motionState2.name, 0.3, true);
+                    },
+                    0.3,
+                    true,
+                    0.0,
+                    false,
+                );
+            });
+
+            test(`transitionTo(layer, duration, relativeDuration, destinationStart, relativeDestinationStart)`, () => {
+                for (const [duration, relativeDuration, destinationStart, relativeDestinationStart] of [
+                    [0.3, false, 0.2, false],
+                    [0.3, true, 0.2, false],
+                    [0.3, true, 0.2, true],
+                    [0.3, false, 0.2, true],
+                ] as const) {
+                    check(
+                        (controller) => {
+                            controller.transitionTo(
+                                0,
+                                motionState2.name,
+                                duration,
+                                relativeDuration,
+                                destinationStart,
+                                relativeDestinationStart,
+                            );
+                        },
+                        duration,
+                        relativeDuration,
+                        destinationStart,
+                        relativeDestinationStart,
+                    );
+                }
+            });
+
+            test(`The motion full name may name a motion within sub state machine`, () => {
+                const node = new Node();
+                const { graphEval, newGenAnim: animationController } = createAnimationGraphEval2(graph, node);
+                const graphUpdater = new GraphUpdater(graphEval);
+
+                // Motion1
+                graphUpdater.step(0.15);
+
+                // Motion1 -> sm/Motion2.
+                animationController.transitionTo(
+                    0, 'sm/motionState2', 0.22, false, 0.2, false);
+                graphUpdater.step(0.12);
+                expectAnimationGraphEvalStatusLayer0(graphEval, {
+                    currentNode: { __DEBUG_ID__: motionState1.name },
+                    transition: {
+                        time: 0.12,
+                        duration: 0.22,
+                    },
+                });
+                expect(node.position.x).toBeCloseTo(lerp(
+                    lerp(0.4, 0.5, (0.15 + 0.12) / 0.6),
+                    lerp(1.2, 1.3, (0.2 + 0.12) / 1.4),
+                    0.12 / 0.22,
+                ), DEFAULT_NUM_DIGITS_EXPECTATION);
+            });
+
+            test(`It takes no effect if the motion name does not name a motion`, () => {
+                const node = new Node();
+                const { graphEval, newGenAnim: animationController } = createAnimationGraphEval2(graph, node);
+                const graphUpdater = new GraphUpdater(graphEval);
+
+                // Motion1
+                graphUpdater.step(0.15);
+
+                // Still motion1.
+                animationController.transitionTo(
+                    0, '__A/B/S/E/N/T__', 0.1, true, 0.2, false);
+                graphUpdater.step(0.12);
+                expectAnimationGraphEvalStatusLayer0(graphEval, {
+                    currentNode: { __DEBUG_ID__: motionState1.name },
+                });
+                expect(node.position.x).toBeCloseTo(lerp(0.4, 0.5, (0.15 + 0.12) / 0.6), DEFAULT_NUM_DIGITS_EXPECTATION);
+            });
+        });
+
+        test('Dynamic transition before any graph evaluation happened', () => {
+            // If dynamic transition was created before any graph evaluation happened.
+            // It causes the layer runs into destination state,
+            // ignoring the duration params but take up the destinationStart params.
+
+            const graph = new AnimationGraph();
+            const mainLayer = graph.addLayer();
+            const stateMachine = mainLayer.stateMachine;
+
+            const motionState1 = stateMachine.addMotion();
+            motionState1.name = 'motionState1';
+            motionState1.motion = createClipMotionPositionXLinear(0.3, 0.4, 0.5);
+
+            const motionState2 = stateMachine.addMotion();
+            motionState2.name = 'motionState2';
+            motionState2.motion = createClipMotionPositionXLinear(0.7, 0.8, 0.9);
+
+            stateMachine.connect(stateMachine.entryState, motionState1);
+
+            const node = new Node();
+            const { graphEval, newGenAnim: animationController } = createAnimationGraphEval2(graph, node);
+            const graphUpdater = new GraphUpdater(graphEval);
+
+            animationController.transitionTo(
+                0,
+                motionState2.name,
+                0.1,
+                false,
+                0.2,
+                false,
+            );
+
+            graphUpdater.step(0.15);
+            expectAnimationGraphEvalStatusLayer0(graphEval, {
+                currentNode: { '__DEBUG_ID__': motionState2.name },
+            });
+            expect(node.position.x).toBeCloseTo(lerp(
+                0.8, 0.9, (0.15 + 0.2) / 0.7,
+            ), DEFAULT_NUM_DIGITS_EXPECTATION);
+        });
+
+        test('Dynamic transition when there is currently no transition', () => {
+            const graph = new AnimationGraph();
+            const mainLayer = graph.addLayer();
+            const stateMachine = mainLayer.stateMachine;
+
+            const motionState1 = stateMachine.addMotion();
+            motionState1.name = 'motionState1';
+            motionState1.motion = createClipMotionPositionXLinear(0.6, 0.4, 0.5);
+
+            const motionState2 = stateMachine.addMotion();
+            motionState2.name = 'motionState2';
+            motionState2.motion = createClipMotionPositionXLinear(0.7, 0.8, 0.9);
+
+            stateMachine.connect(stateMachine.entryState, motionState1);
+
+            const node = new Node();
+            const { graphEval, newGenAnim: animationController } = createAnimationGraphEval2(graph, node);
+            const graphUpdater = new GraphUpdater(graphEval);
+
+            graphUpdater.step(0.15);
+
+            animationController.transitionTo(
+                0,
+                motionState2.name,
+                0.33,
+                false,
+                0.2,
+                false,
+            );
+
+            graphUpdater.step(0.16);
+            expectAnimationGraphEvalStatusLayer0(graphEval, {
+                currentNode: { '__DEBUG_ID__': motionState1.name },
+                transition: {
+                    nextNode: { '__DEBUG_ID__': motionState2.name },
+                },
+            });
+            expect(node.position.x).toBeCloseTo(lerp(
+                lerp(0.4, 0.5, (0.15 + 0.16) / 0.6), // motion 1
+                lerp(0.8, 0.9, (0.2 + 0.16) / 0.7), // motion2,
+                0.16 / 0.33, 
+            ), DEFAULT_NUM_DIGITS_EXPECTATION);
+        });
+
+        test('Dynamic transition when there is already a transition', () => {
+            const graph = new AnimationGraph();
+            const mainLayer = graph.addLayer();
+            const stateMachine = mainLayer.stateMachine;
+
+            const motionState1 = stateMachine.addMotion();
+            motionState1.name = 'motionState1';
+            motionState1.motion = createClipMotionPositionXLinear(0.6, 0.4, 0.5);
+
+            const motionState2 = stateMachine.addMotion();
+            motionState2.name = 'motionState2';
+            motionState2.motion = createClipMotionPositionXLinear(0.7, 0.8, 0.9);
+
+            const motionState3 = stateMachine.addMotion();
+            motionState3.name = 'motionState3';
+            motionState3.motion = createClipMotionPositionXLinear(1.1, 1.2, 1.3);
+
+            stateMachine.connect(stateMachine.entryState, motionState1);
+            const t12 = stateMachine.connect(motionState1, motionState2);
+            t12.exitConditionEnabled = false;
+            t12.duration = 0.22;
+            {
+                const [condition] = t12.conditions = [new UnaryCondition()];
+                condition.operator = UnaryCondition.Operator.TRUTHY;
+                condition.operand.variable = 't12';
+                graph.addBoolean('t12', false);
+            }
+
+            const node = new Node();
+            const { graphEval, newGenAnim: animationController } = createAnimationGraphEval2(graph, node);
+            const graphUpdater = new GraphUpdater(graphEval);
+
+            graphUpdater.step(0.15);
+
+            animationController.setValue('t12', true);
+
+            graphUpdater.step(0.17);
+
+            animationController.transitionTo(
+                0,
+                motionState3.name,
+                0.33,
+                false,
+                0.2,
+                false,
+            );
+
+            graphUpdater.step(0.18);
+
+            expectAnimationGraphEvalStatusLayer0(graphEval, {
+                currentNode: { '__DEBUG_ID__': motionState1.name },
+                transition: {
+                    nextNode: { '__DEBUG_ID__': motionState3.name },
+                },
+            });
+            expect(node.position.x).toBeCloseTo(lerp(
+                lerp( // Snapshot
+                    lerp(0.4, 0.5, (0.15 + 0.17) / 0.6), // motion 1
+                    lerp(0.8, 0.9, (0.17) / 0.7), // motion2,
+                    0.17 / 0.22,
+                ),
+                lerp(1.2, 1.3, (0.2 + 0.18) / 1.1), // motion 3
+                0.18 / 0.33,
+            ), DEFAULT_NUM_DIGITS_EXPECTATION);
+        });
+
+        test('Dynamic transition when there is a interruption happening', () => {
+            const graph = new AnimationGraph();
+            const mainLayer = graph.addLayer();
+            const stateMachine = mainLayer.stateMachine;
+
+            const motionState1 = stateMachine.addMotion();
+            motionState1.name = 'motionState1';
+            motionState1.motion = createClipMotionPositionXLinear(0.6, 0.4, 0.5);
+
+            const motionState2 = stateMachine.addMotion();
+            motionState2.name = 'motionState2';
+            motionState2.motion = createClipMotionPositionXLinear(0.7, 0.8, 0.9);
+
+            const motionState3 = stateMachine.addMotion();
+            motionState3.name = 'motionState3';
+            motionState3.motion = createClipMotionPositionXLinear(1.1, 1.2, 1.3);
+
+            const motionState4 = stateMachine.addMotion();
+            motionState4.name = 'motionStat4';
+            motionState4.motion = createClipMotionPositionXLinear(1.4, 1.5, 1.6);
+
+            stateMachine.connect(stateMachine.entryState, motionState1);
+
+            const t12 = stateMachine.connect(motionState1, motionState2);
+            t12.exitConditionEnabled = false;
+            t12.duration = 0.22;
+            {
+                const [condition] = t12.conditions = [new UnaryCondition()];
+                condition.operator = UnaryCondition.Operator.TRUTHY;
+                condition.operand.variable = 't12';
+                graph.addBoolean('t12', false);
+            }
+
+            const t23 = stateMachine.connect(motionState2, motionState3);
+            t23.exitConditionEnabled = false;
+            t23.duration = 0.33;
+            t23.destinationStart = 0.2;
+            {
+                const [condition] = t23.conditions = [new UnaryCondition()];
+                condition.operator = UnaryCondition.Operator.TRUTHY;
+                condition.operand.variable = 't23';
+                graph.addBoolean('t23', false);
+            }
+
+            t12.interruptionSource = TransitionInterruptionSource.NEXT_STATE;
+
+            const node = new Node();
+            const { graphEval, newGenAnim: animationController } = createAnimationGraphEval2(graph, node);
+            const graphUpdater = new GraphUpdater(graphEval);
+
+            // motion1
+            graphUpdater.step(0.15);
+
+            // motion1 -> motion2
+            animationController.setValue('t12', true);
+            graphUpdater.step(0.17);
+
+            // (motion1 -> motion2) -> motion3
+            animationController.setValue('t23', true);
+            graphUpdater.step(0.18);
+
+            // ((motion1 -> motion2) -> motion3) *-> motion4
+            animationController.transitionTo(
+                0,
+                motionState4.name,
+                0.265,
+                0.332,
+            );
+            graphUpdater.step(0.21);
+
+            expectAnimationGraphEvalStatusLayer0(graphEval, {
+                currentNode: { '__DEBUG_ID__': motionState1.name },
+                transition: {
+                    nextNode: { '__DEBUG_ID__': motionState4.name },
+                },
+            });
+            expect(node.position.x).toBeCloseTo(lerp(
+                lerp(
+                    lerp( // Snapshot
+                    lerp(0.4, 0.5, (0.15 + 0.17) / 0.6), // motion 1
+                    lerp(0.8, 0.9, (0.17) / 0.7), // motion2,
+                    0.17 / 0.22,
+                    ),
+                    lerp(1.2, 1.3, (0.2 + 0.18) / 1.1), // motion 3
+                    0.18 / 0.33,
+                ),
+                lerp(1.5, 1.6, (0.332 + 0.21) / 1.4),
+                0.21 / 0.265,
+            ), DEFAULT_NUM_DIGITS_EXPECTATION);
         });
     });
 });
