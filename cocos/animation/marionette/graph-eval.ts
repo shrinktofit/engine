@@ -11,7 +11,7 @@ import { BindContext, validateVariableExistence, validateVariableType, VariableT
 import { ConditionEval, TriggerCondition } from './condition';
 import { MotionState } from './motion-state';
 import { AnimationMask } from './animation-mask';
-import { warnID, assertIsTrue, assertIsNonNullable } from '../../core';
+import { warnID, assertIsTrue, assertIsNonNullable, approx } from '../../core';
 import { MAX_ANIMATION_LAYER } from '../../3d/skeletal-animation/limits';
 import { AnimationClip } from '../animation-clip';
 import type { AnimationController } from './animation-controller';
@@ -90,12 +90,25 @@ export class AnimationGraphEval {
             _poseLayoutMaintainer: poseLayoutMaintainer,
         } = this;
 
-        const finalPose = evaluationContext.createDefaultedPose();
+        let finalPose: Pose | null = null; // Deferred-initialized.
         const nLayers = layerEvaluations.length;
         for (let iLayer = 0; iLayer < nLayers; ++iLayer) {
             const layerEval = layerEvaluations[iLayer];
             const layerPose = layerEval.update(deltaTime, evaluationContext) ?? evaluationContext.createDefaultedPose();
             const layerActualWeight = layerEval.weight * layerEval.passthroughWeight;
+            if (iLayer === 0) {
+                if (!layerEval.additive && approx(layerActualWeight, 1.0, 1e-5) && !layerEval.transformFilter) {
+                    // Optimization:
+                    // If the first layer occupies full weight and it's not additive. We don't have to create the initial default pose.
+                    // This is worth doing since this is the commonest pattern in real world.
+                    finalPose = layerPose;
+                    continue;
+                } else {
+                    finalPose = evaluationContext.createDefaultedPose();
+                }
+            } else {
+                assertIsTrue(finalPose); // We've ensure the existence of `finalPose` in layer 0.
+            }
             if (layerEval.additive) {
                 applyDeltaPose(finalPose, layerPose, layerActualWeight, layerEval.transformFilter);
             } else {
@@ -115,6 +128,10 @@ export class AnimationGraphEval {
             }
         }
 
+        if (!finalPose) { // Can happen if there is no layer.
+            assertIsTrue(nLayers === 0);
+            finalPose = evaluationContext.createDefaultedPose();
+        }
         poseLayoutMaintainer.apply(finalPose);
         evaluationContext.deletePose(finalPose);
 
