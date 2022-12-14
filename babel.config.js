@@ -1,7 +1,15 @@
 
 module.exports = (api) => {
-    api.cache(true);
+    api.cache(false);
     return {
+        parserOpts: {
+            "plugins": ["jsx"],
+        },
+        plugins: [
+            [require('@babel/plugin-transform-react-jsx'), {
+
+            }],
+        ],
         presets: [
             [require('@babel/preset-env'), {
                 targets: { node: 'current', },
