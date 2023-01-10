@@ -25,17 +25,17 @@ export class SampleMotionExpr extends PoseExpr {
     @editable
     public useNormalizedTime = false;
 
-    public bind (context: PoseExprBindingContext): SampleMotionExprWorkspace | null {
+    public bind (context: PoseExprBindingContext) {
         const { motion } = this;
         if (!motion) {
-            return null;
+            return;
         }
         const motionEval = motion[createEval](context, context.clipOverrides ?? null);
         if (!motionEval) {
-            return null;
+            return;
         }
-        const exprEval = new SampleMotionExprWorkspace(motionEval, motionEval.createPort());
-        return exprEval;
+        const workspace = new SampleMotionExprWorkspace(motionEval, motionEval.createPort());
+        this._workspace = workspace;
     }
 
     public evaluate (context: AnimationGraphEvaluationContext): Pose {

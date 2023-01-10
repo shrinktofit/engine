@@ -166,7 +166,7 @@ describe(`Pose expr instantiation`, () => {
 });
 
 describe(`XNode`, () => {
-    test.only(`Get number variable`, () => {
+    test(`Get number variable`, () => {
         class OutputNumberPoseExpr extends PoseExpr {
             public value = new XNodeGetVariableNumber();
 

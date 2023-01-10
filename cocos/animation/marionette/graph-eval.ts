@@ -95,14 +95,6 @@ export class AnimationGraphEval {
 
         poseLayoutMaintainer.startBind();
 
-        const poseExprBindContext = new PoseExprBindingContext(
-            bindingContext,
-            controller,
-            clipOverrides ?? undefined,
-            false,
-            triggerResetFn,
-        );
-
         this._layerEvaluations = graph.layers.map((layer) => {
             const stateMachineEval = new LayerEval(
                 layer,
@@ -473,7 +465,7 @@ class LayerEval {
             context,
             controller,
             undefined,
-            false,
+            isAdditiveLayer,
             triggerResetFn,
         );
         const { entry, exit } = this._addStateMachine(
