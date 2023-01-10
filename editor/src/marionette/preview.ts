@@ -421,7 +421,7 @@ class MotionEvalRecord {
     public rebind(bindContext: AnimationGraphBindingContext) {
         const motionEval = this._motion[createEval]({
             additive: false,
-            up: bindContext,
+            outerContext: bindContext,
         }, null);
 
         if (!motionEval) {
