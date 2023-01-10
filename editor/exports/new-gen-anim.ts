@@ -39,3 +39,11 @@ export {
     visitAnimationClipsInController,
     visitAnimationGraphEditorExtras,
 } from '../src/marionette/visit';
+
+export {
+    getPoseInputFieldKeys,
+    hasPoseInputField,
+    getPoseInputField,
+    getPoseInputFieldMeta,
+    setPoseInputField,
+} from '../../cocos/animation/marionette/pose-expressions/decorator';

@@ -265,4 +265,20 @@ export class AnimationController extends Component {
         assertIsNonNullable(graphEval);
         graphEval.overrideClips(overrides);
     }
+
+    /**
+     * @zh 获取指定伴随曲线的当前值。
+     * @en Gets the current value of specified adjoint curve.
+     * @param curveName @en Name of the adjoint curve. @zh 伴随曲线的名字。
+     * @returns @zh 指定伴随曲线的当前值，如果指定伴随曲线不存在或动画图为空则返回 0。
+     * @en The current value of specified adjoint curve,
+     * or 0 if specified adjoint curve does not exist or if the animation graph is null.
+     */
+    public getAdjointCurveValue (curveName: string) {
+        const { _graphEval: graphEval } = this;
+        if (!graphEval) {
+            return 0.0;
+        }
+        return graphEval.getAdjointCurveValue(curveName);
+    }
 }

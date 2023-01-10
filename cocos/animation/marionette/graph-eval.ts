@@ -25,7 +25,7 @@
 import { DEBUG } from 'internal:constants';
 import {
     AnimationGraph, Layer, StateMachine, State, isAnimationTransition,
-    SubStateMachine, EmptyState, EmptyStateTransition, TransitionInterruptionSource,
+    SubStateMachine, EmptyState, EmptyStateTransition, TransitionInterruptionSource, PoseExprState,
 } from './animation-graph';
 import { MotionEval, MotionEvalContext, MotionPort } from './motion';
 import type { Node } from '../../scene-graph/node';
@@ -48,8 +48,15 @@ import {
 import { TransformArray } from '../core/transform-array';
 import { applyDeltaPose, blendPoseInto, Pose, TransformFilter } from '../core/pose';
 
+import { PoseExpr, PoseExprBindingContext } from './pose-expressions/pose-expr';
+import { DefaultTopLevelPose, LayerEvaluationRecord } from './pose-expressions/default-top-level-pose-expr';
+import { instantiatePoseExpr } from './pose-expressions/instantiation';
+
 export class AnimationGraphEval {
-    private declare _layerEvaluations: LayerEval[];
+    private declare _rootPoseExpr: PoseExpr;
+
+    private declare _layerEvaluations: LayerEvaluationRecord[];
+
     private _currentTransitionCache: TransitionStatus = {
         duration: 0.0,
         time: 0.0,
@@ -88,16 +95,37 @@ export class AnimationGraphEval {
 
         poseLayoutMaintainer.startBind();
 
+        const poseExprBindContext = new PoseExprBindingContext(
+            bindingContext,
+            controller,
+            clipOverrides ?? undefined,
+            false,
+            triggerResetFn,
+        );
+
         this._layerEvaluations = graph.layers.map((layer) => {
-            const layerEval = new LayerEval(
+            const stateMachineEval = new LayerEval(
                 layer,
                 bindingContext,
                 clipOverrides,
                 controller,
                 triggerResetFn,
             );
-            return layerEval;
+            const record = new LayerEvaluationRecord(
+                stateMachineEval,
+                layer.weight,
+                layer.additive,
+                layer.mask ?? undefined,
+                undefined,
+            );
+            return record;
         });
+
+        if (!graph.useDefaultTopLevelPoseExpr && graph.poseExprs.main) {
+            this._rootPoseExpr = instantiatePoseExpr(graph.poseExprs.main, bindingContext);
+        } else {
+            this._rootPoseExpr = new DefaultTopLevelPose(this._layerEvaluations);
+        }
 
         this._root = root;
         this._initializeContexts();
@@ -118,19 +146,8 @@ export class AnimationGraphEval {
             _poseLayoutMaintainer: poseLayoutMaintainer,
         } = this;
 
-        const finalPose = evaluationContext.pushDefaultedPose();
-        const nLayers = layerEvaluations.length;
-        for (let iLayer = 0; iLayer < nLayers; ++iLayer) {
-            const layerEval = layerEvaluations[iLayer];
-            const layerPose = layerEval.update(deltaTime, evaluationContext);
-            const layerActualWeight = layerEval.weight * layerEval.passthroughWeight;
-            if (layerEval.additive) {
-                applyDeltaPose(finalPose, layerPose, layerActualWeight, layerEval.transformFilter);
-            } else {
-                blendPoseInto(finalPose, layerPose, layerActualWeight, layerEval.transformFilter);
-            }
-            evaluationContext.popPose();
-        }
+        this._rootPoseExpr.update(deltaTime);
+        const finalPose = this._rootPoseExpr.evaluate(evaluationContext);
 
         if (this._hasAutoTrigger) {
             const { _varInstances: varInstances } = this;
@@ -156,11 +173,11 @@ export class AnimationGraphEval {
     }
 
     public getCurrentStateStatus (layer: number): Readonly<MotionStateStatus> | null {
-        return this._layerEvaluations[layer].getCurrentStateStatus();
+        return this._layerEvaluations[layer].stateMachineEvaluation.getCurrentStateStatus();
     }
 
     public getCurrentClipStatuses (layer: number): Iterable<Readonly<ClipStatus>> {
-        return this._layerEvaluations[layer].getCurrentClipStatuses();
+        return this._layerEvaluations[layer].stateMachineEvaluation.getCurrentClipStatuses();
     }
 
     public getCurrentTransition (layer: number): Readonly<TransitionStatus> | null {
@@ -168,16 +185,16 @@ export class AnimationGraphEval {
             _layerEvaluations: layers,
             _currentTransitionCache: currentTransition,
         } = this;
-        const isInTransition = layers[layer].getCurrentTransition(currentTransition);
+        const isInTransition = layers[layer].stateMachineEvaluation.getCurrentTransition(currentTransition);
         return isInTransition ? currentTransition : null;
     }
 
     public getNextStateStatus (layer: number): Readonly<MotionStateStatus> | null {
-        return this._layerEvaluations[layer].getNextStateStatus();
+        return this._layerEvaluations[layer].stateMachineEvaluation.getNextStateStatus();
     }
 
     public getNextClipStatuses (layer: number): Iterable<Readonly<ClipStatus>> {
-        return this._layerEvaluations[layer].getNextClipStatuses();
+        return this._layerEvaluations[layer].stateMachineEvaluation.getNextClipStatuses();
     }
 
     public getValue (name: string) {
@@ -218,10 +235,14 @@ export class AnimationGraphEval {
         const nLayers = layerEvaluations.length;
         for (let iLayer = 0; iLayer < nLayers; ++iLayer) {
             const layerEval = layerEvaluations[iLayer];
-            layerEval.overrideClips(overrides, this._bindingContext);
+            layerEval.stateMachineEvaluation.overrideClips(overrides, this._bindingContext);
         }
 
         this._updateAfterPossiblePoseLayoutChange();
+    }
+
+    public getAdjointCurveValue (curveName: string) {
+        return this._metaValueRegistry.get(curveName);
     }
 
     private _varInstances: Record<string, VarInstance> = {};
@@ -448,10 +469,18 @@ class LayerEval {
             outerContext: context,
             additive: isAdditiveLayer,
         };
+        const poseExprBindContext = new PoseExprBindingContext(
+            context,
+            controller,
+            undefined,
+            false,
+            triggerResetFn,
+        );
         const { entry, exit } = this._addStateMachine(
             layer.stateMachine,
             null,
             myContext,
+            poseExprBindContext,
             clipOverrides,
             layer.name,
         );
@@ -468,6 +497,16 @@ class LayerEval {
      */
     get exited () {
         return this._currentNode === this._topLevelExit;
+    }
+
+    public _update (deltaTime: number) {
+        this._transitionAlpha = 0.0;
+        this._eval(deltaTime);
+    }
+
+    public evaluate (context: AnimationGraphEvaluationContext): Pose {
+        const sampled = this._sample(context);
+        return sampled ?? this._pushNullishPose(context);
     }
 
     public update (deltaTime: number, context: AnimationGraphEvaluationContext): Pose {
@@ -533,7 +572,8 @@ class LayerEval {
 
     public getNextStateStatus (): Readonly<MotionStateStatus> | null {
         if (!this._currentTransitionToNode
-            || this._currentTransitionToNode.kind === NodeKind.empty) {
+            || this._currentTransitionToNode.kind === NodeKind.empty
+            || this._currentTransitionToNode.kind === NodeKind.poseExpr) {
             return null;
         }
         return this._currentTransitionToNode.getToPortStatus();
@@ -575,7 +615,7 @@ class LayerEval {
     private _topLevelEntry: NodeEval;
     private _topLevelExit: NodeEval;
     private _currentNode: NodeEval;
-    private _currentTransitionToNode: EmptyStateEval | MotionStateEval | null = null;
+    private _currentTransitionToNode: ConcreteState | null = null;
     private _currentTransitionPath: TransitionEval[] = [];
     private _transitionProgress = 0;
     private declare _triggerReset: TriggerResetFn;
@@ -595,6 +635,7 @@ class LayerEval {
         graph: StateMachine,
         parentStateMachineInfo: StateMachineInfo | null,
         context: AnimationGraphLayerWideBindingContext,
+        poseExprBindingContext: PoseExprBindingContext,
         clipOverrides: ReadonlyClipOverrideMap | null,
         __DEBUG_ID__: string,
     ): StateMachineInfo {
@@ -609,6 +650,9 @@ class LayerEval {
                 const motionStateEval = new MotionStateEval(node, context, clipOverrides);
                 this._motionStates.push(motionStateEval);
                 return motionStateEval;
+            } else if (node instanceof PoseExprState) {
+                const stateEval = new PoseExprStateEval(node, poseExprBindingContext);
+                return stateEval;
             } else if (node === graph.entryState) {
                 return entryEval = new SpecialStateEval(node, NodeKind.entry, node.name);
             } else if (node === graph.exitState) {
@@ -648,6 +692,7 @@ class LayerEval {
                     node.stateMachine,
                     stateMachineInfo,
                     context,
+                    poseExprBindingContext,
                     clipOverrides,
                     `${__DEBUG_ID__}/${node.name}`,
                 );
@@ -817,6 +862,9 @@ class LayerEval {
                 if (currentNode.kind === NodeKind.animation) {
                     currentNode.updateFromPort(updateRequires);
                     this._fromUpdated = true;
+                } else if (currentNode.kind === NodeKind.poseExpr) {
+                    currentNode.update(updateRequires);
+                    this._fromUpdated = true;
                 }
 
                 const ranIntoNonMotionState = this._switchTo(transition);
@@ -828,6 +876,11 @@ class LayerEval {
             } else { // If no transition matched, we update current node.
                 if (currentNode.kind === NodeKind.animation) {
                     currentNode.updateFromPort(remainTimePiece);
+                    this._fromUpdated = true;
+                    // Animation play eat all times.
+                    remainTimePiece = 0.0;
+                } else if (currentNode.kind === NodeKind.poseExpr) {
+                    currentNode.update(remainTimePiece);
                     this._fromUpdated = true;
                     // Animation play eat all times.
                     remainTimePiece = 0.0;
@@ -869,9 +922,12 @@ class LayerEval {
             //     the passthrough weight is set to the transition rate,
             //     the motion state is sampled with full weight.
             this.passthroughWeight = 0.0;
-            if (currentTransitionToNode && currentTransitionToNode.kind === NodeKind.animation) {
+            if (currentTransitionToNode
+                    && (currentTransitionToNode.kind === NodeKind.animation || currentTransitionToNode.kind === NodeKind.poseExpr)) {
                 this.passthroughWeight = transitionAlpha;
-                return currentTransitionToNode.sampleToPort(context);
+                return currentTransitionToNode.kind === NodeKind.animation
+                    ? currentTransitionToNode.sampleToPort(context)
+                    : currentTransitionToNode.evaluate(context);
             }
         } else if (currentTransitionToNode && currentTransitionToNode.kind === NodeKind.empty) {
             this.passthroughWeight = (1.0 - transitionAlpha);
@@ -879,8 +935,11 @@ class LayerEval {
         } else {
             this.passthroughWeight = 1.0;
             const sourcePose = this._sampleSource(context) ?? this._pushNullishPose(context);
-            if (currentTransitionToNode && currentTransitionToNode.kind === NodeKind.animation) {
-                const destPose = currentTransitionToNode.sampleToPort(context) ?? this._pushNullishPose(context);
+            if (currentTransitionToNode
+                && (currentTransitionToNode.kind === NodeKind.animation || currentTransitionToNode.kind === NodeKind.poseExpr)) {
+                const destPose = (currentTransitionToNode.kind === NodeKind.animation
+                    ? currentTransitionToNode.sampleToPort(context)
+                    : currentTransitionToNode.evaluate(context)) ?? this._pushNullishPose(context);
                 blendPoseInto(sourcePose, destPose, transitionAlpha);
                 context.popPose();
                 return sourcePose;
@@ -897,6 +956,8 @@ class LayerEval {
         } = this;
         if (currentNode.kind === NodeKind.animation) {
             return currentNode.sampleFromPort(context);
+        } else if (currentNode.kind === NodeKind.poseExpr) {
+            return currentNode.evaluate(context);
         } else if (currentNode.kind === NodeKind.transitionSnapshot) {
             return currentNode.sample(context);
         }
@@ -1083,7 +1144,7 @@ class LayerEval {
         const lastTransition = currentTransitionPath[lenCurrentTransitionPath - 1];
         const tailNode = lastTransition.to;
 
-        if (tailNode.kind !== NodeKind.animation && tailNode.kind !== NodeKind.empty) {
+        if (!isConcreteState(tailNode)) {
             const motionNode = this._matchTransitionPathUntilMotion();
             if (motionNode) {
                 // Apply transitions
@@ -1107,7 +1168,7 @@ class LayerEval {
 
         const lastTransition = currentTransitionPath[lenCurrentTransitionPath - 1];
         let tailNode = lastTransition.to;
-        for (; tailNode.kind !== NodeKind.animation && tailNode.kind !== NodeKind.empty;) {
+        for (; !isConcreteState(tailNode);) {
             const transitionMatch = transitionMatchCache.reset();
             this._matchTransition(
                 tailNode,
@@ -1123,7 +1184,7 @@ class LayerEval {
             tailNode = transition.to;
         }
 
-        return tailNode.kind === NodeKind.animation || tailNode.kind === NodeKind.empty ? tailNode : null;
+        return isConcreteState(tailNode) ? tailNode : null;
     }
 
     private _consumeTransition (transition: TransitionEval) {
@@ -1148,7 +1209,7 @@ class LayerEval {
         }
     }
 
-    private _doTransitionToMotion (targetNode: MotionStateEval | EmptyStateEval) {
+    private _doTransitionToMotion (targetNode: ConcreteState) {
         const {
             _currentTransitionPath: currentTransitionPath,
         } = this;
@@ -1208,12 +1269,16 @@ class LayerEval {
             contrib = 0.0;
             ratio = 1.0;
         } else {
-            assertIsTrue(fromNode.kind === NodeKind.animation || fromNode.kind === NodeKind.empty || fromNode.kind === NodeKind.transitionSnapshot);
+            assertIsTrue(isConcreteState(fromNode) || fromNode.kind === NodeKind.transitionSnapshot);
             const { _transitionProgress: transitionProgress } = this;
             const durationSeconds = fromNode.kind === NodeKind.empty
                 ? transitionDuration
                 : normalizedDuration
-                    ? transitionDuration * (fromNode.kind === NodeKind.animation ? fromNode.duration : fromNode.first.duration)
+                    ? transitionDuration * (
+                        fromNode.kind === NodeKind.animation
+                            ? fromNode.duration
+                            : fromNode.kind === NodeKind.poseExpr ? 1.0 : fromNode.first.duration
+                    )
                     : transitionDuration;
             const progressSeconds = transitionProgress * durationSeconds;
             const remain = durationSeconds - progressSeconds;
@@ -1511,6 +1576,16 @@ class LayerEval {
     }
 }
 
+type ConcreteState = MotionStateEval | PoseExprStateEval | EmptyStateEval;
+
+function isConcreteState (stateEval: NodeEval): stateEval is ConcreteState  {
+    return stateEval.kind === NodeKind.animation || stateEval.kind === NodeKind.empty || stateEval.kind === NodeKind.poseExpr;
+}
+
+export {
+    LayerEval as TopLevelStateMachineEvaluation,
+};
+
 /**
  * Gets the motion of current motion state or transition snapshot
  * whose outgoing transitions, called "interruption source", will be inspected to
@@ -1624,6 +1699,7 @@ enum NodeKind {
     entry, exit, any, animation,
     empty,
     transitionSnapshot,
+    poseExpr,
 }
 
 export class StateEval {
@@ -1720,6 +1796,29 @@ interface StateMachineInfo {
     exit: NodeEval;
     any: NodeEval;
     components: InstantiatedComponents | null;
+}
+
+class PoseExprStateEval extends StateEval {
+    public readonly kind = NodeKind.poseExpr;
+
+    public constructor (state: PoseExprState, context: PoseExprBindingContext) {
+        super(state);
+        if (state.poseExprGraph.main) {
+            const expr = instantiatePoseExpr(state.poseExprGraph.main, context.outerContext);
+            expr.bind(context);
+            this._poseExprEval = expr;
+        }
+    }
+
+    public update (deltaTime: number) {
+        this._poseExprEval?.update(deltaTime);
+    }
+
+    public evaluate (context: AnimationGraphEvaluationContext) {
+        return this._poseExprEval?.evaluate(context) ?? null;
+    }
+
+    private _poseExprEval: PoseExpr | undefined = undefined;
 }
 
 export class MotionStateEval extends StateEval {
@@ -1997,7 +2096,7 @@ class TransitionSnapshotEval extends StateEval {
     private _heldTransitions: TransitionEval[] = [];
 }
 
-export type NodeEval = MotionStateEval | SpecialStateEval | EmptyStateEval | TransitionSnapshotEval;
+export type NodeEval = MotionStateEval | SpecialStateEval | EmptyStateEval | TransitionSnapshotEval | PoseExprStateEval;
 
 interface TransitionEval {
     to: NodeEval;

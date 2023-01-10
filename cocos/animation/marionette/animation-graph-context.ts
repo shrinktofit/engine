@@ -10,6 +10,7 @@ import { VarInstance } from './variable';
 import { AnimationMask } from './animation-mask';
 import { error } from '../../core';
 import { partition } from '../../core/algorithm/partition';
+import { AnimationClipGraphBindingContext } from './animation-graph-animation-clip-binding';
 
 /**
  * This module contains stuffs related to animation graph's evaluation.
@@ -63,7 +64,7 @@ export type VarRegistry = Record<string, VarInstance>;
 /**
  * The binding context of an animation graph.
  */
-export class AnimationGraphBindingContext {
+export class AnimationGraphBindingContext implements AnimationClipGraphBindingContext {
     constructor (origin: Node, poseLayoutMaintainer: AnimationGraphPoseLayoutMaintainer, varRegistry: VarRegistry) {
         this._origin = origin;
         this._layoutMaintainer = poseLayoutMaintainer;
@@ -98,7 +99,7 @@ export class AnimationGraphBindingContext {
         return boneNode.children.map((childNode) => childNode.name);
     }
 
-    public bineMetaValue (name: string): MetaValueHandle {
+    public bindAdjointCurve (name: string): MetaValueHandle {
         return this._layoutMaintainer.getOrCreateMetaValueBinding(name);
     }
 

@@ -3,7 +3,7 @@ import { error, Quat, Vec3, warnID } from '../../core';
 import { assertIsTrue } from '../../core/data/utils/asserts';
 import { Node } from '../../scene-graph/node';
 import { AnimationClip, exoticAnimationTag } from '../animation-clip';
-import { TransformHandle } from '../core/animation-handle';
+import { MetaValueHandle, TransformHandle } from '../core/animation-handle';
 import { Pose } from '../core/pose';
 import { createEvalSymbol } from '../define';
 import { ExoticTrsAGEvaluation } from '../exotic-animation/exotic-animation';
@@ -39,6 +39,12 @@ export interface AnimationClipGraphBindingContext {
      * @returns The transform handle if successfully bound, `null` otherwise.
      */
     bindTransform(path: string): TransformHandle | null;
+
+    /**
+     * Binds an adjoint curve.
+     * @param curveName Curve name.
+     */
+    bindAdjointCurve(curveName: string): MetaValueHandle | null;
 }
 
 /**
@@ -178,6 +184,28 @@ function bindPoseTransform (
     }
 }
 
+class PoseAdjointCurveBinding implements PoseBinding<number> {
+    constructor (private _handle: MetaValueHandle) {
+
+    }
+
+    public destroy (): void {
+        this._handle.destroy();
+    }
+
+    public setValue (value: number, pose: Pose): void {
+        pose.metaValues[this._handle.index] = value;
+    }
+
+    public getValue (pose: Pose) {
+        return pose.metaValues[this._handle.index];
+    }
+}
+
+function bindAdjointCurve (adjointCurveHandle: MetaValueHandle): PoseBinding<number> {
+    return new PoseAdjointCurveBinding(adjointCurveHandle);
+}
+
 /**
  * Describes the evaluation of a animation clip track in sense of animation graph.
  */
@@ -228,6 +256,16 @@ function createRuntimeBindingAG (track: TrackBinding, bindContext: AnimationClip
     const { path, proxy } = track;
     const nPaths = path.length;
     const iLastPath = nPaths - 1;
+
+    if (path.isAdjointCurve()) {
+        const curveName = path.parseAdjointCurve();
+        const handle = bindContext.bindAdjointCurve(curveName);
+        if (!handle) {
+            error(`Unable to create handle for adjoint curve ${curveName}.`);
+            return undefined;
+        }
+        return bindAdjointCurve(handle);
+    }
 
     if (nPaths !== 0 && (path.isPropertyAt(iLastPath) || path.isElementAt(iLastPath)) && !proxy) {
         const lastPropertyKey = path.isPropertyAt(iLastPath)

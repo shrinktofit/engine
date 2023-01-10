@@ -1,0 +1,60 @@
+import { assertIsTrue, EditorExtendable } from '../../../core';
+import { ccclass } from '../../../core/data/decorators';
+import { Node } from '../../../scene-graph';
+import { Pose, TransformFilter } from '../../core/pose';
+import { CLASS_NAME_PREFIX_ANIM } from '../../define';
+import type { AnimationController, ReadonlyClipOverrideMap } from '../animation-controller';
+import { AnimationGraphBindingContext, AnimationGraphEvaluationContext } from '../animation-graph-context';
+import { AnimationMask } from '../animation-mask';
+
+export class PoseExprBindingContext {
+    constructor (
+        public readonly outerContext: AnimationGraphBindingContext,
+        public readonly controller: AnimationController,
+        public readonly clipOverrides: ReadonlyClipOverrideMap | undefined,
+        additive: boolean,
+        public readonly triggerResetFn: (name: string) => void,
+    ) {
+        this._additiveFlagStack.push(additive);
+    }
+
+    public get additive () {
+        const { _additiveFlagStack: additiveFlagStack } = this;
+        return additiveFlagStack[additiveFlagStack.length - 1];
+    }
+
+    /** @internal */
+    public _pushAdditiveFlag (additive: boolean) {
+        this._additiveFlagStack.push(additive);
+    }
+
+    /** @internal */
+    public _popAdditiveFlag () {
+        assertIsTrue(this._additiveFlagStack.length > 1);
+        this._additiveFlagStack.pop();
+    }
+
+    /** At least has one. */
+    private _additiveFlagStack: boolean[] = [];
+}
+
+export type PoseExprEvaluationContext = AnimationGraphEvaluationContext;
+
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseExpr`)
+export abstract class PoseExpr extends EditorExtendable {
+    public abstract bind(context: PoseExprBindingContext): void;
+
+    public settle (context: PoseExprSettleContext): void {
+    }
+
+    public update (deltaTime: number): void {
+    }
+
+    public abstract evaluate(context: PoseExprEvaluationContext): Pose;
+}
+
+export abstract class PoseExprSettleContext {
+    public abstract origin: Node;
+
+    public abstract createTransformFilter (mask: Readonly<AnimationMask>, origin: Node): TransformFilter;
+}

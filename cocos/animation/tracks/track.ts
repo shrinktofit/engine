@@ -32,7 +32,7 @@ import { Node } from '../../scene-graph';
 import { CLASS_NAME_PREFIX_ANIM, createEvalSymbol } from '../define';
 import type { AnimationMask } from '../marionette/animation-mask';
 import { PoseOutput } from '../pose-output';
-import { ComponentPath, HierarchyPath, isPropertyPath, TargetPath } from '../target-path';
+import { AdjointCurvePath, ComponentPath, HierarchyPath, isPropertyPath, TargetPath } from '../target-path';
 import { IValueProxyFactory } from '../value-proxy';
 import { Range } from './utils';
 
@@ -73,7 +73,7 @@ class TrackPath {
      * @returns `this`
      */
     public toProperty (name: string) {
-        this._paths.push(name);
+        this._pushPath(name);
         return this;
     }
 
@@ -84,7 +84,7 @@ class TrackPath {
      * @returns `this`
      */
     public toElement (index: number) {
-        this._paths.push(index);
+        this._pushPath(index);
         return this;
     }
 
@@ -95,7 +95,7 @@ class TrackPath {
      * @returns `this`
      */
     public toHierarchy (nodePath: string) {
-        this._paths.push(new HierarchyPath(nodePath));
+        this._pushPath(new HierarchyPath(nodePath));
         return this;
     }
 
@@ -107,7 +107,17 @@ class TrackPath {
      */
     public toComponent<T extends Component> (constructor: Constructor<T> | string) {
         const path = new ComponentPath(typeof constructor === 'string' ? constructor : js.getClassName(constructor));
-        this._paths.push(path);
+        this._pushPath(path);
+        return this;
+    }
+
+    public toAdjointCurve (curveName: string) {
+        if (this._paths.length !== 0) {
+            throw new Error(`Adjoint curve path can only be used as the only path in a track path.`);
+        }
+        const path = new AdjointCurvePath();
+        path.curveName = curveName;
+        this._pushPath(path);
         return this;
     }
 
@@ -115,7 +125,7 @@ class TrackPath {
      * @internal Reserved for backward compatibility. DO NOT USE IT IN YOUR CODE.
      */
     public toCustomized (resolver: CustomizedTrackPathResolver) {
-        this._paths.push(resolver);
+        this._pushPath(resolver);
         return this;
     }
 
@@ -126,6 +136,7 @@ class TrackPath {
      * @returns `this`.
      */
     public append (...trackPaths: TrackPath[]) {
+        this._checkBeforePushPaths();
         const paths = this._paths.concat(...trackPaths.map((trackPath) => trackPath._paths));
         this._paths = paths;
         return this;
@@ -211,6 +222,25 @@ class TrackPath {
     public parseComponentAt (index: number) {
         assertIsTrue(this.isComponentAt(index));
         return (this._paths[index] as ComponentPath).component;
+    }
+
+    /**
+     * @zh 判断 **此轨道路径** 是否是伴随曲线路径。
+     * @en Decides if **this path** is an adjoint curve path.
+     * @returns The judgement result.
+     */
+    public isAdjointCurve () {
+        return this._paths.length === 1 && this._paths[0] instanceof AdjointCurvePath;
+    }
+
+    /**
+     * @zh 将 **此轨道路径** 视为伴随曲线路径，获取其描述的伴随曲线的名称。
+     * @en Treats **this path** as an adjoint curve path. Obtains the name of the adjoint curve it describes.
+     * @returns The curve name.
+     */
+    public parseAdjointCurve () {
+        assertIsTrue(this.isAdjointCurve());
+        return (this._paths[0] as AdjointCurvePath).curveName;
     }
 
     /**
@@ -308,6 +338,18 @@ class TrackPath {
 
     @serializable
     private _paths: TargetPath[] = [];
+
+    private _pushPath (path: TargetPath) {
+        this._checkBeforePushPaths();
+        this._paths.push(path);
+    }
+
+    private _checkBeforePushPaths () {
+        const paths = this._paths;
+        if (paths.length !== 0 && paths[paths.length - 1] instanceof AdjointCurvePath) {
+            throw new Error(`Adjoint curve path can only be used as the only path in a track path.`);
+        }
+    }
 }
 
 /**
@@ -337,6 +379,11 @@ export class TrackBinding {
     public createRuntimeBinding (target: unknown, poseOutput: PoseOutput | undefined, isConstant: boolean) {
         const { path, proxy } = this;
         const nPaths = path.length;
+
+        if (path.isAdjointCurve()) {
+            return null; // Adjoint curves are ignored by legacy animations.
+        }
+
         const iLastPath = nPaths - 1;
         if (nPaths !== 0 && (path.isPropertyAt(iLastPath) || path.isElementAt(iLastPath)) && !proxy) {
             const lastPropertyKey = path.isPropertyAt(iLastPath)

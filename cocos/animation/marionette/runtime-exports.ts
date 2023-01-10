@@ -32,6 +32,16 @@ import './animation-graph-variant';
 
 import type { MotionStateStatus } from './animation-controller';
 
+import './pose-expressions/motion-expr';
+import './pose-expressions/add-pose';
+import './pose-expressions/use-cached-pose';
+import './pose-expressions/apply-transform';
+import './pose-expressions/sample-motion';
+
+import './x-node/get-variable';
+import './x-node/builtin/math/general';
+import './x-node/builtin/math/trigonometry';
+
 export type { AnimationGraphRunTime } from './animation-graph';
 export type { AnimationGraphVariantRunTime } from './animation-graph-variant';
 export { AnimationController } from './animation-controller';

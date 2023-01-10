@@ -19,7 +19,7 @@ import '../utils/matcher-deep-close-to';
 import { BinaryCondition, UnaryCondition, TriggerCondition } from '../../cocos/animation/marionette/condition';
 import { AnimationController } from '../../cocos/animation/marionette/animation-controller';
 import { StateMachineComponent } from '../../cocos/animation/marionette/state-machine-component';
-import { VectorTrack } from '../../cocos/animation/animation';
+import { RealTrack, VectorTrack } from '../../cocos/animation/animation';
 import 'jest-extended';
 import { assertIsTrue } from '../../cocos/core/data/utils/asserts';
 import { AnimationClip } from '../../cocos/animation/animation-clip';
@@ -5155,6 +5155,36 @@ describe('NewGen Anim', () => {
                 return valueObserver.value; 
             };
         }
+    });
+
+    describe(`Adjoint curve`, () => {
+        test(`In clip motion`, () => {
+            const fixture = {
+                curveName: 'SomeCurve',
+                animation: new LinearRealValueAnimationFixture(0.3, 0.4, 0.5),
+            };
+
+            const clip = new AnimationClip();
+            clip.duration = fixture.animation.duration;
+            const track = new RealTrack();
+            track.path.toAdjointCurve('SomeCurve');
+            fixture.animation.setupCurve(track.channel.curve);
+            clip.addTrack(track);
+
+            const animationGraph = new AnimationGraph();
+            const layer = animationGraph.addLayer();
+            const motion = layer.stateMachine.addMotion();
+            const clipMotion = motion.motion = new ClipMotion();
+            clipMotion.clip = clip;
+            layer.stateMachine.connect(layer.stateMachine.entryState, motion);
+
+            const node = new Node();
+            const { graphEval, newGenAnim: animationController } = createAnimationGraphEval2(animationGraph, node);
+            const graphUpdater = new GraphUpdater(graphEval);
+
+            graphUpdater.goto(0.2);
+            expect(animationController.getAdjointCurveValue(fixture.curveName)).toBeCloseTo(fixture.animation.getExpected(0.2));
+        });
     });
 });
 

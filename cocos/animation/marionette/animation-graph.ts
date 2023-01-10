@@ -22,7 +22,7 @@
  THE SOFTWARE.
 */
 
-import { ccclass, serializable } from 'cc.decorator';
+import { ccclass, editable, serializable } from 'cc.decorator';
 import { DEBUG } from 'internal:constants';
 import { js, clamp, assertIsNonNullable, assertIsTrue, EditorExtendable, shift } from '../../core';
 import { MotionEval, MotionEvalContext } from './motion';
@@ -38,6 +38,8 @@ import { onAfterDeserializedTag } from '../../serialization/deserialize-symbols'
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
 import { AnimationGraphLike } from './animation-graph-like';
 import { renameObjectProperty } from '../../core/utils/internal';
+import { PoseExpr } from './pose-expressions/pose-expr';
+import { PoseExprGraph } from './pose-expressions/pose-expr-graph';
 
 export { State };
 
@@ -231,6 +233,12 @@ export class EmptyStateTransition extends Transition {
     }
 }
 
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseExprState`)
+export class PoseExprState extends State {
+    @serializable
+    public poseExprGraph = new PoseExprGraph();
+}
+
 @ccclass('cc.animation.StateMachine')
 export class StateMachine extends EditorExtendable {
     @serializable
@@ -379,6 +387,10 @@ export class StateMachine extends EditorExtendable {
      */
     public addEmpty () {
         return this._addState(new EmptyState());
+    }
+
+    public addPoseExprState () {
+        return this._addState(new PoseExprState());
     }
 
     /**
@@ -896,6 +908,10 @@ export class AnimationGraph extends AnimationGraphLike implements AnimationGraph
         }
     }
 
+    @serializable
+    @editable
+    public useDefaultTopLevelPoseExpr = true;
+
     get layers (): readonly Layer[] {
         return this._layers;
     }
@@ -903,6 +919,9 @@ export class AnimationGraph extends AnimationGraphLike implements AnimationGraph
     get variables (): Iterable<[string, VariableDescription]> {
         return Object.entries(this._variables);
     }
+
+    @serializable
+    public readonly poseExprs = new PoseExprGraph();
 
     /**
      * Adds a layer.

@@ -19,7 +19,7 @@ type NonNullableClipMotion = Omit<ClipMotion, 'clip'> & { 'clip': NonNullable<Cl
 
 export interface RealValueAnimationFixture {
     readonly duration: number;
-    
+
     getExpected(time: number): number;
 
     getExpectedAdditive(time: number): number;
@@ -49,6 +49,13 @@ export class LinearRealValueAnimationFixture implements RealValueAnimationFixtur
                 duration: this.duration,
             },
         );
+    }
+
+    public setupCurve(curve: RealCurve) {
+        curve.assignSorted([
+            [0.0, this.from],
+            [this.duration, this.to],
+        ]);
     }
 }
 

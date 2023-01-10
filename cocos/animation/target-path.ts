@@ -25,6 +25,7 @@
 import { ccclass, serializable } from 'cc.decorator';
 import { Node } from '../scene-graph/node';
 import { warnID } from '../core';
+import { CLASS_NAME_PREFIX_ANIM } from './define';
 
 /**
  * @deprecated Since V3.3, use [[TrackPath]] instead.
@@ -115,5 +116,15 @@ export class ComponentPath implements ICustomTargetPath {
             return null;
         }
         return result;
+    }
+}
+
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}AdjointCurvePath`)
+export class AdjointCurvePath implements ICustomTargetPath {
+    @serializable
+    public curveName = '';
+
+    get (_target: any) {
+        throw new Error('Adjoint curve path is a kind of builtin path, can not be invoked manually.');
     }
 }

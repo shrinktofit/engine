@@ -39,3 +39,14 @@ export { VariableType } from './parametric';
 export { BindableNumber, BindableBoolean } from './parametric';
 export { AnimationMask } from './animation-mask';
 export { AnimationGraphVariant } from './animation-graph-variant';
+
+export { PoseExprState } from './animation-graph';
+export type { PoseExprGraph } from './pose-expressions/pose-expr-graph';
+export { PoseExpr } from './pose-expressions/pose-expr';
+
+export { XNode } from './x-node/x-node';
+export {
+    getIncomingXNodeLinks,
+    connectXNode,
+    disconnectXNode,
+} from './x-node/x-node-link';

@@ -31,6 +31,9 @@ import type { ReadonlyClipOverrideMap, ClipStatus } from './graph-eval';
 import type { RuntimeID } from './graph-debug';
 import { AnimationGraphEvaluationContext, AnimationGraphLayerWideBindingContext } from './animation-graph-context';
 import { Pose } from '../core/pose';
+import { EditorExtendable } from '../../core';
+import { ccclass } from '../../core/data/decorators';
+import { CLASS_NAME_PREFIX_ANIM } from '../define';
 
 export interface CreateClipEvalContext {
     node: Node;
@@ -63,10 +66,11 @@ export interface MotionEval {
     createPort(): MotionPort;
 }
 
-export interface Motion {
-    [createEval] (context: AnimationGraphLayerWideBindingContext, clipOverrides: ReadonlyClipOverrideMap | null): MotionEval | null;
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}_Motion`) //TODO: Name!
+export abstract class Motion extends EditorExtendable {
+    abstract [createEval] (context: AnimationGraphLayerWideBindingContext, clipOverrides: ReadonlyClipOverrideMap | null): MotionEval | null;
 
-    clone(): Motion;
+    abstract clone(): Motion;
 }
 
 export interface MotionPort {
