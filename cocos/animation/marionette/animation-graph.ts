@@ -23,7 +23,7 @@
 */
 
 import { ccclass, editable, serializable } from 'cc.decorator';
-import { DEBUG } from 'internal:constants';
+import { BUILD, DEBUG } from 'internal:constants';
 import { js, clamp, assertIsNonNullable, assertIsTrue, EditorExtendable, shift } from '../../core';
 import { MotionEval, MotionEvalContext } from './motion';
 import type { Condition } from './condition';
@@ -239,6 +239,40 @@ export class PoseExprState extends State {
     public poseExprGraph = new PoseExprGraph();
 }
 
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseExprTransition`)
+class PoseExprTransition extends Transition {
+    /**
+     * The transition duration, in seconds.
+     */
+    @serializable
+    public duration = 0.3;
+}
+
+/**
+ * Creates a proxy object `c` so that `o instanceof c`, where `o` is an instance of `constructor`.
+ * This function is used to hide the new of `constructor` in the same time keep `instanceof` usable.
+ * @param constructor The construct to proxy.
+ * @returns The proxy object.
+ */
+// eslint-disable-next-line @typescript-eslint/ban-types
+function createInstanceofProxy<TConstructor extends Function> (constructor: TConstructor): TConstructor {
+    const value = Object.create(null, {
+        [Symbol.hasInstance]: {
+            value (instance: unknown) {
+                return instance instanceof constructor;
+            },
+        },
+    });
+
+    return value as unknown as TConstructor;
+}
+
+type PoseExprTransition_ = PoseExprTransition;
+const PoseExprTransition_ = createInstanceofProxy(PoseExprTransition);
+export {
+    PoseExprTransition_ as PoseExprTransition,
+};
+
 @ccclass('cc.animation.StateMachine')
 export class StateMachine extends EditorExtendable {
     @serializable
@@ -267,6 +301,25 @@ export class StateMachine extends EditorExtendable {
             const state = this._states[iState];
             if (state instanceof SubStateMachine) {
                 state.stateMachine.__callOnAfterDeserializeRecursive();
+            }
+        }
+
+        // TODO: remove this
+        if (BUILD) {
+            assertIsTrue(`Please remove this code!`);
+        }
+        for (let iState = 0; iState < nStates; ++iState) {
+            const state = this._states[iState];
+            if (state instanceof PoseExprState) {
+                const transitions = this.getOutgoings(state);
+                for (const transition of transitions) {
+                    if (!(transition instanceof PoseExprTransition)) {
+                        const to = transition.to;
+                        const conditions = transition.conditions;
+                        this.removeTransition(transition);
+                        this.connect(state, to, conditions);
+                    }
+                }
             }
         }
     }
@@ -433,6 +486,14 @@ export class StateMachine extends EditorExtendable {
      * @param from Source state.
      * @param to Target state.
      * @param condition The transition condition.
+     */
+    public connect (from: PoseExprState, to: State, conditions?: Condition[]): PoseExprTransition;
+
+    /**
+     * Connect two states.
+     * @param from Source state.
+     * @param to Target state.
+     * @param condition The transition condition.
      * @throws `InvalidTransitionError` if:
      * - the target state is entry or any, or
      * - the source state is exit.
@@ -455,9 +516,11 @@ export class StateMachine extends EditorExtendable {
 
         const transition = from instanceof MotionState || from === this._anyState
             ? new AnimationTransition(from, to, conditions)
-            : from instanceof EmptyState
-                ? new EmptyStateTransition(from, to, conditions)
-                : new Transition(from, to, conditions);
+            : from instanceof PoseExprState
+                ? new PoseExprTransition(from, to, conditions)
+                : from instanceof EmptyState
+                    ? new EmptyStateTransition(from, to, conditions)
+                    : new Transition(from, to, conditions);
 
         own(transition, this);
         this._transitions.push(transition);

@@ -120,7 +120,7 @@ describe(`Pose expr instantiation`, () => {
             }
 
             public bind(context: PoseExprBindingContext): void {
-                this._handle = context.up.bindAdjointCurve('x');
+                this._handle = context.outerContext.bindAdjointCurve('x');
             }
 
             public evaluate(context: AnimationGraphEvaluationContext): Pose {

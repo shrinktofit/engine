@@ -25,7 +25,7 @@
 import { DEBUG } from 'internal:constants';
 import {
     AnimationGraph, Layer, StateMachine, State, isAnimationTransition,
-    SubStateMachine, EmptyState, EmptyStateTransition, TransitionInterruptionSource, PoseExprState,
+    SubStateMachine, EmptyState, EmptyStateTransition, TransitionInterruptionSource, PoseExprState, PoseExprTransition,
 } from './animation-graph';
 import { MotionEval, MotionEvalContext, MotionPort } from './motion';
 import type { Node } from '../../scene-graph/node';
@@ -765,6 +765,8 @@ class LayerEval {
                     transitionEval.duration = outgoing.duration;
                     transitionEval.destinationStart = outgoing.destinationStart;
                     transitionEval.relativeDestinationStart = outgoing.relativeDestinationStart;
+                } else if (outgoing instanceof PoseExprTransition) {
+                    transitionEval.duration = outgoing.duration;
                 }
 
                 transitionEval.conditions.forEach((conditionEval, iCondition) => {

@@ -171,6 +171,8 @@ export class AnimationBlendEval implements MotionEval {
         if (finalPose) {
             return finalPose;
         }
+
+        // TODO: cause wired behavior in additive layer.
         return context.pushDefaultedPose();
     }
 
