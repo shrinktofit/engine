@@ -24,7 +24,7 @@
 
 import { ccclass, editable, serializable } from 'cc.decorator';
 import { BUILD, DEBUG } from 'internal:constants';
-import { js, clamp, assertIsNonNullable, assertIsTrue, EditorExtendable, shift } from '../../core';
+import { js, clamp, assertIsNonNullable, assertIsTrue, EditorExtendable, shift, ccenum } from '../../core';
 import { MotionEval, MotionEvalContext } from './motion';
 import type { Condition } from './condition';
 import { OwnedBy, assertsOwnedBy, own, markAsDangling, ownerSymbol } from './ownership';
@@ -272,6 +272,14 @@ const PoseExprTransition_ = createInstanceofProxy(PoseExprTransition);
 export {
     PoseExprTransition_ as PoseExprTransition,
 };
+
+export enum InterruptionBehavior {
+    SNAPSHOT,
+
+    CONCURRENT,
+}
+
+ccenum(InterruptionBehavior);
 
 @ccclass('cc.animation.StateMachine')
 export class StateMachine extends EditorExtendable {
@@ -951,6 +959,9 @@ export type VariableDescription =
 @ccclass('cc.animation.AnimationGraph')
 export class AnimationGraph extends AnimationGraphLike implements AnimationGraphRunTime {
     public declare readonly __brand: 'AnimationGraph';
+
+    @serializable
+    public interruptionBehavior = InterruptionBehavior.SNAPSHOT;
 
     @serializable
     private _layers: Layer[] = [];
