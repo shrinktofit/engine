@@ -246,6 +246,25 @@ class PoseExprTransition extends Transition {
      */
     @serializable
     public duration = 0.3;
+
+    /**
+     * @internal This field is exposed for **experimental editor only** usage.
+     */
+    get interruptible () {
+        return this.interruptionSource !== TransitionInterruptionSource.NONE;
+    }
+
+    set interruptible (value) {
+        this.interruptionSource = value
+            ? TransitionInterruptionSource.CURRENT_STATE_THEN_NEXT_STATE
+            : TransitionInterruptionSource.NONE;
+    }
+
+    /**
+     * @internal This field is exposed for **internal** usage.
+     */
+    @serializable
+    public interruptionSource = TransitionInterruptionSource.NONE;
 }
 
 /**

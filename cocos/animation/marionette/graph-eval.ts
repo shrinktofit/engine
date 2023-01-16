@@ -779,6 +779,7 @@ class LayerEval {
                     transitionEval.relativeDestinationStart = outgoing.relativeDestinationStart;
                 } else if (outgoing instanceof PoseExprTransition) {
                     transitionEval.duration = outgoing.duration;
+                    transitionEval.interruption = outgoing.interruptionSource;
                 }
 
                 transitionEval.conditions.forEach((conditionEval, iCondition) => {
@@ -1019,7 +1020,7 @@ class LayerEval {
      * - to determinate the starting state machine from where the any states are matched;
      * - so we can solve transitions' relative durations.
      */
-    private _matchAnyScoped (realNode: MotionStateEval, deltaTime: number, result: TransitionMatchCache) {
+    private _matchAnyScoped (realNode: MotionStateEval | PoseExprStateEval, deltaTime: number, result: TransitionMatchCache) {
         let transitionMatchUpdated = false;
         for (let ancestor: StateMachineInfo | null = realNode.stateMachine;
             ancestor !== null;
@@ -1527,12 +1528,18 @@ class LayerEval {
         } = this;
 
         if (currentNode.kind !== NodeKind.animation
-            && currentNode.kind !== NodeKind.transitionSnapshot) {
+            && currentNode.kind !== NodeKind.transitionSnapshot
+            && currentNode.kind !== NodeKind.poseExpr) {
+            return null;
+        }
+
+        // TODO: pose expr doesn't support snapshot.
+        if (currentNode.kind === NodeKind.poseExpr && this._interruptionBehavior === InterruptionBehavior.SNAPSHOT) {
             return null;
         }
 
         if (!currentTransitionToNode
-            || currentTransitionToNode.kind !== NodeKind.animation) {
+            || (currentTransitionToNode.kind !== NodeKind.animation && currentTransitionToNode.kind !== NodeKind.poseExpr)) {
             return null;
         }
 
@@ -1544,11 +1551,11 @@ class LayerEval {
         }
 
         const transitionMatch = transitionMatchCache.reset();
-        let transitionMatchSource: MotionStateEval | null = null;
+        let transitionMatchSource: MotionStateEval | PoseExprStateEval | null = null;
 
         // We have to decide what to be used as unit 1
         // to interpret the relative transition duration.
-        const anyTransitionMeasureBaseState = currentNode.kind === NodeKind.animation
+        const anyTransitionMeasureBaseState = currentNode.kind === NodeKind.animation || currentNode.kind === NodeKind.poseExpr
             ? currentNode
             : currentNode.first;
         let transitionMatchUpdated = this._matchAnyScoped(
@@ -1563,7 +1570,7 @@ class LayerEval {
             // TODO
         }
 
-        const motion0: MotionStateEval                = interruption === TransitionInterruptionSource.CURRENT_STATE
+        const motion0: MotionStateEval | PoseExprStateEval                = interruption === TransitionInterruptionSource.CURRENT_STATE
                 || interruption === TransitionInterruptionSource.CURRENT_STATE_THEN_NEXT_STATE
             ? getInterruptionSourceMotion(currentNode)
             : currentTransitionToNode;
@@ -1633,6 +1640,8 @@ class LayerEval {
         transition,
         requires: transitionRequires,
     }: InterruptingTransitionMatch) {
+        // TODO:
+        assertIsTrue(transitionSource.kind !== NodeKind.poseExpr);
         const {
             _currentNode: currentNode,
         } = this;
@@ -1767,7 +1776,7 @@ export {
  * whose outgoing transitions, called "interruption source", will be inspected to
  * detect the interrupting transition.
  */
-function getInterruptionSourceMotion (state: MotionStateEval | TransitionSnapshotEval) {
+function getInterruptionSourceMotion (state: MotionStateEval | TransitionSnapshotEval | PoseExprStateEval) {
     // If current state is a motion state, then it's the result.
     // Otherwise the current state is a transition snapshot --
     // we support nested interruptions, eg,
@@ -1786,7 +1795,7 @@ function getInterruptionSourceMotion (state: MotionStateEval | TransitionSnapsho
     //
     // > Tip: The term "nested interruption" was taken from here:
     // > https://stackoverflow.com/a/24128928
-    return state.kind === NodeKind.animation ? state : state.first;
+    return state.kind === NodeKind.animation || state.kind === NodeKind.poseExpr ? state : state.first;
 }
 
 function createStateStatusCache (): MotionStateStatus {
@@ -1823,7 +1832,7 @@ interface TransitionMatch {
 }
 
 interface InterruptingTransitionMatch extends TransitionMatch {
-    from: MotionStateEval;
+    from: MotionStateEval | PoseExprStateEval;
 }
 
 class TransitionMatchCache {
@@ -1861,7 +1870,7 @@ class InterruptingTransitionMatchCache {
 
     public from: InterruptingTransitionMatch['from'] | null = null;
 
-    public set (from: MotionStateEval, transition: TransitionMatch['transition'], requires: number) {
+    public set (from: MotionStateEval | PoseExprStateEval, transition: TransitionMatch['transition'], requires: number) {
         this.from = from;
         this.transition = transition;
         this.requires = requires;
