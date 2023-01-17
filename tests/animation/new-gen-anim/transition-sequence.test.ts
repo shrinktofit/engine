@@ -4,8 +4,9 @@ import { UnaryCondition } from "../../../cocos/animation/marionette/condition";
 import { MotionState } from "../../../cocos/animation/marionette/motion-state";
 import { assertIsTrue, lerp } from "../../../cocos/core";
 import { AnimationGraphEvalMock } from "./utils/eval-mock";
-import { LinearRealValueAnimationFixture } from "./utils/fixtures";
+import { ConstantRealValueAnimationFixture, LinearRealValueAnimationFixture } from "./utils/fixtures";
 import { SingleRealValueObserver } from "./utils/single-real-value-observer";
+import '../../utils/matchers/value-type-asymmetric-matchers';
 
 const DEFAULT_VALUE = 6.666;
 
@@ -13,129 +14,312 @@ const DEFAULT_VALUE = 6.666;
 type SequenceString = string;
 
 describe(`Transition sequence`, () => {
-    describe(`Zero transitions`, () => {
-        const commonCheck = (mock: ReturnType<typeof mockTransitionSequence>) => {
-            const { controller } = mock;
-            expect(controller.getCurrentTransition(0)).toBeNull();
-            expect(mock.controller.getNextStateStatus(0)).toBeNull();
+    describe(`At a moment`, () => {
+        describe(`Zero transitions`, () => {
+            const commonCheck = (mock: ReturnType<typeof mockTransitionSequence>) => {
+                const { controller } = mock;
+                expect(controller.getCurrentTransition(0)).toBeNull();
+                expect(mock.controller.getNextStateStatus(0)).toBeNull();
+            };
+    
+            test(`Head is a motion`, () => {
+                const mock = mockTransitionSequence({
+                    head: { type: 'motion', animation: { from: 1, to: 2 }, progress: 0.8 },
+                    transitions: [],
+                });
+                commonCheck(mock);
+                expect(mock.observer.value).toBeCloseTo(lerp(1, 2, 0.8));
+                expect(mock.controller.getCurrentStateStatus(0)).toMatchObject({
+                    progress: 0.8,
+                });
+            });
+    
+            test(`Head is an empty state`, () => {
+                const mock = mockTransitionSequence({
+                    head: { type: 'empty' },
+                    transitions: [],
+                });
+                commonCheck(mock);
+                expect(mock.observer.value).toBeCloseTo(DEFAULT_VALUE);
+                expect(mock.controller.getCurrentStateStatus(0)).toBeNull();
+            });
+        });
+    
+        describe(`Tail transitions are routes`, () => {
+            const routeTransitions: TransitionFixture[] = [
+                { progress: 0.1, destination: { type: 'enter' } },
+                { progress: 0.2, destination: { type: 'exit' } },
+                { progress: 0.3, destination: { type: 'enter' } },
+                { progress: 0.4, destination: { type: 'enter' } },
+                { progress: 0.5, destination: { type: 'exit' } },
+                { progress: 0.6, destination: { type: 'exit' } },
+                { progress: 0.7, destination: { type: 'enter' } },
+            ];
+    
+            test(`All transitions are route transitions`, () => {
+                const mock = mockTransitionSequence({
+                    head: { type: 'enter' },
+                    transitions: [
+                        ...routeTransitions,
+                    ],
+                });
+    
+                expect(mock.observer.value).toBeCloseTo(DEFAULT_VALUE);
+                expect(mock.controller.getCurrentStateStatus(0)).toBeNull();
+                expect(mock.controller.getCurrentTransition(0)).toBeNull();
+                expect(mock.controller.getNextStateStatus(0)).toBeNull();
+            });
+    
+            // FIXME:
+            test.skip(`Not all transitions are route transitions`, () => {
+                const mock = mockTransitionSequence({
+                    head: { type: 'motion', animation: { from: 0.1, to: 0.3 }, progress: 0.3 },
+                    transitions: [
+                        ...routeTransitions,
+                    ],
+                });
+    
+                expect(mock.observer.value).toBeCloseTo(lerp(0.1, 0.3, 0.3));
+                expect(mock.controller.getCurrentStateStatus(0)).toMatchObject({
+                    progress: 0.3,
+                });
+                expect(mock.controller.getCurrentTransition(0)).toBeNull();
+                expect(mock.controller.getNextStateStatus(0)).toBeNull();
+            });
+        });
+    
+        describe(`Tail transitions are not routes`, () => {
+            // Note: in this case head transitions can not be routes.
+    
+            test.each([
+                'mm',
+                'mmm',
+                'mmmmm',
+                'm+m',
+                'm++m',
+                'm++-m',
+                'm+m++-m',
+            ])(`%s`, (seq) => {
+                const nStates = seq.length;
+                expect(nStates).toBeGreaterThan(1);
+    
+                const { sequence, states, transitions } = generateTransitionSequence(
+                    seq,
+                    (stateIndex: number): MotionStateFixture => {
+                        const t = stateIndex / nStates;
+                        return {
+                            type: 'motion',
+                            animation: { from: lerp(0.4, 0.8, t), to: lerp(-6.666, 0.88, t) },
+                            progress: 0.1 * (stateIndex + 1),
+                        };
+                    },
+                    (transitionIndex: number) => {
+                        const t = transitionIndex / (nStates - 1);
+                        return lerp(0.1, 1, t);
+                    },
+                );
+    
+                const mock = mockTransitionSequence(sequence);
+    
+                const motions = states.filter((state) => state.type === 'motion') as MotionStateFixture[];
+                expect(motions.length).toBeGreaterThan(1);
+    
+                let expectedValue = lerp(motions[0].animation.from, motions[0].animation.to, motions[0].progress);
+                motions.slice(1).forEach((motion, motionIndex) => {
+                    const lastMotion = motions[motionIndex]; // motions[motionIndex - 1 + 1]
+                    const lastStateIndex = states.indexOf(lastMotion);
+                    expect(lastStateIndex).toBeGreaterThanOrEqual(0);
+                    const transitionIndex = lastStateIndex;
+                    const motionTransition = transitions[transitionIndex];
+                    
+                    const motionValue = lerp(motion.animation.from, motion.animation.to, motion.progress);
+                    expectedValue = lerp(expectedValue, motionValue, motionTransition.progress);
+                });
+    
+                expect(mock.observer.value).toBeCloseTo(expectedValue);
+            });
+        });
+    });
+
+    test(`Exact same concurrent transitions`, () => {
+        // A->B->C
+        // `A->B` and `B->C` happened at same time and have same duration.
+
+        const fixture = {
+            initialValue: 0.1,
+            a: new LinearRealValueAnimationFixture(1, 2, 3),
+            b: new LinearRealValueAnimationFixture(4, 5, 6),
+            c: new LinearRealValueAnimationFixture(7, 8, 9),
+            transitionDuration: 0.5,
         };
 
-        test(`Head is a motion`, () => {
-            const mock = mockTransitionSequence({
-                head: { type: 'motion', animation: { from: 1, to: 2 }, progress: 0.8 },
-                transitions: [],
-            });
-            commonCheck(mock);
-            expect(mock.observer.value).toBeCloseTo(lerp(1, 2, 0.8));
-            expect(mock.controller.getCurrentStateStatus(0)).toMatchObject({
-                progress: 0.8,
-            });
+        const observer = new SingleRealValueObserver(fixture.initialValue);
+        const graph = new AnimationGraph();
+        graph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
+        const layer = graph.addLayer();
+        const [ mA, mB, mC ] = ([[fixture.a, 'A'], [fixture.b, 'B'], [fixture.c, 'C']] as const).map(([animation, name]) => {
+            const s = layer.stateMachine.addMotion();
+            s.name = name;
+            s.motion = animation.createMotion(observer.getCreateMotionContext());
+            return s;
+        });
+        layer.stateMachine.connect(layer.stateMachine.entryState, mA);
+        ([
+            [mA, mB],
+            [mB, mC],
+        ] as const).forEach(([from, to], transitionIndex) => {
+            const transition = layer.stateMachine.connect(from, to);
+            transition.exitConditionEnabled = false;
+            transition.duration = fixture.transitionDuration;
+            transition.interruptionSource = TransitionInterruptionSource.NEXT_STATE;
+            const [condition] = transition.conditions = [new UnaryCondition()];
+            condition.operator = UnaryCondition.Operator.TRUTHY;
+            condition.operand.variable = `${transitionIndex}`;
+            graph.addBoolean(condition.operand.variable, true); // Trigger at start
         });
 
-        test(`Head is an empty state`, () => {
-            const mock = mockTransitionSequence({
-                head: { type: 'empty' },
-                transitions: [],
-            });
-            commonCheck(mock);
-            expect(mock.observer.value).toBeCloseTo(DEFAULT_VALUE);
-            expect(mock.controller.getCurrentStateStatus(0)).toBeNull();
+        const evalMock = new AnimationGraphEvalMock(observer.root, graph);
+
+        evalMock.goto(fixture.transitionDuration * 0.3);
+        expect(observer.value).toBeCloseTo(
+            lerp(
+                lerp(
+                    fixture.a.getExpected(evalMock.current),
+                    fixture.b.getExpected(evalMock.current),
+                    0.3,
+                ),
+                fixture.c.getExpected(evalMock.current),
+                0.3,
+            ),
+            1e-6,
+        );
+
+        evalMock.goto(fixture.transitionDuration * 1.01);
+        expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
+            __DEBUG_ID__: 'C',
+            progress: expect.toBeAround(evalMock.current / fixture.c.duration, 1e-6),
         });
+        expect(observer.value).toBeCloseTo(
+            fixture.c.getExpected(evalMock.current),
+            1e-6,
+        );
     });
 
-    describe(`Tail transitions are routes`, () => {
-        const routeTransitions: TransitionFixture[] = [
-            { progress: 0.1, destination: { type: 'enter' } },
-            { progress: 0.2, destination: { type: 'exit' } },
-            { progress: 0.3, destination: { type: 'enter' } },
-            { progress: 0.4, destination: { type: 'enter' } },
-            { progress: 0.5, destination: { type: 'exit' } },
-            { progress: 0.6, destination: { type: 'exit' } },
-            { progress: 0.7, destination: { type: 'enter' } },
-        ];
+    describe(`Transition dropping`, () => {
+        test(`Later transition has longer duration than previous`, () => {
+            /// ## Spec
+            /// If later transition has longer duration than previous,
+            /// previous transitions are dropped before the later transition.
 
-        test(`All transitions are route transitions`, () => {
-            const mock = mockTransitionSequence({
-                head: { type: 'enter' },
-                transitions: [
-                    ...routeTransitions,
-                ],
+            const { evalMock, getMotionID } = generate([1, 1.5, 6]);
+
+            evalMock.goto(0.3);
+            expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
+                __DEBUG_ID__: getMotionID(0),
+                progress: expect.toBeAround(0.3, 1e-6),
             });
 
-            expect(mock.observer.value).toBeCloseTo(DEFAULT_VALUE);
-            expect(mock.controller.getCurrentStateStatus(0)).toBeNull();
-            expect(mock.controller.getCurrentTransition(0)).toBeNull();
-            expect(mock.controller.getNextStateStatus(0)).toBeNull();
+            evalMock.goto(0.9);
+            expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
+                __DEBUG_ID__: getMotionID(0),
+                progress: expect.toBeAround(0.9, 1e-6),
+            });
+
+            evalMock.goto(1.2);
+            expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
+                __DEBUG_ID__: getMotionID(1),
+                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 1e-6),
+            });
+
+            evalMock.goto(1.6);
+            expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
+                __DEBUG_ID__: getMotionID(2),
+                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 1e-6),
+            });
+
+            evalMock.goto(6.2);
+            expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
+                __DEBUG_ID__: getMotionID(3),
+                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 1e-6),
+            });
+            expect(evalMock.controller.getCurrentTransition(0)).toBeNull();
         });
 
-        // FIXME:
-        test.skip(`Not all transitions are route transitions`, () => {
-            const mock = mockTransitionSequence({
-                head: { type: 'motion', animation: { from: 0.1, to: 0.3 }, progress: 0.3 },
-                transitions: [
-                    ...routeTransitions,
-                ],
+        test(`Later transition has shorter duration than previous`, () => {
+            /// ## Spec
+            /// If later transition has shorter duration than previous,
+            /// once the later transition is dropped, all previous transitions are dropped.
+
+            const { evalMock, getMotionID } = generate([2, 6, 1.5]);
+
+            evalMock.goto(0.3);
+            expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
+                __DEBUG_ID__: getMotionID(0),
+                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 1e-6),
             });
 
-            expect(mock.observer.value).toBeCloseTo(lerp(0.1, 0.3, 0.3));
-            expect(mock.controller.getCurrentStateStatus(0)).toMatchObject({
-                progress: 0.3,
+            evalMock.goto(1.4);
+            expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
+                __DEBUG_ID__: getMotionID(0),
+                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 1e-6),
             });
-            expect(mock.controller.getCurrentTransition(0)).toBeNull();
-            expect(mock.controller.getNextStateStatus(0)).toBeNull();
+
+            evalMock.goto(1.6);
+            expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
+                __DEBUG_ID__: getMotionID(3),
+                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 1e-6),
+            });
         });
-    });
 
-    describe(`Tail transitions are not routes`, () => {
-        // Note: in this case head transitions can not be routes.
+        test(`Drop a middle transition`, () => {
+            const { evalMock, getMotionID } = generate([6, 5, 8]);
 
-        test.each([
-            'mm',
-            'mmm',
-            'mmmmm',
-            'm+m',
-            'm++m',
-            'm++-m',
-            'm+m++-m',
-        ])(`%s`, (seq) => {
-            const nStates = seq.length;
-            expect(nStates).toBeGreaterThan(1);
+            evalMock.goto(5.1);
+            expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
+                __DEBUG_ID__: getMotionID(2),
+                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 1e-6),
+            });
+            expect(evalMock.controller.getCurrentTransition(0)).toMatchObject({
+                duration: 8.0,
+                time: expect.toBeAround(evalMock.current, 1e-6),
+            });
+        });
 
-            const { sequence, states, transitions } = generateTransitionSequence(
-                seq,
-                (stateIndex: number): MotionStateFixture => {
-                    const t = stateIndex / nStates;
-                    return {
-                        type: 'motion',
-                        animation: { from: lerp(0.4, 0.8, t), to: lerp(-6.666, 0.88, t) },
-                        progress: 0.1 * (stateIndex + 1),
-                    };
+        function generate(
+            transitionDurations: readonly number[],
+        ) {
+            const observer = new SingleRealValueObserver(0.0);
+            const graph = new AnimationGraph();
+            graph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
+            const layer = graph.addLayer();
+            const states = Array.from({ length: transitionDurations.length + 1 }, (_, index) => {
+                const s = layer.stateMachine.addMotion();
+                s.name = `${index}`;
+                s.motion = new ConstantRealValueAnimationFixture(index, 1.0).createMotion(observer.getCreateMotionContext());
+                return s;
+            });
+            layer.stateMachine.connect(layer.stateMachine.entryState, states[0]);
+            for (let transitionIndex = 0; transitionIndex < transitionDurations.length; ++transitionIndex) {
+                const fromMotion = states[transitionIndex];
+                const toMotion = states[transitionIndex + 1];
+                const transition = layer.stateMachine.connect(fromMotion, toMotion);
+                transition.exitConditionEnabled = false;
+                transition.duration = transitionDurations[transitionIndex];
+                transition.interruptionSource = TransitionInterruptionSource.NEXT_STATE;
+                const [condition] = transition.conditions = [new UnaryCondition()];
+                condition.operator = UnaryCondition.Operator.TRUTHY;
+                condition.operand.variable = `${transitionIndex}`;
+                graph.addBoolean(condition.operand.variable, true); // Trigger at start
+            }
+            const evalMock = new AnimationGraphEvalMock(observer.root, graph);
+            return {
+                evalMock,
+                observer,
+                getMotionID(motionIndex: number) {
+                    return `${motionIndex}`;
                 },
-                (transitionIndex: number) => {
-                    const t = transitionIndex / (nStates - 1);
-                    return lerp(0.1, 1, t);
-                },
-            );
-
-            const mock = mockTransitionSequence(sequence);
-
-            const motions = states.filter((state) => state.type === 'motion') as MotionStateFixture[];
-            expect(motions.length).toBeGreaterThan(1);
-
-            let expectedValue = lerp(motions[0].animation.from, motions[0].animation.to, motions[0].progress);
-            motions.slice(1).forEach((motion, motionIndex) => {
-                const lastMotion = motions[motionIndex]; // motions[motionIndex - 1 + 1]
-                const lastStateIndex = states.indexOf(lastMotion);
-                expect(lastStateIndex).toBeGreaterThanOrEqual(0);
-                const transitionIndex = lastStateIndex;
-                const motionTransition = transitions[transitionIndex];
-                
-                const motionValue = lerp(motion.animation.from, motion.animation.to, motion.progress);
-                expectedValue = lerp(expectedValue, motionValue, motionTransition.progress);
-            });
-
-            expect(mock.observer.value).toBeCloseTo(expectedValue);
-        });
+            };
+        }
     });
 });
 
