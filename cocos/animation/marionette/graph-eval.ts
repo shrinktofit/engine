@@ -1388,8 +1388,7 @@ class LayerEval {
 
         // Call exist hooks on call states on the subpath.
         this._callExitMethods(firstState);
-        assertIsTrue(firstTransitionIndex >= 0 && firstTransitionIndex < currentTransitionPath.length);
-        for (let iTransition = firstTransitionIndex; iTransition < lastTransitionIndex; ++iTransition) {
+        for (let iTransition = firstTransitionIndex; iTransition <= lastTransitionIndex; ++iTransition) {
             const transition = currentTransitionPath[iTransition];
             const { to } = transition;
             if (to.kind === NodeKind.exit) {
