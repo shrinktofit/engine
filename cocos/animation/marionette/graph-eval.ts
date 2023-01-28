@@ -22,7 +22,7 @@
  THE SOFTWARE.
 */
 
-import { DEBUG } from 'internal:constants';
+import { DEBUG, TEST } from 'internal:constants';
 import {
     AnimationGraph, Layer, StateMachine, State, isAnimationTransition,
     SubStateMachine, EmptyState, EmptyStateTransition, TransitionInterruptionSource, PoseExprState, PoseExprTransition, InterruptionBehavior,
@@ -484,7 +484,8 @@ class LayerEval {
         this._resetTrigger = triggerResetFn;
 
         this._mask = layer.mask;
-        this._interruptionBehavior = interruptionBehavior;
+        // !!!!TODO
+        this._interruptionBehavior = TEST ? interruptionBehavior : InterruptionBehavior.CONCURRENT;
     }
 
     /**
@@ -1254,31 +1255,50 @@ class LayerEval {
      */
     private _updateCurrentTransition (deltaTime: number) {
         const {
-            _currentTransitionPath: currentTransitionPath,
+            _currentTransitionPath: currentTransitions,
             _currentTransitionToNode: currentTransitionToNode,
             _currentNode: veryFirstState,
         } = this;
 
-        assertIsNonNullable(currentTransitionPath.length > 0);
+        assertIsNonNullable(currentTransitions.length > 0);
         assertIsNonNullable(currentTransitionToNode);
 
-        let maxConsumedTime = 0.0;
-        let firstState = veryFirstState;
-        let firstTransitionIndex = 0;
-        /** Maybe varied in iteration. */
-        for (let iCurrentTransition = 0;
-            // Don't cache the length cause it maybe varied in the loop.
-            iCurrentTransition < currentTransitionPath.length;
-            ++iCurrentTransition
-        ) {
-            const { to: toState } = currentTransitionPath[iCurrentTransition];
+        let iTransition = currentTransitions.length - 1;
 
-            // Skip until we find a concrete state.
-            if (!isConcreteState(toState)) {
-                continue;
+        // Finds the first concrete state from last.
+        for (; iTransition >= 0; --iTransition) {
+            const transition = currentTransitions[iTransition];
+            if (isConcreteState(transition.to)) {
+                break;
+            }
+        }
+
+        // If all transitions are route. Consume nothing.
+        if (iTransition < 0) {
+            return 0.0;
+        }
+
+        let maxConsumedTime = 0.0;
+        let lastTransitionIndex = iTransition;
+        for (; iTransition >= 0; --iTransition) {
+            // Find until we met the first concrete state or the very first state.
+            /** Subsequence head or the very first state. */
+            let firstState: NodeEval;
+            if (iTransition === 0) {
+                firstState = veryFirstState;
+            } else {
+                firstState = currentTransitions[iTransition - 1].to;
+                if (!(isConcreteState(firstState) || firstState.kind === NodeKind.transitionSnapshot)) {
+                    continue;
+                }
             }
 
-            const firstTransition = currentTransitionPath[firstTransitionIndex];
+            const firstTransitionIndex = iTransition;
+            const firstTransition = currentTransitions[firstTransitionIndex];
+            const lastTransition = currentTransitions[lastTransitionIndex];
+
+            const { to: toState } = lastTransition;
+            assertIsTrue(isConcreteState(toState));
 
             // Update the subpath.
             const updateConsumed = this._updateTransition(
@@ -1289,7 +1309,7 @@ class LayerEval {
             );
             maxConsumedTime = Math.max(maxConsumedTime, updateConsumed);
 
-            // Drop the subpath if it's done.
+            // Once the transition is done, all previous transitions should be dropped.
             const done = approx(firstTransition.normalizedElapsedTime, 1.0, 1e-6);
             if (done) {
                 if (firstState.kind === NodeKind.transitionSnapshot) {
@@ -1298,14 +1318,14 @@ class LayerEval {
 
                 this._dropTransitions(
                     firstState,
-                    firstTransitionIndex,
-                    iCurrentTransition,
+                    lastTransitionIndex,
                     true,
                 );
+
+                break;
             }
 
-            firstState = toState;
-            firstTransitionIndex = iCurrentTransition + 1;
+            lastTransitionIndex = iTransition - 1;
         }
 
         return maxConsumedTime;
@@ -1368,27 +1388,24 @@ class LayerEval {
     }
 
     /**
-     * Drops the transitions from `firstTransitionIndex` to `lastTransitionIndex` in `this._currentTransitionPath`.
+     * Drops the transitions from `0` to `lastTransitionIndex` in `this._currentTransitionPath`.
      * @note This methods may modifies the length of `this._currentTransitionPath`.
      */
     private _dropTransitions (
         firstState: NodeEval,
-        firstTransitionIndex: number,
         lastTransitionIndex: number,
         inactivate: boolean,
     ) {
         const { _currentTransitionPath: currentTransitionPath } = this;
 
-        assertIsTrue(lastTransitionIndex >= firstTransitionIndex);
-        assertIsTrue(firstTransitionIndex >= 0 && firstTransitionIndex < currentTransitionPath.length);
         assertIsTrue(lastTransitionIndex >= 0 && lastTransitionIndex < currentTransitionPath.length);
 
-        const lenSubpath = (lastTransitionIndex - firstTransitionIndex) + 1;
+        const lenSubpath = (lastTransitionIndex - 0) + 1;
         const toState = currentTransitionPath[lastTransitionIndex].to;
 
         // Call exist hooks on call states on the subpath.
         this._callExitMethods(firstState);
-        for (let iTransition = firstTransitionIndex; iTransition <= lastTransitionIndex; ++iTransition) {
+        for (let iTransition = 0; iTransition <= lastTransitionIndex; ++iTransition) {
             const transition = currentTransitionPath[iTransition];
             const { to } = transition;
             if (to.kind === NodeKind.exit) {
@@ -1406,13 +1423,13 @@ class LayerEval {
             toState.finishTransition();
         }
         if (DEBUG) {
-            for (let iTransition = firstTransitionIndex; iTransition <= lastTransitionIndex; ++iTransition) {
+            for (let iTransition = 0; iTransition <= lastTransitionIndex; ++iTransition) {
                 currentTransitionPath[iTransition].normalizedElapsedTime = Number.NaN;
             }
         }
 
         // Splice the subpath.
-        if (firstTransitionIndex === 0 && lastTransitionIndex === currentTransitionPath.length - 1) {
+        if (lastTransitionIndex === currentTransitionPath.length - 1) {
             // Optimize for the usual case: there's only one transition.
             currentTransitionPath.length = 0;
         } else {
@@ -1423,10 +1440,8 @@ class LayerEval {
             currentTransitionPath.length -= lenSubpath;
         }
 
-        // If we're removing first subpath. Redefine the very first state.
-        if (firstTransitionIndex === 0) {
-            this._currentNode = toState;
-        }
+        // Redefine the very first state.
+        this._currentNode = toState;
 
         // If there's no transition any more. Do some works.
         if (currentTransitionPath.length === 0) {
@@ -1437,7 +1452,6 @@ class LayerEval {
     private _dropAllTransitions (inactivate: boolean) {
         this._dropTransitions(
             this._currentNode,
-            0,
             this._currentTransitionPath.length - 1,
             inactivate,
         );
@@ -1544,7 +1558,9 @@ class LayerEval {
 
         assertIsTrue(currentTransitionPath.length !== 0);
         const currentTransition = currentTransitionPath[0];
-        const { interruption } = currentTransition;
+        const interruption = this._interruptionBehavior === InterruptionBehavior.CONCURRENT
+            ? TransitionInterruptionSource.NEXT_STATE
+            : currentTransition.interruption;
         if (interruption === TransitionInterruptionSource.NONE) {
             return null;
         }
