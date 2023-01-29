@@ -97,7 +97,10 @@ export class AnimationGraphEval {
 
         this._layerEvaluations = graph.layers.map((layer) => {
             const stateMachineEval = new LayerEval(
-                layer,
+                layer.name,
+                layer.stateMachine,
+                layer.mask,
+                layer.additive,
                 bindingContext,
                 clipOverrides,
                 controller,
@@ -430,8 +433,6 @@ type TriggerResetFn = (name: string) => void;
 class LayerEval {
     public declare name: string;
 
-    public declare weight: number;
-
     public passthroughWeight = 1.0;
 
     /** Used by top level eval. */
@@ -446,18 +447,20 @@ class LayerEval {
     }
 
     constructor (
-        layer: Layer,
+        name: string,
+        stateMachine: StateMachine,
+        mask: AnimationMask | null,
+        additive: boolean,
         context: AnimationGraphBindingContext,
         clipOverrides: ReadonlyClipOverrideMap | null,
         controller: AnimationController,
         triggerResetFn: TriggerResetFn,
         interruptionBehavior: InterruptionBehavior,
     ) {
-        const isAdditiveLayer = layer.additive;
+        const isAdditiveLayer = additive;
 
-        this.name = layer.name;
+        this.name = name;
         this._controller = controller;
-        this.weight = layer.weight;
         this.additive = isAdditiveLayer;
         const myContext: AnimationGraphLayerWideBindingContext = {
             outerContext: context,
@@ -471,19 +474,19 @@ class LayerEval {
             triggerResetFn,
         );
         const { entry, exit } = this._addStateMachine(
-            layer.stateMachine,
+            stateMachine,
             null,
             myContext,
             poseExprBindContext,
             clipOverrides,
-            layer.name,
+            name,
         );
         this._topLevelEntry = entry;
         this._topLevelExit = exit;
         this._currentNode = entry;
         this._resetTrigger = triggerResetFn;
 
-        this._mask = layer.mask;
+        this._mask = mask;
         // !!!!TODO
         this._interruptionBehavior = TEST ? interruptionBehavior : InterruptionBehavior.CONCURRENT;
     }

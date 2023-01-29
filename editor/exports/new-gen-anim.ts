@@ -47,3 +47,7 @@ export {
     getPoseInputFieldMeta,
     setPoseInputField,
 } from '../../cocos/animation/marionette/pose-expressions/decorator';
+
+export {
+    StateMachineExpr,
+} from '../../cocos/animation/marionette/pose-expressions/state-machine';

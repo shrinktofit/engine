@@ -237,6 +237,20 @@ export class EmptyStateTransition extends Transition {
 export class PoseExprState extends State {
     @serializable
     public poseExprGraph = new PoseExprGraph();
+
+    /**
+     * // TODO: HACK
+     * @internal
+     */
+    public __callOnAfterDeserializeRecursive () {
+        for (const poseExpr of this.poseExprGraph.exprs()) {
+            if ('__callOnAfterDeserializeRecursive' in poseExpr) {
+                (poseExpr as unknown as {
+                    __callOnAfterDeserializeRecursive(): void;
+                }).__callOnAfterDeserializeRecursive();
+            }
+        }
+    }
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseExprTransition`)
@@ -328,6 +342,8 @@ export class StateMachine extends EditorExtendable {
             const state = this._states[iState];
             if (state instanceof SubStateMachine) {
                 state.stateMachine.__callOnAfterDeserializeRecursive();
+            } else if (state instanceof PoseExprState) {
+                state.__callOnAfterDeserializeRecursive();
             }
         }
 

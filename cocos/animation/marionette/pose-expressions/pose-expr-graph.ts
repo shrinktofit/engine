@@ -47,7 +47,7 @@ export class PoseExprGraph extends EditorExtendable {
         js.array.remove(this._exprs, poseExpr);
     }
 
-    public xNodes() {
+    public xNodes () {
         return this._xNodes.values();
     }
 
