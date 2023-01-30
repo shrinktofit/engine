@@ -24,7 +24,7 @@ describe(`Use normalized time`, () => {
         layer.stateMachine.connect(layer.stateMachine.entryState, poseExprState);
 
         poseExpr.motion = fixture.animation.createMotion(observer.getCreateMotionContext());
-        poseExpr.time.value = 0.2;
+        poseExpr.time = 0.2;
         poseExpr.useNormalizedTime = useNormalizedTime;
 
         const evalMock = new AnimationGraphEvalMock(observer.root, graph);

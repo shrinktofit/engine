@@ -7,7 +7,6 @@ import { Motion, MotionEval, MotionPort } from '../motion';
 import { PoseExpr, PoseExprBindingContext } from './pose-expr';
 import { Pose } from '../../core/pose';
 import { AnimationGraphEvaluationContext } from '../animation-graph-context';
-import { XNodeConstantNumber } from '../x-node/constant-node';
 import { xLink } from '../x-node/x-node-link';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}SampleMotionExpr`)
@@ -19,7 +18,7 @@ export class SampleMotionExpr extends PoseExpr {
     @serializable
     @editable
     @xLink
-    public time = new XNodeConstantNumber();
+    public time = 0.0;
 
     @serializable
     @editable
@@ -38,14 +37,14 @@ export class SampleMotionExpr extends PoseExpr {
         this._workspace = workspace;
     }
 
-    public evaluate (context: AnimationGraphEvaluationContext): Pose {
+    public selfEvaluate (context: AnimationGraphEvaluationContext): Pose {
         const { _workspace: workspace } = this;
 
         if (!workspace) {
             return context.pushDefaultedPose();
         }
 
-        const time = this.time.evaluate();
+        const time = this.time;
         const normalizedTime = this.useNormalizedTime
             ? time
             : time / workspace.motionEval.duration;

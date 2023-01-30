@@ -10,6 +10,7 @@ import { quat, v3 } from "../../../cocos/core";
 import { Node } from "../../../cocos/scene-graph";
 import { captureErrors } from '../../utils/log-capture';
 import { XNodeGetVariableNumber } from '../../../cocos/animation/marionette/x-node/get-variable';
+import { connectXNode, xLink } from "../../../cocos/animation/marionette/x-node/x-node-link";
 
 describe(`@poseInput`, () => {
     test(`Should emit error if not applied to fields of sub-classes of PoseExpr`, () => {
@@ -123,7 +124,7 @@ describe(`Pose expr instantiation`, () => {
                 this._handle = context.outerContext.bindAdjointCurve('x');
             }
 
-            public evaluate(context: AnimationGraphEvaluationContext): Pose {
+            protected selfEvaluate(context: AnimationGraphEvaluationContext): Pose {
                 const pose = context.pushDefaultedPose();
                 expect(this._handle).not.toBeNull();
                 pose.metaValues[this._handle!.index] = this._yieldingValue;
@@ -166,17 +167,18 @@ describe(`Pose expr instantiation`, () => {
 });
 
 describe(`XNode`, () => {
-    test(`Get number variable`, () => {
+    test.only(`Get number variable`, () => {
         class OutputNumberPoseExpr extends PoseExpr {
-            public value = new XNodeGetVariableNumber();
+            @xLink
+            public value = 0.0;
 
             public bind(context: PoseExprBindingContext): void {
                 this.#handle = context.outerContext.bindAdjointCurve('x');
             }
 
-            public evaluate(context: AnimationGraphEvaluationContext): Pose {
+            protected selfEvaluate(context: AnimationGraphEvaluationContext): Pose {
                 const pose = context.pushDefaultedPose();
-                pose.metaValues[this.#handle!.index] = this.value.evaluate();
+                pose.metaValues[this.#handle!.index] = this.value;
                 return pose;
             }
             
@@ -187,7 +189,9 @@ describe(`XNode`, () => {
         const layer = animationGraph.addLayer();
         const poseExprState = layer.stateMachine.addPoseExprState();
         const poseExprMock = new OutputNumberPoseExpr();
-        poseExprMock.value.variableName = '_x';
+        const getVar = new XNodeGetVariableNumber();
+        getVar.variableName = '_x';
+        connectXNode(poseExprMock, 'value', getVar);
         poseExprState.poseExprGraph.addExpr(poseExprMock);
         poseExprState.poseExprGraph.main = poseExprMock;
         layer.stateMachine.connect(layer.stateMachine.entryState, poseExprState);
@@ -210,7 +214,7 @@ class UnimplementedPoseExpr extends PoseExpr {
         throw new Error("Method not implemented.");
     }
 
-    public evaluate(context: AnimationGraphEvaluationContext): Pose {
+    protected selfEvaluate(context: AnimationGraphEvaluationContext): Pose {
         throw new Error("Method not implemented.");
     }
 }

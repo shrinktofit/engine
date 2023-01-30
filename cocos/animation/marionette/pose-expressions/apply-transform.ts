@@ -4,7 +4,6 @@ import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSe
 import { poseInput } from './decorator';
 import { ccenum, error, Quat, Vec3 } from '../../../core';
 import { TransformHandle } from '../../core/animation-handle';
-import { XNodeConstantQuat, XNodeConstantVec3 } from '../x-node/constant-node';
 import { xLink } from '../x-node/x-node-link';
 
 enum TransformApplyFlag {
@@ -35,7 +34,7 @@ export class ApplyTransform extends PoseExpr {
     @serializable
     @editable
     @xLink
-    public position = new XNodeConstantVec3();
+    public position = new Vec3();
 
     @serializable
     @editable
@@ -44,7 +43,7 @@ export class ApplyTransform extends PoseExpr {
 
     @serializable
     @editable
-    public rotation = new XNodeConstantQuat();
+    public rotation = new Quat();
 
     public bind (context: PoseExprBindingContext) {
         const {
@@ -74,7 +73,7 @@ export class ApplyTransform extends PoseExpr {
         this.input?.update(deltaTime);
     }
 
-    public evaluate (context: PoseExprEvaluationContext) {
+    public selfEvaluate (context: PoseExprEvaluationContext) {
         const {
             _transformHandle: transformHandle,
             positionApplyFlag,
@@ -96,11 +95,11 @@ export class ApplyTransform extends PoseExpr {
         case TransformApplyFlag.LEAVE_UNCHANGED:
             break;
         case TransformApplyFlag.REPLACE:
-            inputPose.transforms.setPosition(transformIndex, position.evaluate());
+            inputPose.transforms.setPosition(transformIndex, position);
             break;
         case TransformApplyFlag.ADD: {
             const inputPosition = inputPose.transforms.getPosition(transformIndex, POSITION_CACHE);
-            Vec3.add(inputPosition, inputPosition, position.evaluate());
+            Vec3.add(inputPosition, inputPosition, position);
             inputPose.transforms.setPosition(transformIndex, inputPosition);
             break;
         }
@@ -111,11 +110,11 @@ export class ApplyTransform extends PoseExpr {
         case TransformApplyFlag.LEAVE_UNCHANGED:
             break;
         case TransformApplyFlag.REPLACE:
-            inputPose.transforms.setRotation(transformIndex, rotation.evaluate());
+            inputPose.transforms.setRotation(transformIndex, rotation);
             break;
         case TransformApplyFlag.ADD: {
             const inputRotation = inputPose.transforms.getRotation(transformIndex, ROTATION_CACHE);
-            Quat.multiply(inputRotation, rotation.evaluate(), inputRotation);
+            Quat.multiply(inputRotation, rotation, inputRotation);
             inputPose.transforms.setRotation(transformIndex, inputRotation);
             break;
         }

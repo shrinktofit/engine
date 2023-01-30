@@ -29,7 +29,7 @@ export class DefaultTopLevelPose extends PoseExpr {
         }
     }
 
-    public evaluate (context: AnimationGraphEvaluationContext): Pose {
+    public selfEvaluate (context: AnimationGraphEvaluationContext): Pose {
         const finalPose = context.pushDefaultedPose();
         for (const layer of this._layerRecords) {
             const layerPose = layer.stateMachineEvaluation.evaluate(context);

@@ -1,66 +1,65 @@
 import { clamp } from '../../../../../core';
 import { ccclass, editable, serializable } from '../../../../../core/data/decorators';
-import { XNodeConstantNumber } from '../../constant-node';
-import { XNode } from '../../x-node';
+import { SingleOutputXNode } from '../../x-node';
 import { xLink } from '../../x-node-link';
 import { CLASS_NAME_PREFIX_X_NODE_MATH } from './prefix';
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODE_MATH}XNodeMin`)
-export class XNodeMin extends XNode<number> {
+export class XNodeMin extends SingleOutputXNode<number> {
     @serializable
     @editable
     @xLink
-    public value0 = new XNodeConstantNumber();
+    public value0 = 0.0;
 
     @serializable
     @editable
     @xLink
-    public value1 = new XNodeConstantNumber();
+    public value1 = 0.0;
 
-    public evaluate () {
-        return Math.min(this.value0.evaluate(), this.value1.evaluate());
+    public selfEvaluateDefaultOutput () {
+        return Math.min(this.value0, this.value1);
     }
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODE_MATH}XNodeMax`)
-export class XNodeMax extends XNode<number> {
+export class XNodeMax extends SingleOutputXNode<number> {
     @serializable
     @editable
     @xLink
-    public value0 = new XNodeConstantNumber();
+    public value0 = 0.0;
 
     @serializable
     @editable
     @xLink
-    public value1 = new XNodeConstantNumber();
+    public value1 = 0.0;
 
-    public evaluate () {
-        return Math.max(this.value0.evaluate(), this.value1.evaluate());
+    public selfEvaluateDefaultOutput () {
+        return Math.max(this.value0, this.value1);
     }
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODE_MATH}XNodeClamp`)
-export class XNodeClamp extends XNode<number> {
+export class XNodeClamp extends SingleOutputXNode<number> {
     @serializable
     @editable
     @xLink
-    public input = new XNodeConstantNumber();
+    public input = 0.0;
 
     @serializable
     @editable
     @xLink
-    public min = new XNodeConstantNumber(0);
+    public min = 0.0;
 
     @serializable
     @editable
     @xLink
-    public max = new XNodeConstantNumber(1);
+    public max = 0.0;
 
-    public evaluate () {
+    public selfEvaluateDefaultOutput () {
         return clamp(
-            this.input.evaluate(),
-            this.min.evaluate(),
-            this.max.evaluate(),
+            this.input,
+            this.min,
+            this.max,
         );
     }
 }

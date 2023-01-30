@@ -22,12 +22,7 @@ function iterateAllXNodes (
     if (object instanceof XNode) {
         callback(object);
     }
-    for (const key in object) {
-        const value = object[key];
-        if (value && typeof value === 'object') {
-            if (value instanceof PoseExpr || value instanceof XNode) {
-                iterateAllXNodes(value, callback, visited);
-            }
-        }
+    for (const [_, binding] of Object.entries(object._bindings)) {
+        iterateAllXNodes(binding.target, callback, visited);
     }
 }

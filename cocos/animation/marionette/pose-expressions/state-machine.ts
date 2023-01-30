@@ -41,7 +41,7 @@ export class StateMachineExpr extends PoseExpr {
         stateMachineEval._update(deltaTime);
     }
 
-    public evaluate (context: AnimationGraphEvaluationContext): Pose {
+    public selfEvaluate (context: AnimationGraphEvaluationContext): Pose {
         const { _stateMachineEval: stateMachineEval } = this;
         assertIsTrue(stateMachineEval);
         return stateMachineEval.evaluate(context);

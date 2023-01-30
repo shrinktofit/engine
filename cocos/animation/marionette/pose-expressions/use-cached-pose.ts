@@ -30,7 +30,7 @@ export class UseCachedPose extends PoseExpr {
         throw new Error(`Not impl`);
     }
 
-    public evaluate (context: PoseExprEvaluationContext): Pose {
+    public selfEvaluate (context: PoseExprEvaluationContext): Pose {
         throw new Error(`Not impl`);
     }
 }

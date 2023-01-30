@@ -29,7 +29,7 @@ export class MotionExpr extends PoseExpr {
         }
     }
 
-    public evaluate (context: PoseExprEvaluationContext) {
+    public selfEvaluate (context: PoseExprEvaluationContext) {
         if (!this._workspace) {
             return context.pushDefaultedPose();
         } else {

@@ -6,6 +6,7 @@ import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import type { AnimationController, ReadonlyClipOverrideMap } from '../animation-controller';
 import { AnimationGraphBindingContext, AnimationGraphEvaluationContext } from '../animation-graph-context';
 import { AnimationMask } from '../animation-mask';
+import { XNodeBase } from '../x-node/x-node';
 
 export class PoseExprBindingContext {
     constructor (
@@ -41,7 +42,7 @@ export class PoseExprBindingContext {
 export type PoseExprEvaluationContext = AnimationGraphEvaluationContext;
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseExpr`)
-export abstract class PoseExpr extends EditorExtendable {
+export abstract class PoseExpr extends XNodeBase {
     public abstract bind(context: PoseExprBindingContext): void;
 
     public settle (context: PoseExprSettleContext): void {
@@ -50,7 +51,12 @@ export abstract class PoseExpr extends EditorExtendable {
     public update (deltaTime: number): void {
     }
 
-    public abstract evaluate(context: PoseExprEvaluationContext): Pose;
+    public evaluate (context: PoseExprEvaluationContext) {
+        this._evaluateBindings();
+        return this.selfEvaluate(context);
+    }
+
+    protected abstract selfEvaluate(context: PoseExprEvaluationContext): Pose;
 }
 
 export abstract class PoseExprSettleContext {

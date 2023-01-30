@@ -2,17 +2,13 @@
 
 import { BabelPropertyDecoratorDescriptor } from '../../../core/data/decorators/utils';
 import type { PoseExpr } from '../pose-expressions/pose-expr';
-import { XNodeConstant } from './constant-node';
-import { XNode } from './x-node';
+import { XNode, XNodeBase, XNodePropertyBinding } from './x-node';
 
-type Initializer = () => void;
-
-const linkMap = new WeakMap<Function, Record<PropertyKey, Initializer | undefined>>();
+const linkMap = new WeakMap<Function, Set<string>>();
 
 export const xLink = ((
     target: Parameters<PropertyDecorator>[0],
     propertyKey: Parameters<PropertyDecorator>[1],
-    descriptor: BabelPropertyDecoratorDescriptor,
 ) => {
     if (typeof propertyKey !== 'string') {
         throw new Error(`Only property key is allowed for @xLink.`);
@@ -20,22 +16,16 @@ export const xLink = ((
     const { constructor } = target;
     let links = linkMap.get(constructor);
     if (!links) {
-        links = {};
+        links = new Set<string>();
         linkMap.set(constructor, links);
     }
-    links[propertyKey] = descriptor.initializer;
+    links.add(propertyKey);
 }) as unknown as PropertyDecorator;
 
-export function resetXLinksTo (source: object, to: XNode<any>) {
-    const constructor = source.constructor;
-    const links = linkMap.get(constructor);
-    if (!links) {
-        return;
-    }
-    for (const linkKey in links) {
-        const target = source[linkKey];
-        if (target === to) {
-            source[linkKey] = links[linkKey]?.();
+export function resetXLinksTo (source: XNodeBase, to: XNode<any>) {
+    for (const [propertyKey, binding] of Object.entries(source._bindings)) {
+        if (binding.target === to) {
+            delete source._bindings[propertyKey];
         }
     }
 }
@@ -50,26 +40,21 @@ export function* getIncomingXNodeLinks (destination: XLinkDestination): Iterable
     if (!links) {
         return;
     }
-    for (const [linkId, _link] of Object.entries(links)) {
-        let source = destination[linkId];
-        // A constant x-node means no connection.
-        if (source instanceof XNodeConstant) {
-            source = undefined;
-        }
-        yield [linkId, {
-            source,
-        } as XNodeIncomingLink] as const;
+    for (const propertyKey of links) {
+        yield [propertyKey, {
+            binding: destination._bindings[propertyKey],
+        }];
     }
 }
 
-export function connectXNode (destination: XLinkDestination, linkId: XNodeLinkID, source: XNode<unknown>) {
+export function connectXNode (destination: XLinkDestination, linkId: XNodeLinkID, source: XNode<unknown>, outputIndex = 0) {
     const constructor = destination.constructor;
     const links = linkMap.get(constructor);
     if (!links) {
         return;
     }
-    if (linkId in links) {
-        destination[linkId] = source;
+    if (links.has(linkId)) {
+        destination._bindings[linkId] = new XNodePropertyBinding(source, outputIndex);
     }
 }
 
@@ -79,13 +64,14 @@ export function disconnectXNode (destination: XLinkDestination, linkId: XNodeLin
     if (!links) {
         return;
     }
-    if (linkId in links) {
-        const initializer = links[linkId];
-        destination[linkId] = initializer?.();
+    if (links.has(linkId)) {
+        delete destination._bindings[linkId];
     }
 }
 
 export interface XNodeIncomingLink {
-    readonly source?: XNode<unknown>;
+    readonly binding?: XNodeIncomingLinkBinding<unknown>;
     readonly displayName?: string;
 }
+
+export type XNodeIncomingLinkBinding<TValue> = Pick<XNodePropertyBinding<TValue>, 'target' | 'outputIndex'>;

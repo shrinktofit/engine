@@ -1,18 +1,17 @@
 import { ccclass, editable, serializable } from '../../../../../core/data/decorators';
-import { XNodeConstantNumber } from '../../constant-node';
-import { XNode } from '../../x-node';
+import { SingleOutputXNode, XNode } from '../../x-node';
 import { xLink } from '../../x-node-link';
 import { CLASS_NAME_PREFIX_X_NODE_MATH } from './prefix';
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODE_MATH}XNodeUnaryNumericExpr`)
-export abstract class XNodeUnaryNumericExpr extends XNode<number> {
+export abstract class XNodeUnaryNumericExpr extends SingleOutputXNode<number> {
     @serializable
     @editable
     @xLink
-    public input = new XNodeConstantNumber();
+    public input = 0.0;
 
-    public evaluate () {
-        return this.evaluateValue(this.input.evaluate());
+    public selfEvaluateDefaultOutput () {
+        return this.evaluateValue(this.input);
     }
 
     protected abstract evaluateValue(value: number): number;

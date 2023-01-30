@@ -36,7 +36,7 @@ export class AddPose extends PoseExpr {
         this.addition?.update(deltaTime);
     }
 
-    public evaluate (context: PoseExprEvaluationContext) {
+    public selfEvaluate (context: PoseExprEvaluationContext) {
         const basePose = this.base?.evaluate(context) ?? context.pushDefaultedPose();
         if (!this.addition) {
             return basePose;
