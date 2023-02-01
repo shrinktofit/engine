@@ -1377,14 +1377,20 @@ class LayerEval {
 
         const shouldUpdatePorts = contrib !== 0;
 
-        if (fromState.kind === NodeKind.animation && shouldUpdatePorts) {
-            fromState.updateFromPort(contrib);
-            this._fromUpdated = true;
-        }
+        if (shouldUpdatePorts) {
+            if (fromState.kind === NodeKind.animation) {
+                fromState.updateFromPort(contrib);
+                this._fromUpdated = true;
+            } else if (fromState.kind === NodeKind.poseExpr) {
+                fromState.update(contrib);
+            }
 
-        if (toState.kind === NodeKind.animation && shouldUpdatePorts) {
-            toState.updateToPort(contrib);
-            this._toUpdated = true;
+            if (toState.kind === NodeKind.animation) {
+                toState.updateToPort(contrib);
+                this._toUpdated = true;
+            } else if (toState.kind === NodeKind.poseExpr) {
+                toState.update(contrib);
+            }
         }
 
         return contrib;
