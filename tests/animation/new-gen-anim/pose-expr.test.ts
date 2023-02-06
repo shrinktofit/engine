@@ -101,6 +101,40 @@ describe(`@poseInput`, () => {
             displayName: 'SomeDisPlayName',
         });
     });
+
+    test.only(`Pose array input`, () => {
+        class Expr extends UnimplementedPoseExpr {
+            @poseInput({ isArray: true })
+            inputs: Array<PoseExpr | null> = [];
+        }
+
+        class InputPoseExpr extends UnimplementedPoseExpr {
+        }
+
+        const expr1 = new Expr();
+        expect(getPoseInputFieldKeys(expr1)).toStrictEqual([]);
+
+        expr1.inputs.length = 1;
+        expect(getPoseInputFieldKeys(expr1)).toStrictEqual(['inputs/0']);
+        expect(hasPoseInputField(expr1, getPoseInputFieldKeys(expr1)[0])).toBe(true);
+
+        expr1.inputs.length = 3;
+        expect(getPoseInputFieldKeys(expr1)).toStrictEqual(['inputs/0', 'inputs/1', 'inputs/2']);
+        for (const key of getPoseInputFieldKeys(expr1)) {
+            expect(hasPoseInputField(expr1, key)).toBe(true);
+        }
+
+        // Delete a middle element.
+        {
+            const lastKey = getPoseInputFieldKeys(expr1)[2];
+            expr1.inputs.splice(1, 1);
+            expect(getPoseInputFieldKeys(expr1)).toStrictEqual(['inputs/0', 'inputs/1']);
+            for (const key of getPoseInputFieldKeys(expr1)) {
+                expect(hasPoseInputField(expr1, key)).toBe(true);
+            }
+            expect(hasPoseInputField(expr1, lastKey)).toBe(false);
+        }
+    });
 });
 
 describe(`Pose expr base class`, () => {

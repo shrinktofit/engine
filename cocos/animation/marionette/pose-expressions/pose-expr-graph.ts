@@ -2,8 +2,8 @@ import { EditorExtendable, js, warn } from '../../../core';
 import { ccclass, serializable } from '../../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import { XNode } from '../x-node/x-node';
-import { resetXLinksTo } from '../x-node/x-node-link';
-import { getPoseInputField, getPoseInputFieldKeys, setPoseInputField } from './decorator';
+import { resetXLinksTo } from '../x-node/x-node-binding';
+import { disconnectPose, getPoseInputBinding, getPoseInputKeys } from './pose-expr-binding';
 import { PoseExpr } from './pose-expr';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseExprGraph`)
@@ -45,9 +45,9 @@ export class PoseExprGraph extends EditorExtendable {
     public removeExpr (poseExpr: PoseExpr) {
         // Disconnect from others.
         for (const expr of this._exprs) {
-            for (const inputKey of getPoseInputFieldKeys(expr)) {
-                if (getPoseInputField(expr, inputKey) === expr) {
-                    setPoseInputField(expr, inputKey, null);
+            for (const inputKey of getPoseInputKeys(expr)) {
+                if (getPoseInputBinding(expr, inputKey) === expr) {
+                    disconnectPose(expr, inputKey);
                 }
             }
         }

@@ -2,7 +2,7 @@ import { ccclass, serializable } from '../../../core/data/decorators';
 import { applyDeltaPose } from '../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSettleContext } from './pose-expr';
-import { poseInput } from './decorator';
+import { poseInput } from './pose-expr-binding';
 
 /**
  * Add an additional pose onto a base pose.

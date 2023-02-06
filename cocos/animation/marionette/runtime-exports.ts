@@ -38,6 +38,7 @@ import './pose-expressions/use-cached-pose';
 import './pose-expressions/apply-transform';
 import './pose-expressions/sample-motion';
 import './pose-expressions/state-machine';
+import './pose-expressions/blend-in-proportion';
 
 import './x-node/get-variable';
 import './x-node/builtin/math/general';

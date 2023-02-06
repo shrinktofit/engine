@@ -9,14 +9,147 @@ export class XNodeBase extends EditorExtendable {
     public link (context: XNodeLinkContext) {
     }
 
+    /**
+     * @internal
+     */
     @serializable
-    public _bindings: Record<string, XNodePropertyBinding<unknown>> = {};
+    public _bindings: XNodePropertyBinding[] = [];
+
+    /**
+     * @internal
+     */
+    public _addBinding (propertyKey: string, source: XNode<unknown>, outputIndex: number) {
+        this._emplaceBinding(new XNodePropertyBinding(
+            propertyKey,
+            -1,
+            source,
+            outputIndex,
+        ));
+    }
+
+    /**
+     * @internal
+     */
+    public _addArrayElementBinding (propertyKey: string, elementIndex: number, source: XNode<unknown>, outputIndex: number) {
+        this._emplaceBinding(new XNodePropertyBinding(
+            propertyKey,
+            elementIndex,
+            source,
+            outputIndex,
+        ));
+    }
+
+    /**
+     * @internal
+     */
+    public _deleteBinding (propertyKey: string) {
+        const index = this._findBindingIndex(propertyKey, -1);
+        if (index >= 0) {
+            this._bindings.splice(index);
+        }
+    }
+
+    /**
+     * @internal
+     */
+    public _deleteArrayElementBinding (propertyKey: string, elementIndex: number) {
+        const index = this._findBindingIndex(propertyKey, elementIndex);
+        if (index >= 0) {
+            this._bindings.splice(index);
+        }
+    }
+
+    /**
+     * @internal
+     */
+    public _moveArrayElementBindingForward (propertyKey: string, firstIndex: number, forward: boolean) {
+        // TODO: this method has worse performance!
+        const { _bindings: bindings } = this;
+
+        const oldBindings: XNodePropertyBinding[] = [];
+        for (let iBinding = 0;
+            iBinding < bindings.length; // Note: array length may be varied.
+            ++iBinding
+        ) {
+            const binding = bindings[iBinding];
+            if (binding.consumerPropertyKey === propertyKey && binding.consumerElementIndex >= firstIndex) {
+                oldBindings.push(binding);
+                bindings.splice(iBinding, 1);
+            }
+        }
+
+        for (const oldBinding of oldBindings) {
+            this._addArrayElementBinding(
+                oldBinding.consumerPropertyKey,
+                oldBinding.consumerElementIndex + (forward ? -1 : 1),
+                oldBinding.target,
+                oldBinding.outputIndex,
+            );
+        }
+    }
+
+    /**
+     * @internal
+     */
+    public _deleteBindingTo (producer: XNode<unknown>) {
+        const { _bindings: bindings } = this;
+        for (let iBinding = 0;
+            iBinding < bindings.length; // Note: array length might vary
+            ++iBinding
+        ) {
+            const binding = bindings[iBinding];
+            if (binding.target === producer) {
+                bindings.splice(iBinding, 1);
+            }
+        }
+    }
+
+    /**
+     * @internal
+     */
+    public _findBinding (propertyKey: string): XNodePropertyBinding | undefined {
+        return this._bindings.find(
+            (binding) => binding.consumerPropertyKey === propertyKey,
+        );
+    }
+
+    /**
+     * @internal
+     */
+    public _findArrayElementBinding (propertyKey: string, elementIndex: number): XNodePropertyBinding | undefined {
+        return this._bindings.find(
+            (binding) => binding.consumerPropertyKey === propertyKey && binding.consumerElementIndex === elementIndex,
+        );
+    }
 
     protected _evaluateBindings () {
-        for (const propertyKey in this._bindings) {
-            const binding = this._bindings[propertyKey];
+        for (const binding of this._bindings) {
+            const output = binding.evaluate();
             // TODO:JIT?
-            this[propertyKey] = binding.evaluate();
+            if (binding.consumerElementIndex < 0) {
+                this[binding.consumerPropertyKey] = output;
+            } else if (Array.isArray(this[binding.consumerPropertyKey])) {
+                this[binding.consumerPropertyKey][binding.consumerElementIndex] = output;
+            }
+        }
+    }
+
+    private _findBindingIndex (propertyKey: string, elementIndex: number) {
+        return this._bindings.findIndex(
+            (searchElement) => searchElement.consumerPropertyKey === propertyKey
+                && searchElement.consumerElementIndex === elementIndex,
+        );
+    }
+
+    private _emplaceBinding (binding: XNodePropertyBinding) {
+        const index = this._bindings.findIndex(
+            (searchElement) => searchElement.consumerPropertyKey === binding.consumerPropertyKey
+                && searchElement.consumerElementIndex === binding.consumerElementIndex,
+        );
+        if (index >= 0) {
+            this._bindings[index] = binding;
+        } else {
+            this._bindings.push(binding);
         }
     }
 }
@@ -34,8 +167,6 @@ export abstract class XNode<TValue> extends XNodeBase {
     public getOutput (outputIndex: number) {
         return this._outputs[outputIndex];
     }
-
-    public _bindings: Record<string, XNodePropertyBinding<unknown>> = {};
 
     protected _outputs: unknown[];
 
@@ -62,10 +193,25 @@ export abstract class SingleOutputXNode<TValue> extends XNode<TValue> {
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}XNodePropertyBinding`)
-export class XNodePropertyBinding<TValue> {
-    constructor (target: XNode<TValue>, outputIndex: number) {
+class XNodePropertyBinding {
+    constructor (
+        consumerPropertyKey: string,
+        consumerElementIndex: number,
+        target: XNode<unknown>,
+        outputIndex: number,
+    ) {
+        this._consumerPropertyKey = consumerPropertyKey;
+        this._consumerElementIndex = consumerElementIndex;
         this._target = target;
         this._outputIndex = outputIndex;
+    }
+
+    get consumerPropertyKey () {
+        return this._consumerPropertyKey;
+    }
+
+    get consumerElementIndex () {
+        return this._consumerElementIndex;
     }
 
     get target () {
@@ -77,7 +223,13 @@ export class XNodePropertyBinding<TValue> {
     }
 
     @serializable
-    private _target: XNode<TValue>;
+    private _consumerPropertyKey = '';
+
+    @serializable
+    private _consumerElementIndex = -1;
+
+    @serializable
+    private _target: XNode<unknown>;
 
     @serializable
     private _outputIndex = 0;
@@ -87,6 +239,8 @@ export class XNodePropertyBinding<TValue> {
         return this._target.getOutput(this._outputIndex);
     }
 }
+
+export type { XNodePropertyBinding };
 
 export interface XNodeLinkContext {
     getVar(name: string): VarInstance | undefined;

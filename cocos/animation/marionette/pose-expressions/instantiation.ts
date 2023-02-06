@@ -6,6 +6,11 @@ import { PoseExpr } from './pose-expr';
 // 这是一个非常非常非常临时的 HACK 实现。需要重构
 export function instantiatePoseExpr (poseExpr: PoseExpr, xNodeLinkContext: XNodeLinkContext) {
     const instantiated = instantiate(poseExpr);
+    if ('__callOnAfterDeserializeRecursive' in instantiated) {
+        (instantiated as unknown as {
+            __callOnAfterDeserializeRecursive(): void;
+        }).__callOnAfterDeserializeRecursive();
+    }
     iterateAllXNodes(instantiated, (xNode) => {
         xNode.link(xNodeLinkContext);
     });
@@ -22,7 +27,7 @@ function iterateAllXNodes (
     if (object instanceof XNode) {
         callback(object);
     }
-    for (const [_, binding] of Object.entries(object._bindings)) {
+    for (const binding of object._bindings) {
         iterateAllXNodes(binding.target, callback, visited);
     }
 }

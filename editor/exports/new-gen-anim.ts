@@ -41,13 +41,5 @@ export {
 } from '../src/marionette/visit';
 
 export {
-    getPoseInputFieldKeys,
-    hasPoseInputField,
-    getPoseInputField,
-    getPoseInputFieldMeta,
-    setPoseInputField,
-} from '../../cocos/animation/marionette/pose-expressions/decorator';
-
-export {
     StateMachineExpr,
 } from '../../cocos/animation/marionette/pose-expressions/state-machine';

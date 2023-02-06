@@ -7,7 +7,7 @@ import { Motion, MotionEval, MotionPort } from '../motion';
 import { PoseExpr, PoseExprBindingContext } from './pose-expr';
 import { Pose } from '../../core/pose';
 import { AnimationGraphEvaluationContext } from '../animation-graph-context';
-import { xLink } from '../x-node/x-node-link';
+import { xLink } from '../x-node/x-node-binding';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}SampleMotionExpr`)
 export class SampleMotionExpr extends PoseExpr {
@@ -17,7 +17,7 @@ export class SampleMotionExpr extends PoseExpr {
 
     @serializable
     @editable
-    @xLink
+    @xLink()
     public time = 0.0;
 
     @serializable

@@ -1,10 +1,10 @@
 import { ccclass, editable, serializable, type } from '../../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSettleContext } from './pose-expr';
-import { poseInput } from './decorator';
+import { poseInput } from './pose-expr-binding';
 import { ccenum, error, Quat, Vec3 } from '../../../core';
 import { TransformHandle } from '../../core/animation-handle';
-import { xLink } from '../x-node/x-node-link';
+import { xLink } from '../x-node/x-node-binding';
 
 enum TransformApplyFlag {
     LEAVE_UNCHANGED,
@@ -33,7 +33,7 @@ export class ApplyTransform extends PoseExpr {
 
     @serializable
     @editable
-    @xLink
+    @xLink()
     public position = new Vec3();
 
     @serializable

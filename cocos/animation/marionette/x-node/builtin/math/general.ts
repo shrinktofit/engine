@@ -1,19 +1,19 @@
 import { clamp } from '../../../../../core';
 import { ccclass, editable, serializable } from '../../../../../core/data/decorators';
 import { SingleOutputXNode } from '../../x-node';
-import { xLink } from '../../x-node-link';
+import { xLink } from '../../x-node-binding';
 import { CLASS_NAME_PREFIX_X_NODE_MATH } from './prefix';
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODE_MATH}XNodeMin`)
 export class XNodeMin extends SingleOutputXNode<number> {
     @serializable
     @editable
-    @xLink
+    @xLink()
     public value0 = 0.0;
 
     @serializable
     @editable
-    @xLink
+    @xLink()
     public value1 = 0.0;
 
     public selfEvaluateDefaultOutput () {
@@ -25,12 +25,12 @@ export class XNodeMin extends SingleOutputXNode<number> {
 export class XNodeMax extends SingleOutputXNode<number> {
     @serializable
     @editable
-    @xLink
+    @xLink()
     public value0 = 0.0;
 
     @serializable
     @editable
-    @xLink
+    @xLink()
     public value1 = 0.0;
 
     public selfEvaluateDefaultOutput () {
@@ -42,17 +42,17 @@ export class XNodeMax extends SingleOutputXNode<number> {
 export class XNodeClamp extends SingleOutputXNode<number> {
     @serializable
     @editable
-    @xLink
+    @xLink()
     public input = 0.0;
 
     @serializable
     @editable
-    @xLink
+    @xLink()
     public min = 0.0;
 
     @serializable
     @editable
-    @xLink
+    @xLink()
     public max = 0.0;
 
     public selfEvaluateDefaultOutput () {
