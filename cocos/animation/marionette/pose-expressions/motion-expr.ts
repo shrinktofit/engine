@@ -1,3 +1,4 @@
+import { EDITOR } from 'internal:constants';
 import { ccclass, editable, serializable } from '../../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import { ClipMotion } from '../clip-motion';
@@ -55,4 +56,11 @@ class Workspace {
     }
 
     public normalizedTime = 0.0;
+}
+
+if (EDITOR) {
+    MotionExpr.prototype.getTitle = function getTitle (this: MotionExpr) {
+        const motionName = this.motion instanceof ClipMotion ? this.motion.clip?.name ?? '' : `混合动作`;
+        return motionName ? `播放 ${motionName}` : `播放动作`;
+    };
 }

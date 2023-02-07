@@ -1,3 +1,4 @@
+import { EDITOR } from 'internal:constants';
 import { editable, Quat, serializable, Vec3 } from '../../../core';
 import { ccclass } from '../../../core/data/class-decorator';
 import { VarInstance } from '../variable';
@@ -14,6 +15,12 @@ export abstract class XNodeGetVariable<T> extends SingleOutputXNode<T> {
     }
 
     protected _varInstance: VarInstance | undefined = undefined;
+}
+
+if (EDITOR) {
+    XNodeGetVariable.prototype.getTitle = function getTitle (this: XNodeGetVariable<any>) {
+        return `获取变量 ${this.variableName}`;
+    };
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODES}XNodeGetVariableNumber`)

@@ -1,3 +1,4 @@
+import { EDITOR } from 'internal:constants';
 import { warn } from '../../../core';
 import { ccclass, editable, serializable } from '../../../core/data/decorators';
 import { Pose } from '../../core/pose';
@@ -38,4 +39,10 @@ export class UseStashedPose extends PoseExpr {
     }
 
     private _runtimeStash: RuntimeStash | undefined = undefined;
+}
+
+if (EDITOR) {
+    UseStashedPose.prototype.getTitle = function getTitle (this: UseStashedPose) {
+        return `使用暂存的姿势 ${this.stashName}`;
+    };
 }

@@ -9,6 +9,8 @@ export class XNodeBase extends EditorExtendable {
     public link (context: XNodeLinkContext) {
     }
 
+    public getTitle?(): string;
+
     /**
      * @internal
      */
