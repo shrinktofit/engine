@@ -1,26 +1,27 @@
 import { warn } from '../../../core';
-import { ccclass, serializable } from '../../../core/data/decorators';
+import { ccclass, editable, serializable } from '../../../core/data/decorators';
 import { Pose } from '../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import { RuntimeStash } from '../stash/runtime-stash';
 import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSettleContext } from './pose-expr';
 
-@ccclass(`${CLASS_NAME_PREFIX_ANIM}UseCachedPose`)
-export class UseCachedPose extends PoseExpr {
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}UseStashedPose`)
+export class UseStashedPose extends PoseExpr {
     @serializable
-    public cacheName = '';
+    @editable
+    public stashName = '';
 
     public bind (context: PoseExprBindingContext) {
         const {
-            cacheName,
+            stashName,
         } = this;
 
-        // If cacheName is empty, silently ignore.
-        if (!cacheName) {
+        // If stashName is empty, silently ignore.
+        if (!stashName) {
             return;
         }
 
-        const runtimeStash = context.stashView.bindStash(cacheName);
+        const runtimeStash = context.stashView.bindStash(stashName);
         this._runtimeStash = runtimeStash;
     }
 
