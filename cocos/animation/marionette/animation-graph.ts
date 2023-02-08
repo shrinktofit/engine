@@ -22,7 +22,7 @@
  THE SOFTWARE.
 */
 
-import { ccclass, serializable } from 'cc.decorator';
+import { ccclass, editorOnly, serializable } from 'cc.decorator';
 import { DEBUG } from 'internal:constants';
 import { js, clamp, assertIsNonNullable, assertIsTrue, EditorExtendable, shift } from '../../core';
 import { MotionEval, MotionEvalContext } from './motion';
@@ -843,6 +843,27 @@ class TriggerVariable implements BasicVariableDescription<VariableType.TRIGGER> 
     private _flags = TRIGGER_VARIABLE_DEFAULT_FLAGS;
 }
 
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}EnumVariable`)
+class EnumVariable implements BasicVariableDescription<VariableType.ENUM> {
+    @editorOnly
+    public enumType: Readonly<Record<string, number>> = {};
+
+    get type () {
+        return VariableType.ENUM as const;
+    }
+
+    get value () {
+        return this._value;
+    }
+
+    set value (value) {
+        this._value = value;
+    }
+
+    @serializable
+    private _value = 0;
+}
+
 /**
  * @en
  * An opacity type which denotes what the animation graph seems like outside the engine.
@@ -863,14 +884,16 @@ interface BasicVariableDescription<TType> {
         TType extends VariableType.INTEGER ? number :
             TType extends VariableType.BOOLEAN ? boolean :
                 TType extends VariableType.TRIGGER ? boolean :
-                    never;
+                    TType extends VariableType.ENUM ? number :
+                        never;
 }
 
 export type VariableDescription =
     | BasicVariableDescription<VariableType.FLOAT>
     | BasicVariableDescription<VariableType.INTEGER>
     | BasicVariableDescription<VariableType.BOOLEAN>
-    | TriggerVariable;
+    | TriggerVariable
+    | EnumVariable;
 
 @ccclass('cc.animation.AnimationGraph')
 export class AnimationGraph extends AnimationGraphLike implements AnimationGraphRunTime {
@@ -972,6 +995,22 @@ export class AnimationGraph extends AnimationGraphLike implements AnimationGraph
     public addTrigger (name: string, value = false, resetMode = TriggerResetMode.AFTER_CONSUMED) {
         const variable = new TriggerVariable();
         variable.resetMode = resetMode;
+        variable.value = value;
+        this._variables[name] = variable;
+    }
+
+    /**
+     * @zh
+     * 添加一个枚举变量。
+     * @en
+     * Adds an enumeration variable.
+     * @param name @zh 变量名。 @en The variable's name.
+     * @param enumType @zh 变量的枚举类型。@en The type of the enumeration.
+     * @param value @zh 变量的默认值。 @en The variable's default value.
+     */
+    public addEnum (name: string, enumType: Readonly<Record<string, number>>, value: number) {
+        const variable = new EnumVariable();
+        variable.enumType = enumType;
         variable.value = value;
         this._variables[name] = variable;
     }

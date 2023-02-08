@@ -68,6 +68,14 @@ export enum VariableType {
      * 整数。
      */
     INTEGER,
+
+    /**
+     * @zh
+     * 枚举。
+     * @en
+     * Enumeration.
+     */
+    ENUM,
 }
 
 /**
