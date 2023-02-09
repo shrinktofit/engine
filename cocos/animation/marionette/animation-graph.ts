@@ -243,13 +243,7 @@ export class PoseExprState extends State {
      * @internal
      */
     public __callOnAfterDeserializeRecursive () {
-        for (const poseExpr of this.poseExprGraph.exprs()) {
-            if ('__callOnAfterDeserializeRecursive' in poseExpr) {
-                (poseExpr as unknown as {
-                    __callOnAfterDeserializeRecursive(): void;
-                }).__callOnAfterDeserializeRecursive();
-            }
-        }
+        this.poseExprGraph.__callOnAfterDeserializeRecursive();
     }
 }
 
@@ -815,6 +809,14 @@ export class SubStateMachine extends InteractiveState {
     private _stateMachine: StateMachine = new StateMachine();
 }
 
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseExprGraphStash`)
+class PoseExprGraphStash extends EditorExtendable {
+    @serializable
+    public graph = new PoseExprGraph();
+}
+
+export { PoseExprGraphStash };
+
 @ccclass('cc.animation.Layer')
 export class Layer implements OwnedBy<AnimationGraph> {
     [ownerSymbol]: AnimationGraph | undefined;
@@ -834,6 +836,26 @@ export class Layer implements OwnedBy<AnimationGraph> {
     @serializable
     public additive = false;
 
+    public stashes (): Iterable<Readonly<[string, PoseExprGraphStash]>> {
+        return Object.entries(this._stashes);
+    }
+
+    public getStash (id: string): PoseExprGraphStash | undefined {
+        return this._stashes[id];
+    }
+
+    public addStash (id: string) {
+        return this._stashes[id] = new PoseExprGraphStash();
+    }
+
+    public removeStash (id: string) {
+        delete this._stashes[id];
+    }
+
+    public renameStash (id: string, newId: string) {
+        this._stashes = renameObjectProperty(this._stashes, id, newId);
+    }
+
     /**
      * @marked_as_engine_private
      */
@@ -844,6 +866,9 @@ export class Layer implements OwnedBy<AnimationGraph> {
     get stateMachine () {
         return this._stateMachine;
     }
+
+    @serializable
+    private _stashes: Record<string, PoseExprGraphStash> = {};
 }
 
 export enum LayerBlending {
@@ -1014,6 +1039,9 @@ export class AnimationGraph extends AnimationGraphLike implements AnimationGraph
         for (let iLayer = 0; iLayer < nLayers; ++iLayer) {
             const layer = layers[iLayer];
             layer.stateMachine.__callOnAfterDeserializeRecursive();
+            for (const [_, stash] of layer.stashes()) {
+                stash.graph.__callOnAfterDeserializeRecursive();
+            }
         }
     }
 

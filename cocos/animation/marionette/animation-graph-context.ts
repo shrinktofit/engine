@@ -11,6 +11,8 @@ import { AnimationMask } from './animation-mask';
 import { error } from '../../core';
 import { partition } from '../../core/algorithm/partition';
 import { AnimationClipGraphBindingContext } from './animation-graph-animation-clip-binding';
+import { PoseStashAllocator } from './stash/runtime-stash';
+import { PoseHeapAllocator } from '../core/pose-heap-allocator';
 
 /**
  * This module contains stuffs related to animation graph's evaluation.
@@ -558,4 +560,27 @@ class MetaValueHandleInternal implements MetaValueHandle {
     }
 
     private _host: AnimationGraphPoseLayoutMaintainer;
+}
+
+export class DeferredPoseStashAllocator implements PoseStashAllocator {
+    get allocatedPoseCount () {
+        assertIsTrue(this._allocator);
+        return this._allocator.allocatedCount;
+    }
+
+    public reset (layout: PoseLayout) {
+        this._allocator = new PoseHeapAllocator(layout.transformCount, layout.metaValueCount);
+    }
+
+    public allocatePose (): Pose {
+        assertIsTrue(this._allocator);
+        return this._allocator.allocatePose();
+    }
+
+    public destroyPose (pose: Pose): void {
+        assertIsTrue(this._allocator);
+        return this._allocator.destroyPose(pose);
+    }
+
+    private _allocator: PoseHeapAllocator | null = null;
 }

@@ -69,6 +69,10 @@ export class ApplyTransform extends PoseExpr {
         this.input?.settle(context);
     }
 
+    public reenter () {
+        this.input?.reenter();
+    }
+
     public update (deltaTime: number): void {
         this.input?.update(deltaTime);
     }

@@ -20,6 +20,20 @@ export class PoseExprGraph extends EditorExtendable {
         this._main = value;
     }
 
+    /**
+     * // TODO: HACK
+     * @internal
+     */
+    public __callOnAfterDeserializeRecursive () {
+        for (const poseExpr of this._exprs) {
+            if ('__callOnAfterDeserializeRecursive' in poseExpr) {
+                (poseExpr as unknown as {
+                    __callOnAfterDeserializeRecursive(): void;
+                }).__callOnAfterDeserializeRecursive();
+            }
+        }
+    }
+
     public exprs () {
         return this._exprs.values();
     }

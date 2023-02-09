@@ -23,6 +23,12 @@ export class MotionExpr extends PoseExpr {
         this._workspace = new Workspace(motionEval, motionEval.createPort());
     }
 
+    public reenter () {
+        if (this._workspace) {
+            this._workspace.normalizedTime = 0.0;
+        }
+    }
+
     public update (deltaTime: number): void {
         if (this._workspace) {
             this._workspace.normalizedTime += deltaTime / this._workspace.motionEval.duration; // TODO: handle duration 0.0

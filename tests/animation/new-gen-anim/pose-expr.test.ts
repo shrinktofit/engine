@@ -11,6 +11,9 @@ import { Node } from "../../../cocos/scene-graph";
 import { captureErrors } from '../../utils/log-capture';
 import { XNodeGetVariableNumber } from '../../../cocos/animation/marionette/x-node/get-variable';
 import { connectXNode, xLink } from "../../../cocos/animation/marionette/x-node/x-node-link";
+import { RuntimeStashManager } from "../../../cocos/animation/marionette/stash/runtime-stash";
+import { createAnimationGraph } from "./utils/factory";
+import { AnimationGraphEvalMock } from "./utils/eval-mock";
 
 describe(`@poseInput`, () => {
     test(`Should emit error if not applied to fields of sub-classes of PoseExpr`, () => {
@@ -167,7 +170,7 @@ describe(`Pose expr instantiation`, () => {
 });
 
 describe(`XNode`, () => {
-    test.only(`Get number variable`, () => {
+    test(`Get number variable`, () => {
         class OutputNumberPoseExpr extends PoseExpr {
             @xLink
             public value = 0.0;
@@ -209,6 +212,78 @@ describe(`XNode`, () => {
     });
 });
 
+describe(`Reentry`, () => {
+    test(`Enter a pose expr state should trigger the root pose expr's reenter() method`, () => {
+        class PoseExprMock extends PoseExpr {
+            public reenterRecorder = jest.fn();
+
+            public reenter(...args: Parameters<PoseExpr['reenter']>) {
+                this.reenterRecorder(...args);
+            }
+
+            public bind(context: PoseExprBindingContext): void { }
+
+            protected selfEvaluate(context: AnimationGraphEvaluationContext): Pose { return context.pushDefaultedPose(); }
+        }
+
+        const poseExprMock = new PoseExprMock();
+
+        const animationGraph = createAnimationGraph({
+            variableDeclarations: {
+                'IncomingTransitionActivated': { type: 'boolean', value: false },
+                'OutgoingTransitionActivated': { type: 'boolean', value: false },
+            },
+            layers: [{
+                stateMachine: {
+                    states: {
+                        'empty': { type: 'empty' },
+                        'pose-expr': {
+                            type: 'pose-expr',
+                            graph: {
+                                rootNode: poseExprMock,
+                            },
+                        },
+                    },
+                    entryTransitions: [{ to: 'pose-expr' }],
+                    transitions: [{
+                        from: 'pose-expr',
+                        to: 'empty',
+                        duration: 0.3,
+                        conditions: [{ type: 'unary', operand: { type: 'variable', name: 'OutgoingTransitionActivated' } }],
+                    }, {
+                        from: 'empty',
+                        to: 'pose-expr',
+                        duration: 0.3,
+                        conditions: [{ type: 'unary', operand: { type: 'variable', name: 'IncomingTransitionActivated' } }],
+                    }],
+                },
+            }],
+        });
+
+        const evalMock = new AnimationGraphEvalMock(new Node(), animationGraph);
+
+        evalMock.step(0.1);
+        expect(poseExprMock.reenterRecorder).toBeCalledTimes(1);
+        poseExprMock.reenterRecorder.mockClear();
+
+        evalMock.step(0.1);
+        expect(poseExprMock.reenterRecorder).toBeCalledTimes(0);
+
+        evalMock.controller.setValue('OutgoingTransitionActivated', true);
+        evalMock.step(0.4);
+        expect(poseExprMock.reenterRecorder).toBeCalledTimes(0);
+
+        evalMock.controller.setValue('OutgoingTransitionActivated', false);
+        evalMock.controller.setValue('IncomingTransitionActivated', true);
+        evalMock.step(0.1);
+        expect(poseExprMock.reenterRecorder).toBeCalledTimes(1);
+        poseExprMock.reenterRecorder.mockClear();
+
+        evalMock.step(0.1);
+        expect(poseExprMock.reenterRecorder).toBeCalledTimes(0);
+    });
+});
+
 class UnimplementedPoseExpr extends PoseExpr {
     public bind(context: PoseExprBindingContext): void {
         throw new Error("Method not implemented.");
@@ -217,28 +292,6 @@ class UnimplementedPoseExpr extends PoseExpr {
     protected selfEvaluate(context: AnimationGraphEvaluationContext): Pose {
         throw new Error("Method not implemented.");
     }
-}
-
-function createPoseExprBindContext(root: Node, additive: boolean): {
-    bindContext: PoseExprBindingContext;
-    poseLayoutMaintainer: AnimationGraphPoseLayoutMaintainer;
-} {
-    const controller = root.addComponent(AnimationController) as AnimationController;
-
-    const metaValueRegistry = new MetaValueRegistry();
-    const poseLayoutMaintainer = new AnimationGraphPoseLayoutMaintainer(metaValueRegistry);
-
-    const poseExprBindContext = new PoseExprBindingContext(
-        new AnimationGraphBindingContext(root, poseLayoutMaintainer, {}),
-        controller,
-        undefined,
-        additive,
-        () => {},
-    );
-    return {
-        bindContext: poseExprBindContext,
-        poseLayoutMaintainer,
-    };
 }
 
 function checkZeroPose(pose: Pose) {

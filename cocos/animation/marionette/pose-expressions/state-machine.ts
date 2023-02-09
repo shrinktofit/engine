@@ -28,11 +28,16 @@ export class StateMachineExpr extends PoseExpr {
             null, // TODO:
             context.additive,
             context.outerContext,
+            context,
             null,
             context.controller,
             context.triggerResetFn,
             InterruptionBehavior.CONCURRENT, // TODO:
         );
+    }
+
+    public reenter () {
+        this._stateMachineEval?.reenter();
     }
 
     public update (deltaTime: number): void {

@@ -1,0 +1,316 @@
+import { AnimationGraphEvaluationContext } from "../../../../cocos/animation/marionette/animation-graph-context";
+import { PoseExpr } from "../../../../cocos/animation/marionette/asset-creation";
+import { Node } from "../../../../cocos/scene-graph";
+import { AnimationGraphEvalMock } from "../utils/eval-mock";
+import { createAnimationGraph, StateParams } from "../utils/factory";
+import { LinearRealValueAnimationFixture } from "../utils/fixtures";
+import { SingleRealValueObserver } from "../utils/single-real-value-observer";
+import '../../../utils/matchers/value-type-asymmetric-matchers';
+
+test(`Stash pose`, () => {
+    const fixture = {
+        stashed_animation: new LinearRealValueAnimationFixture(0, 666, 666),
+    };
+
+    const observer = new SingleRealValueObserver();
+
+    const animationGraph = createAnimationGraph({
+        layers: [{
+            stashes: {
+                'stashed': {
+                    graph: {
+                        rootNode: {
+                            type: 'motion',
+                            motion: fixture.stashed_animation.createMotion(observer.getCreateMotionContext()),
+                        },
+                    },
+                },
+            },
+            stateMachine: {
+                states: [0, 1].reduce((result, index) => {
+                    result[`${index}`] = {
+                        type: 'pose-expr',
+                        graph: {
+                            rootNode: { type: 'use-stash', stashId: 'stashed' },
+                        },
+                    };
+                    return result;
+                }, {} as Record<string, StateParams>),
+                entryTransitions: [{ to: '0' }],
+                transitions: [{
+                    from: '0',
+                    to: '1',
+                    duration: 0.3,
+                    conditions: [{ type: 'unary', operand: { type: 'constant', value: true } }],
+                }],
+            },
+        }],
+    });
+
+    const evalMock = new AnimationGraphEvalMock(observer.root, animationGraph);
+
+    evalMock.step(0.1);
+    expect(observer.value).toBeCloseTo(fixture.stashed_animation.getExpected(evalMock.current), 5);
+});
+
+describe(`Exit and reentering`, () => {
+    test(`reenter() shall be called only at first tick of successive not-being-exited ticks`, () => {
+        const poseExprMock = new PoseExprMock();
+    
+        const animationGraph = createAnimationGraph({
+            variableDeclarations: {
+                't': { type: 'boolean', value: false },
+            },
+            layers: [{
+                stashes: {
+                    'stash': { graph: { rootNode: poseExprMock } },
+                },
+                stateMachine: {
+                    states: {
+                        'use-stash-1': { type: 'pose-expr', graph: { rootNode: { type: 'use-stash', stashId: 'stash' } } },
+                        'use-stash-2': { type: 'pose-expr', graph: { rootNode: { type: 'use-stash', stashId: 'stash' } } },
+                    },
+                    entryTransitions: [{ to: 'use-stash-1' }],
+                    transitions: [{
+                        from: 'use-stash-1',
+                        to: 'use-stash-2',
+                        duration: 0.3,
+                        conditions: [{ type: 'unary', operand: { type: 'variable', name: 't' } }],
+                    }],
+                },
+            }],
+        });
+    
+        const evalMock = new AnimationGraphEvalMock(new Node(), animationGraph);
+    
+        // Enter use-stash-1.
+        evalMock.step(0.1);
+        expect(poseExprMock.reenter_).toBeCalledTimes(1);
+        poseExprMock.reenter_.mockClear();
+    
+        // Reside a while.
+        evalMock.step(0.1);
+        expect(poseExprMock.reenter_).toBeCalledTimes(0);
+    
+        // Transition to use-stash-2.
+        evalMock.controller.setValue('t', true);
+        evalMock.step(0.1);
+        expect(poseExprMock.reenter_).toBeCalledTimes(0);
+    
+        // Reside a while.
+        evalMock.step(0.1);
+        expect(poseExprMock.reenter_).toBeCalledTimes(0);
+    
+        // Finish the transition.
+        evalMock.step(0.4);
+        expect(poseExprMock.reenter_).toBeCalledTimes(0);
+    });
+
+    test(`Caused by state entering & leaving`, () => {
+        const poseExprMock = new PoseExprMock();
+    
+        const animationGraph = createAnimationGraph({
+            variableDeclarations: {
+                'EnterStashState': { type: 'boolean', value: false },
+                'LeaveStashState': { type: 'boolean', value: false },
+            },
+            layers: [{
+                stashes: {
+                    'Stash': { graph: { rootNode: poseExprMock } },
+                },
+                stateMachine: {
+                    states: {
+                        'UseStash': { type: 'pose-expr', graph: { rootNode: { type: 'use-stash', stashId: 'Stash' } } },
+                        'Empty': { type: 'empty' },
+                    },
+                    entryTransitions: [{ to: 'UseStash' }],
+                    transitions: [{
+                        from: 'UseStash',
+                        to: 'Empty',
+                        duration: 0.3,
+                        conditions: [{ type: 'unary', operand: { type: 'variable', name: 'LeaveStashState' } }],
+                    }, {
+                        from: 'Empty',
+                        to: 'UseStash',
+                        duration: 0.3,
+                        conditions: [{ type: 'unary', operand: { type: 'variable', name: 'EnterStashState' } }],
+                    }],
+                },
+            }],
+        });
+    
+        const evalMock = new AnimationGraphEvalMock(new Node(), animationGraph);
+    
+        // Enter <UseStash> state from state machine entry does cause the stash reentering.
+        evalMock.step(0.1);
+        expect(poseExprMock.reenter_).toBeCalledTimes(1);
+        poseExprMock.reenter_.mockClear();
+    
+        // Reside a while. Now we have been leaved the <UseStash> state.
+        evalMock.controller.setValue('LeaveStashState', true);
+        evalMock.step(0.3);
+        expect(poseExprMock.reenter_).toBeCalledTimes(0);
+    
+        // Again transition to the <UseStash>, stash's reenter() should be called.
+        evalMock.controller.setValue('EnterStashState', true);
+        evalMock.controller.setValue('LeaveStashState', false);
+        evalMock.step(0.1);
+        expect(poseExprMock.reenter_).toBeCalledTimes(1);
+        poseExprMock.reenter_.mockClear();
+    
+        // Finish the transition.
+        evalMock.step(0.4);
+        expect(poseExprMock.reenter_).toBeCalledTimes(0);
+    
+        // Again leave the <UseStash>.
+        evalMock.controller.setValue('EnterStashState', false);
+        evalMock.controller.setValue('LeaveStashState', true);
+        evalMock.step(0.1);
+        expect(poseExprMock.reenter_).toBeCalledTimes(0);
+
+        // Finish the transition.
+        evalMock.step(0.4);
+        expect(poseExprMock.reenter_).toBeCalledTimes(0);
+
+        // Again transition to the <UseStash>, stash's reenter() should be called.
+        evalMock.controller.setValue('LeaveStashState', false);
+        evalMock.controller.setValue('EnterStashState', true);
+        evalMock.step(0.1);
+        expect(poseExprMock.reenter_).toBeCalledTimes(1);
+        poseExprMock.reenter_.mockClear();
+    
+    });
+});
+
+describe(`Stash update`, () => {
+    test(`Two nodes request different delta time stash update`, () => {
+    
+        const poseExprMock = new PoseExprMock();
+    
+        const animationGraph = createAnimationGraph({
+            variableDeclarations: {
+                't': { type: 'boolean', value: true },
+            },
+            layers: [{
+                stashes: {
+                    'stash': { graph: { rootNode: poseExprMock } },
+                },
+                stateMachine: {
+                    states: {
+                        'Motion': { type: 'motion', motion: { type: 'clip-motion', clip: { duration: 1.0 } } },
+                        'UseStash1': { type: 'pose-expr', graph: { rootNode: { type: 'use-stash', stashId: 'stash' } } },
+                        'UseStash2': { type: 'pose-expr', graph: { rootNode: { type: 'use-stash', stashId: 'stash' } } },
+                    },
+                    entryTransitions: [{ to: 'Motion' }],
+                    transitions: [{
+                        from: 'Motion',
+                        to: 'UseStash1',
+                        duration: 0.1,
+                        exitTimeEnabled: true,
+                        exitTime: 0.9,
+                    }, {
+                        from: 'UseStash1',
+                        to: 'UseStash2',
+                        duration: 0.3,
+                        conditions: [{ type: 'unary', operand: { type: 'variable', name: 't' } }],
+                    }],
+                },
+            }],
+        });
+
+        const evalMock = new AnimationGraphEvalMock(new Node(), animationGraph);
+
+        // [0s, 0.9s]: Motion
+        // [0.9s-1.0s]: Motion --> UseStash1
+        // [1.0s-1.2s]: UseStash1 --> UseStash2
+        evalMock.step(1.2);
+        expect(poseExprMock.update_).toBeCalledTimes(1);
+        expect(poseExprMock.update_).toBeCalledWith(expect.toBeAround(0.3));
+        expect(poseExprMock.selfEvaluate_).toBeCalledTimes(1);
+    });
+});
+
+describe(`Dependent stashes`, () => {
+    test(`Dependent stashes`, () => {
+        const poseExprMockA = new PoseExprMock();
+    
+        const animationGraph = createAnimationGraph({
+            variableDeclarations: { 'T': { type: 'boolean' } },
+            layers: [{
+                stashes: {
+                    'StashA': { graph: { rootNode: { type: 'use-stash', stashId: 'StashB' } } },
+                    'StashB': { graph: { rootNode: poseExprMockA } },
+                },
+                stateMachine: {
+                    states: {
+                        'UseStashA': { type: 'pose-expr', graph: { rootNode: { type: 'use-stash', stashId: 'StashA' } } },
+                        'UseStashB': { type: 'pose-expr', graph: { rootNode: { type: 'use-stash', stashId: 'StashB' } } },
+                    },
+                    entryTransitions: [{ to: 'UseStashA' }],
+                    transitions: [{
+                        from: 'UseStashA',
+                        to: 'UseStashB',
+                        duration: 0.3,
+                        conditions: [{ type: 'unary', operand: { type: 'variable', name: 'T' } }],
+                    }],
+                },
+            }],
+        });
+    
+        const evalMock = new AnimationGraphEvalMock(new Node(), animationGraph);
+
+        // Enter <UseStashA>.
+        evalMock.step(0.1);
+        expect(poseExprMockA.reenter_).toBeCalledTimes(1);
+        poseExprMockA.reenter_.mockClear();
+        expect(poseExprMockA.update_).toBeCalledTimes(1);
+        expect(poseExprMockA.update_).toBeCalledWith(0.1);
+        poseExprMockA.update_.mockClear();
+        expect(poseExprMockA.selfEvaluate_).toBeCalledTimes(1);
+    });
+    
+    test(`Circular dependent stash`, () => {
+        // The evaluation result of a stash is undefined if there's circular dependency between stashes.
+        const animationGraph = createAnimationGraph({
+            variableDeclarations: { 'T': { type: 'boolean' } },
+            layers: [{
+                stashes: {
+                    'stash': { graph: { rootNode: { type: 'use-stash', stashId: 'stash' } } },
+                },
+                stateMachine: {
+                    states: {
+                        'UseStash': { type: 'pose-expr', graph: { rootNode: { type: 'use-stash', stashId: 'stash' } } },
+                    },
+                    entryTransitions: [{ to: 'UseStash' }],
+                },
+            }],
+        });
+
+        const evalMock = new AnimationGraphEvalMock(new Node(), animationGraph);
+
+        evalMock.step(0.1);
+    });
+});
+
+class PoseExprMock extends PoseExpr {
+    public reenter_ = jest.fn();
+
+    public update_ = jest.fn();
+
+    public selfEvaluate_ = jest.fn();
+
+    public bind() { }
+
+    public reenter(...args: Parameters<PoseExpr['reenter']>) {
+        this.reenter_(...args);
+    }
+
+    public update(...args: Parameters<PoseExpr['update']>) {
+        this.update_(...args);
+    }
+
+    protected selfEvaluate(context: AnimationGraphEvaluationContext) {
+        this.selfEvaluate_(context);
+        return context.pushDefaultedPose();
+    }
+}

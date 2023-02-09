@@ -7,6 +7,7 @@ import type { AnimationController, ReadonlyClipOverrideMap } from '../animation-
 import { AnimationGraphBindingContext, AnimationGraphEvaluationContext } from '../animation-graph-context';
 import { AnimationMask } from '../animation-mask';
 import { XNodeBase } from '../x-node/x-node';
+import { RuntimeStashView } from '../stash/runtime-stash';
 
 export class PoseExprBindingContext {
     constructor (
@@ -15,6 +16,7 @@ export class PoseExprBindingContext {
         public readonly clipOverrides: ReadonlyClipOverrideMap | undefined,
         additive: boolean,
         public readonly triggerResetFn: (name: string) => void,
+        public readonly stashView: RuntimeStashView,
     ) {
         this._additiveFlagStack.push(additive);
     }
@@ -46,6 +48,9 @@ export abstract class PoseExpr extends XNodeBase {
     public abstract bind(context: PoseExprBindingContext): void;
 
     public settle (context: PoseExprSettleContext): void {
+    }
+
+    public reenter () {
     }
 
     public update (deltaTime: number): void {

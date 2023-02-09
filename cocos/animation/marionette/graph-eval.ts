@@ -44,6 +44,7 @@ import { InteractiveState } from './state';
 import {
     AnimationGraphBindingContext, AnimationGraphEvaluationContext,
     AnimationGraphLayerWideBindingContext, AnimationGraphPoseLayoutMaintainer, defaultTransformsTag, LayoutChangeFlag, MetaValueRegistry,
+    DeferredPoseStashAllocator,
 } from './animation-graph-context';
 import { TransformArray } from '../core/transform-array';
 import { applyDeltaPose, blendPoseInto, Pose, TransformFilter } from '../core/pose';
@@ -51,6 +52,7 @@ import { applyDeltaPose, blendPoseInto, Pose, TransformFilter } from '../core/po
 import { PoseExpr, PoseExprBindingContext } from './pose-expressions/pose-expr';
 import { DefaultTopLevelPose, LayerEvaluationRecord } from './pose-expressions/default-top-level-pose-expr';
 import { instantiatePoseExpr } from './pose-expressions/instantiation';
+import { RuntimeStashManager } from './stash/runtime-stash';
 
 export class AnimationGraphEval {
     private declare _rootPoseExpr: PoseExpr;
@@ -95,19 +97,39 @@ export class AnimationGraphEval {
 
         poseLayoutMaintainer.startBind();
 
+        const poseStashAllocator = new DeferredPoseStashAllocator();
+        this._poseStashAllocator = poseStashAllocator;
+
         this._layerEvaluations = graph.layers.map((layer) => {
+            const stashManager = new RuntimeStashManager(poseStashAllocator);
+            const poseExprBindContext = new PoseExprBindingContext(
+                bindingContext,
+                controller,
+                undefined,
+                layer.additive,
+                triggerResetFn,
+                stashManager,
+            );
+            for (const [stashId, _] of layer.stashes()) {
+                stashManager.addStash(stashId);
+            }
+            for (const [stashId, stash] of layer.stashes()) {
+                stashManager.setStash(stashId, stash, poseExprBindContext);
+            }
             const stateMachineEval = new LayerEval(
                 layer.name,
                 layer.stateMachine,
                 layer.mask,
                 layer.additive,
                 bindingContext,
+                poseExprBindContext,
                 clipOverrides,
                 controller,
                 triggerResetFn,
                 graph.interruptionBehavior,
             );
             const record = new LayerEvaluationRecord(
+                stashManager,
                 stateMachineEval,
                 layer.weight,
                 layer.additive,
@@ -161,6 +183,7 @@ export class AnimationGraphEval {
 
         if (DEBUG) {
             assertIsTrue(evaluationContext.allocatedPoseCount === 0, `Pose leaked.`);
+            assertIsTrue(this._poseStashAllocator.allocatedPoseCount === 0, `Pose leaked.`);
         }
     }
 
@@ -251,6 +274,7 @@ export class AnimationGraphEval {
      */
     private declare _root: Node;
     private declare _evaluationContext: AnimationGraphEvaluationContext;
+    private declare _poseStashAllocator: DeferredPoseStashAllocator;
 
     private _initializeContexts () {
         const {
@@ -263,14 +287,18 @@ export class AnimationGraphEval {
 
         this._createOrUpdateTransformFilters();
 
-        const evaluationContext = new AnimationGraphEvaluationContext({
+        const poseLayout = {
             transformCount: poseLayoutMaintainer.transformCount,
             metaValueCount: poseLayoutMaintainer.metaValueCount,
-        });
+        };
+
+        const evaluationContext = new AnimationGraphEvaluationContext(poseLayout);
         this._evaluationContext = evaluationContext;
 
         // Capture the default transforms.
         poseLayoutMaintainer.fetchDefaultTransforms(evaluationContext[defaultTransformsTag]);
+
+        this._poseStashAllocator.reset(poseLayout);
     }
 
     private _updateAfterPossiblePoseLayoutChange () {
@@ -295,13 +323,15 @@ export class AnimationGraphEval {
         let evaluationContextRecreated = false;
         if ((layoutChangeFlags & LayoutChangeFlag.TRANSFORM_COUNT)
         || (layoutChangeFlags & LayoutChangeFlag.META_VALUE_COUNT)) {
-            const evaluationContext = new AnimationGraphEvaluationContext({
+            const layout = {
                 transformCount: poseLayoutMaintainer.transformCount,
                 metaValueCount: poseLayoutMaintainer.metaValueCount,
-            });
+            };
+            const evaluationContext = new AnimationGraphEvaluationContext(layout);
             this._evaluationContext.destroy();
             this._evaluationContext = evaluationContext;
             evaluationContextRecreated = true;
+            this._poseStashAllocator.reset(layout);
         }
 
         // If the eval context was recreated or the layout has changed, we should update the default transforms.
@@ -452,6 +482,7 @@ class LayerEval {
         mask: AnimationMask | null,
         additive: boolean,
         context: AnimationGraphBindingContext,
+        poseExprBindContext: PoseExprBindingContext,
         clipOverrides: ReadonlyClipOverrideMap | null,
         controller: AnimationController,
         triggerResetFn: TriggerResetFn,
@@ -466,13 +497,6 @@ class LayerEval {
             outerContext: context,
             additive: isAdditiveLayer,
         };
-        const poseExprBindContext = new PoseExprBindingContext(
-            context,
-            controller,
-            undefined,
-            isAdditiveLayer,
-            triggerResetFn,
-        );
         const { entry, exit } = this._addStateMachine(
             stateMachine,
             null,
@@ -496,6 +520,16 @@ class LayerEval {
      */
     get exited () {
         return this._currentNode === this._topLevelExit;
+    }
+
+    public reenter () {
+        // Known problem: no callbacks are triggered.
+        this._currentNode = this._topLevelEntry;
+        this._currentStateWeight = 0.0;
+        this._currentTransitionPath.length = 0;
+        this._currentTransitionToNode = null;
+        this._fromUpdated = false;
+        this._transitionSnapshot.clear();
     }
 
     public _update (deltaTime: number) {
@@ -615,16 +649,19 @@ class LayerEval {
     /**
      * Preserved here for clip overriding.
      */
-    private _motionStates: MotionStateEval[] = [];
-    private _topLevelEntry: NodeEval;
-    private _topLevelExit: NodeEval;
+    private readonly _motionStates: MotionStateEval[] = [];
+    private readonly _topLevelEntry: NodeEval;
+    private readonly _topLevelExit: NodeEval;
     private _currentNode: NodeEval;
     private _currentStateWeight = Number.NaN;
     private _currentTransitionToNode: ConcreteState | null = null;
     private _currentTransitionPath: TransitionEval[] = [];
     private declare _triggerReset: TriggerResetFn;
     private _fromUpdated = false;
-    private _toUpdated = false;
+    /** Accumulated delta time of start state(or port). */
+    private _fromUpdateDeltaTime = 0.0;
+    /** Accumulated delta time of destination state(or port). */
+    private _toUpdateDeltaTime = 0.0;
     /**
      * A virtual state which represents the transition snapshot captured when a transition is interrupted.
      */
@@ -632,9 +669,9 @@ class LayerEval {
     /**
      * Preserved here for clip overriding.
      */
-    private _mask: AnimationMask | null = null;
+    private readonly _mask: AnimationMask | null = null;
 
-    private _interruptionBehavior: InterruptionBehavior;
+    private readonly _interruptionBehavior: InterruptionBehavior;
 
     private _addStateMachine (
         graph: StateMachine,
@@ -767,6 +804,7 @@ class LayerEval {
                     normalizedElapsedTime: Number.NaN,
                     destinationWeight: Number.NaN,
                     subsequenceBeginIndex: -1,
+                    updateDeltaTime: Number.NaN,
                 };
 
                 if (isAnimationTransition(outgoing)) {
@@ -872,13 +910,7 @@ class LayerEval {
 
                 remainTimePiece -= updateRequires;
 
-                if (currentNode.kind === NodeKind.animation) {
-                    currentNode.updateFromPort(updateRequires);
-                    this._fromUpdated = true;
-                } else if (currentNode.kind === NodeKind.poseExpr) {
-                    currentNode.update(updateRequires);
-                    this._fromUpdated = true;
-                }
+                this._accumulateStartStateDeltaTime(updateRequires);
 
                 const ranIntoNonMotionState = this._switchTo(transition);
                 if (ranIntoNonMotionState) {
@@ -887,35 +919,14 @@ class LayerEval {
 
                 continueNextIterationForce = true;
             } else { // If no transition matched, we update current node.
-                if (currentNode.kind === NodeKind.animation) {
-                    currentNode.updateFromPort(remainTimePiece);
-                    this._fromUpdated = true;
-                    // Animation play eat all times.
-                    remainTimePiece = 0.0;
-                } else if (currentNode.kind === NodeKind.poseExpr) {
-                    currentNode.update(remainTimePiece);
-                    this._fromUpdated = true;
-                    // Animation play eat all times.
-                    remainTimePiece = 0.0;
-                } else {
-                    // Happened when firstly entered the layer's top level entry
-                    // and no further transition.
-                    // I'm sure conscious of it's redundant with above statement, just emphasize.
-                    remainTimePiece = 0.0;
-                }
+                this._accumulateStartStateDeltaTime(remainTimePiece);
+                // Current state eats all times.
+                remainTimePiece = 0.0;
                 continue;
             }
         }
 
-        if (this._fromUpdated && this._currentNode.kind === NodeKind.animation) {
-            this._fromUpdated = false;
-            this._currentNode.triggerFromPortUpdate(this._controller);
-        }
-
-        if (this._currentTransitionToNode && this._toUpdated && this._currentTransitionToNode.kind === NodeKind.animation) {
-            this._toUpdated = false;
-            this._currentTransitionToNode.triggerToPortUpdate(this._controller);
-        }
+        this._commitStateUpdates();
 
         this._computeAbsoluteWeights();
 
@@ -1209,6 +1220,8 @@ class LayerEval {
 
         transition.normalizedElapsedTime = 0.0;
 
+        transition.updateDeltaTime = 0.0;
+
         this._currentTransitionPath.push(transition);
     }
 
@@ -1233,7 +1246,6 @@ class LayerEval {
         this._resetTriggersAlongThePath();
 
         this._currentTransitionToNode = targetNode;
-        this._toUpdated = false;
 
         if (targetNode.kind === NodeKind.animation) {
             const {
@@ -1246,6 +1258,8 @@ class LayerEval {
                     ? 0.0
                     : destinationStart / targetNode.duration;
             targetNode.resetToPort(destinationStartRatio);
+        } else if (targetNode.kind === NodeKind.poseExpr) {
+            targetNode.reenter();
         }
         this._callEnterMethods(targetNode);
     }
@@ -1310,6 +1324,9 @@ class LayerEval {
                 firstTransition,
                 deltaTime,
             );
+            if (iTransition === 0) {
+                this._accumulateStartStateDeltaTime(updateConsumed);
+            }
             maxConsumedTime = Math.max(maxConsumedTime, updateConsumed);
 
             // Once the transition is done, all previous transitions should be dropped.
@@ -1378,19 +1395,10 @@ class LayerEval {
         const shouldUpdatePorts = contrib !== 0;
 
         if (shouldUpdatePorts) {
-            if (fromState.kind === NodeKind.animation) {
-                fromState.updateFromPort(contrib);
-                this._fromUpdated = true;
-            } else if (fromState.kind === NodeKind.poseExpr) {
-                fromState.update(contrib);
-            }
-
             if (toState.kind === NodeKind.animation) {
                 toState.updateToPort(contrib);
-                this._toUpdated = true;
-            } else if (toState.kind === NodeKind.poseExpr) {
-                toState.update(contrib);
             }
+            transition.updateDeltaTime += contrib;
         }
 
         return contrib;
@@ -1426,8 +1434,9 @@ class LayerEval {
         }
 
         // Do some cleanup works.
-        this._fromUpdated = this._toUpdated;
-        this._toUpdated = false;
+        // Overrides the update delta time.
+        this._fromUpdated = true;
+        this._fromUpdateDeltaTime = currentTransitionPath[lastTransitionIndex].updateDeltaTime;
         if (toState.kind === NodeKind.animation) {
             toState.finishTransition();
         }
@@ -1464,6 +1473,37 @@ class LayerEval {
             this._currentTransitionPath.length - 1,
             inactivate,
         );
+    }
+
+    private _commitStateUpdates () {
+        const {
+            _currentNode: currentState,
+            _currentTransitionPath: currentTransitions,
+        } = this;
+        const nTransitions = currentTransitions.length;
+        if (this._fromUpdated) {
+            const { _fromUpdateDeltaTime: fromUpdateDeltaTime } = this;
+            this._fromUpdated = false;
+            this._fromUpdateDeltaTime = 0.0;
+            if (currentState.kind === NodeKind.animation) {
+                currentState.triggerFromPortUpdate(this._controller);
+            } else if (currentState.kind === NodeKind.poseExpr) {
+                currentState.update(fromUpdateDeltaTime);
+            }
+        }
+        for (let iTransition = 0; iTransition < nTransitions; ++iTransition) {
+            const transition = currentTransitions[iTransition];
+            const {
+                to: destinationState,
+                updateDeltaTime,
+            } = transition;
+            transition.updateDeltaTime = 0.0;
+            if (destinationState.kind === NodeKind.animation) {
+                destinationState.triggerToPortUpdate(this._controller);
+            } else if (destinationState.kind === NodeKind.poseExpr) {
+                destinationState.update(updateDeltaTime);
+            }
+        }
     }
 
     private _computeAbsoluteWeights () {
@@ -1649,10 +1689,7 @@ class LayerEval {
         const {
             _currentNode: currentState,
         } = this;
-        if (currentState.kind === NodeKind.animation) {
-            currentState.updateFromPort(transitionRequires);
-            this._fromUpdated = true;
-        }
+        this._accumulateStartStateDeltaTime(transitionRequires);
         return this._switchTo(transition);
     }
 
@@ -1672,10 +1709,8 @@ class LayerEval {
         assertIsTrue(currentNode.kind === NodeKind.animation || currentNode.kind === NodeKind.transitionSnapshot);
         // If we're interrupting motion->*,
         // we update the motion then do the first enqueue to transition snapshot.
+        this._accumulateStartStateDeltaTime(transitionRequires);
         if (currentNode.kind === NodeKind.animation) {
-            currentNode.updateFromPort(transitionRequires);
-            this._fromUpdated = true;
-
             const { _transitionSnapshot: transitionSnapshot } = this;
             assertIsTrue(transitionSnapshot.empty);
             transitionSnapshot.enqueue(currentNode, 1.0);
@@ -1733,6 +1768,15 @@ class LayerEval {
         }
 
         transitionSnapshot.transferTransitions(currentTransitionPath);
+    }
+
+    private _accumulateStartStateDeltaTime (deltaTime: number) {
+        const { _currentNode: currentNode } = this;
+        this._fromUpdated = true;
+        this._fromUpdateDeltaTime += deltaTime;
+        if (currentNode.kind === NodeKind.animation) {
+            currentNode.updateFromPort(deltaTime);
+        }
     }
 
     private _resetTriggersOnTransition (transition: TransitionEval) {
@@ -2017,6 +2061,10 @@ class PoseExprStateEval extends StateEval {
             expr.bind(context);
             this._poseExprEval = expr;
         }
+    }
+
+    public reenter () {
+        this._poseExprEval?.reenter();
     }
 
     public update (deltaTime: number) {
@@ -2330,6 +2378,12 @@ interface TransitionEval {
     normalizedElapsedTime: number;
     destinationWeight: number;
     subsequenceBeginIndex: number;
+
+    /**
+     * Accumulated update delta time of the transition in this tick.
+     * Reset as 0 on transition activated or at the end of the tick.
+     */
+    updateDeltaTime: number;
 }
 
 export type { VarInstance } from './variable';

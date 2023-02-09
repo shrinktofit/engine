@@ -2,6 +2,7 @@ import { warn } from '../../../core';
 import { ccclass, serializable } from '../../../core/data/decorators';
 import { Pose } from '../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
+import { RuntimeStash } from '../stash/runtime-stash';
 import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSettleContext } from './pose-expr';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}UseCachedPose`)
@@ -19,18 +20,21 @@ export class UseCachedPose extends PoseExpr {
             return;
         }
 
-        throw new Error(`Not impl`);
+        const runtimeStash = context.stashView.bindStash(cacheName);
+        this._runtimeStash = runtimeStash;
     }
 
-    public settle (context: PoseExprSettleContext): void {
-        throw new Error(`Not impl`);
+    public reenter () {
+        this._runtimeStash?.reenter();
     }
 
     public update (deltaTime: number): void {
-        throw new Error(`Not impl`);
+        this._runtimeStash?.requestUpdate(deltaTime);
     }
 
-    public selfEvaluate (context: PoseExprEvaluationContext): Pose {
-        throw new Error(`Not impl`);
+    protected selfEvaluate (context: PoseExprEvaluationContext) {
+        return this._runtimeStash?.evaluate(context) ?? context.pushDefaultedPose();
     }
+
+    private _runtimeStash: RuntimeStash | undefined = undefined;
 }

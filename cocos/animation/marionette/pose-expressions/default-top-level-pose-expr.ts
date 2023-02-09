@@ -2,6 +2,7 @@ import { applyDeltaPose, blendPoseInto, Pose, TransformFilter } from '../../core
 import { AnimationGraphEvaluationContext } from '../animation-graph-context';
 import { AnimationMask } from '../animation-mask';
 import { TopLevelStateMachineEvaluation } from '../graph-eval';
+import { RuntimeStashManager } from '../stash/runtime-stash';
 import { PoseExpr, PoseExprBindingContext, PoseExprSettleContext } from './pose-expr';
 
 export class DefaultTopLevelPose extends PoseExpr {
@@ -41,6 +42,8 @@ export class DefaultTopLevelPose extends PoseExpr {
                 blendPoseInto(finalPose, layerPose, layerActualWeight, transformFilter);
             }
             context.popPose();
+            // Reset stash resources.
+            layer.stashManager.reset();
         }
         return finalPose;
     }
@@ -48,6 +51,8 @@ export class DefaultTopLevelPose extends PoseExpr {
 
 export class LayerEvaluationRecord {
     constructor (
+        public stashManager: RuntimeStashManager,
+
         public stateMachineEvaluation: TopLevelStateMachineEvaluation,
 
         /** Used by top level eval. */

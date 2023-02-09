@@ -31,6 +31,11 @@ export class AddPose extends PoseExpr {
         this.addition?.settle(context);
     }
 
+    public reenter () {
+        this.base?.reenter();
+        this.addition?.reenter();
+    }
+
     public update (deltaTime: number): void {
         this.base?.update(deltaTime);
         this.addition?.update(deltaTime);
