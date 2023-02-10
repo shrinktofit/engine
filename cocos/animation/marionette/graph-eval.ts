@@ -526,6 +526,9 @@ class LayerEval {
         // Known problem: no callbacks are triggered.
         this._currentNode = this._topLevelEntry;
         this._currentStateWeight = 0.0;
+        for (const transition of this._currentTransitionPath) {
+            transition.activated = false;
+        }
         this._currentTransitionPath.length = 0;
         this._currentTransitionToNode = null;
         this._fromUpdated = false;
