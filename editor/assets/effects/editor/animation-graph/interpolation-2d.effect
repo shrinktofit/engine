@@ -1,0 +1,326 @@
+CCEffect %{
+  editor:
+    hide: false
+  techniques:
+  - passes:
+    - vert: interpolation-2d-vs:vert
+      frag: barycentric-fs:frag
+      rasterizerState:
+        cullMode: none
+  - passes:
+    - vert: interpolation-2d-vs:vert
+      frag: gradient-band-fs:frag
+      resterizerState:
+        cullMode: none
+}%
+
+CCProgram interpolation-2d-vs %{
+    precision mediump float;
+
+    #include <legacy/input>
+    #include <builtin/uniforms/cc-local>
+    #include <builtin/uniforms/cc-global>
+
+    out vec2 v_uv;
+
+    vec4 vert () {
+        v_uv = a_texCoord;
+        return cc_matViewProj * cc_matWorld * vec4(a_position, 1.0);
+    }
+}%
+
+CCProgram interpolation-2d-fs-shared %{
+    precision mediump float;
+
+    #include <builtin/uniforms/cc-global>
+
+    // 0: does not show example positions
+    // 1: show example positions and gradient band
+    // 2: only show example positions, does not show gradient band, mainly used to debug example positions
+    #define DEBUG_EXAMPLE_POSITIONS_LEVEL 1
+
+    #pragma define EXAMPLE_COUNT 5
+
+    in vec2 v_uv;
+
+    uniform ExampleConstant {
+        vec4 examplePositions[EXAMPLE_COUNT];
+        vec4 observedExamplePosition; // Hack since CC does not support dynamic array access.
+        vec4 bound;
+        int observedExampleIndex;
+    };
+
+    #define GET_EXAMPLE_POSITION(index) (examplePositions[index].xy)
+
+    vec2 getObservedExamplePosition() {
+        return observedExamplePosition.xy;
+    }
+
+    vec3 present(float v) {
+        return mix(
+            vec3(0.0),
+            vec3(64.0, 170.0, 202.0) / vec3(255.0),
+            v
+        );
+    }
+
+    bool closeToZero(float v) {
+        return abs(v) < 1e-5;
+    }
+
+    bool closeToZero(vec2 v) {
+        return closeToZero(v.x) && closeToZero(v.y);
+    }
+
+    float crossVec2(vec2 a, vec2 b) {
+        return a.x * b.y - b.x * a.y;
+    }
+}%
+
+CCProgram interpolation-2d-fs-shared-frag %{
+    vec4 frag () {
+        float inputIndicatorRadius = 0.03;
+
+        vec2 inputMin = bound.xy;
+        vec2 inputMax = bound.zw;
+
+        vec2 inputPosition01 = v_uv; // (gl_FragCoord.xy * cc_screenSize.zw);
+        vec2 inputPosition = inputMin + (inputMax - inputMin) * inputPosition01;
+
+#if DEBUG_EXAMPLE_POSITIONS_LEVEL > 0
+        for (int iExample = 0; iExample < EXAMPLE_COUNT; ++iExample) {
+            vec2 examplePosition = GET_EXAMPLE_POSITION(iExample);
+            if (distance(examplePosition, inputPosition) < inputIndicatorRadius) {
+                return vec4(1.0);
+            }
+        }
+#endif
+
+#if DEBUG_EXAMPLE_POSITIONS_LEVEL > 1
+        return vec4(0.0);
+#endif
+
+        float v = doEvaluate(inputPosition);
+
+        vec3 color = present(v);
+
+        return vec4(color, 1.0);
+    }
+}%
+
+CCProgram barycentric-fs %{
+    #include <interpolation-2d-fs-shared>
+
+    vec2 solveBarycentric (vec2 a, vec2 b, vec2 p) {
+        // Let P = p - 0, A = a - 0, B = b - 0,
+        // wA = (P x B) / (A x B)
+        // wB = (P x A) / (B x A)
+        float det = crossVec2(a, b);
+        if (closeToZero(det)) {
+            return vec2(0.0);
+        } else {
+            return vec2(
+                crossVec2(p, b) / det,
+                crossVec2(p, a) / -det
+            );
+        }
+    }
+
+    float doEvaluate(vec2 inputPosition) {
+        if (closeToZero(inputPosition)) {
+            if (closeToZero(getObservedExamplePosition())) {
+                return 1.0;
+            } else {
+                return 1.0 / float(EXAMPLE_COUNT);
+            }
+        }
+
+        float weights[EXAMPLE_COUNT];
+
+        // Finds out the sector the input point locates.
+        int iSectorStart = -1;
+        vec2 sectorStart = vec2(0.0);
+        int iSectorEnd = -1;
+        vec2 sectorEnd = vec2(0.0);
+        int iCenter = -1;
+        float lhsCosAngle = -4.0;
+        float rhsCosAngle = -4.0;
+        for (int iSample = 0; iSample < EXAMPLE_COUNT; ++iSample) {
+            vec2 examplePosition = GET_EXAMPLE_POSITION(iSample);
+            if (closeToZero(examplePosition)) {
+                iCenter = iSample;
+                continue;
+            }
+
+            vec2 sampleNormalized = normalize(examplePosition);
+            float cosAngle = dot(sampleNormalized, inputPosition);
+            float det = crossVec2(sampleNormalized, inputPosition);
+            if (det > 0.0) {
+                if (cosAngle >= rhsCosAngle) {
+                    rhsCosAngle = cosAngle;
+                    iSectorStart = iSample;
+                    sectorStart = examplePosition;
+                }
+            } else if (cosAngle >= lhsCosAngle) {
+                lhsCosAngle = cosAngle;
+                iSectorEnd = iSample;
+                sectorEnd = examplePosition;
+            }
+        }
+
+        float observedWeight = 0.0;
+
+        float centerWeight = 0.0;
+        if (iSectorStart < 0 || iSectorEnd < 0) {
+            // Input fall at vertex.
+            centerWeight = 1.0;
+        } else {
+            vec2 w = solveBarycentric(sectorStart, sectorEnd, inputPosition);
+            float wA = w.x;
+            float wB = w.y;
+            float w1 = 0.0;
+            float w2 = 0.0;
+            float sum = wA + wB;
+            if (sum > 1.0) {
+                // Input fall at line C-A or C-B but not beyond C
+                w1 = wA / sum;
+                w2 = wB / sum;
+            } else if (sum < 0.0) {
+                // Input fall at line C-A or C-B but beyond A or B
+                w1 = 0.0;
+                w2 = 0.0;
+                centerWeight = 1.0;
+            } else {
+                // Inside triangle
+                w1 = wA;
+                w2 = wB;
+                centerWeight = 1.0 - sum;
+            }
+            if (iSectorStart == observedExampleIndex) {
+                observedWeight = w1;
+            } else if (iSectorEnd == observedExampleIndex) {
+                observedWeight = w2;
+            }
+        }
+
+        // Center influence part
+        if (centerWeight > 0.0) {
+            if (iCenter >= 0) {
+                if (iCenter == observedExampleIndex) {
+                    observedWeight = centerWeight;
+                }
+            } else {
+                observedWeight += centerWeight / float(EXAMPLE_COUNT);
+            }
+        }
+
+        return observedWeight;
+    }
+
+    #include <interpolation-2d-fs-shared-frag>
+}%
+
+CCProgram gradient-band-fs %{
+    #include <interpolation-2d-fs-shared>
+
+    #define SHOW_WEIGHT 0
+
+    #define SHOW_INFLUENCE 1
+
+    // #pragma define-meta SHOW_OPT default(0)
+    #define SHOW_OPT 0
+
+    #define TEST_SHADERTOY 0
+
+#if TEST_SHADERTOY
+    float signedAngle(vec2 a, vec2 b) {
+        return atan( a.x*b.y - a.y*b.x, a.x*b.x + a.y*b.y );
+    }
+#else
+    float signedAngle(vec2 a, vec2 b) {
+        vec2 normA = normalize(a);
+        vec2 normB = normalize(b);
+        float angle = acos(dot(normA, normB));
+        float determinate = crossVec2(normA, normB);
+        return determinate < 0.0 ? -angle : angle;
+    }
+#endif
+
+    float calculatePolarSpaceInfluence(vec2 inputPosition, int exampleIndex, vec2 examplePosition) {
+        vec2 xPosition = inputPosition;
+        float xMag = length(xPosition);
+
+        vec2 iPosition = examplePosition;
+        float iMag = length(iPosition);
+        float minInfluence = 1.0; // 1.0 - abs(closeToZero(xPosition) ? 0.0 : signedAngle(iPosition, xPosition)) / 3.141592653;
+        for (int jExample = 0; jExample < EXAMPLE_COUNT; ++jExample) {
+            if (exampleIndex == jExample) {
+                continue;
+            }
+
+            vec2 jPosition = GET_EXAMPLE_POSITION(jExample);
+            float jMag = length(jPosition);
+
+            float magMultiplier = 1.0 / ((iMag + jMag) / 2.0);
+            float angleMultipler = 1.0;
+            vec2 multiplier = vec2(magMultiplier, angleMultipler);
+
+            float vIJAngle = 0.0;
+            float vIXAngle = 0.0;
+#if TEST_SHADERTOY
+            vIJAngle = signedAngle(iPosition, jPosition);
+            vIXAngle = signedAngle(iPosition, xPosition);
+#else
+            if (closeToZero(iPosition)) {
+                vIJAngle = closeToZero(xPosition) ? 0.0 : signedAngle(xPosition, jPosition);
+                vIXAngle = 0.0;
+            } else if (closeToZero(jPosition)) {
+                vIJAngle = closeToZero(xPosition) ? 0.0 : signedAngle(iPosition, xPosition);
+                vIXAngle = vIJAngle;
+            } else {
+                vIJAngle = signedAngle(iPosition, jPosition);
+                vIXAngle = closeToZero(xPosition) ? vIJAngle : signedAngle(iPosition, xPosition);
+            }
+#endif
+
+            vec2 vIJ = vec2(jMag - iMag, vIJAngle) * multiplier;
+            vec2 vIX = vec2(xMag - iMag, vIXAngle) * multiplier;
+
+            float vIJMag = length(vIJ);
+
+            float influence = 1.0 - dot(vIX, vIJ) / (vIJMag * vIJMag);
+            if (influence < 0.0) {
+                minInfluence = 0.0;
+                break;
+            }
+
+            minInfluence = min(minInfluence, influence);
+        }
+        return minInfluence;
+    }
+
+    float calculatePolarSpaceWeight(vec2 inputPosition, int exampleIndex) {
+        float exampleInfluence = 0.0;
+        float totalInfluence = 0.0;
+        for (int iExample = 0; iExample < EXAMPLE_COUNT; ++iExample) {
+            float influence = calculatePolarSpaceInfluence(inputPosition, iExample, GET_EXAMPLE_POSITION(iExample));
+            totalInfluence += influence;
+            if (iExample == exampleIndex) {
+                exampleInfluence = influence;
+            }
+        }
+
+        return exampleInfluence / totalInfluence;
+    }
+
+    float doEvaluate(vec2 inputPosition) {
+#if (SHOW_OPT == SHOW_INFLUENCE)
+        float v = calculatePolarSpaceInfluence(inputPosition, observedExampleIndex, getObservedExamplePosition());
+#else
+        float v = calculatePolarSpaceWeight(inputPosition, observedExampleIndex);
+#endif
+        return v;
+    }
+
+    #include <interpolation-2d-fs-shared-frag>
+}%
