@@ -53,6 +53,7 @@ import { PoseExpr, PoseExprBindingContext } from './pose-expressions/pose-expr';
 import { DefaultTopLevelPose, LayerEvaluationRecord } from './pose-expressions/default-top-level-pose-expr';
 import { instantiatePoseExpr } from './pose-expressions/instantiation';
 import { RuntimeStashManager } from './stash/runtime-stash';
+import { _StateWeightCondition, _tryConvertToStateWeightCondition } from './__todo-state-weight-condition';
 
 export class AnimationGraphEval {
     private declare _rootPoseExpr: PoseExpr;
@@ -790,7 +791,23 @@ class LayerEval {
                     toNode = nodeEval;
                 }
 
-                const conditions = outgoing.conditions.map((condition) => condition[createEval](context.outerContext));
+                const conditions = outgoing.conditions.map((condition) => {
+                    let stateWeightCondition: _StateWeightCondition | undefined;
+                    if (isConcreteState(fromNode)) {
+                        const from = fromNode;
+                        stateWeightCondition = _tryConvertToStateWeightCondition(condition, { get weight () {
+                            if (from.kind === NodeKind.animation) {
+                                return from._getFromPortWeightUsedInStateWeightCondition();
+                            } else {
+                                return from._weightUsedInStateWeightCondition;
+                            }
+                        } });
+                    }
+                    if (stateWeightCondition) {
+                        return stateWeightCondition[createEval](context.outerContext);
+                    }
+                    return condition[createEval](context.outerContext);
+                });
 
                 const transitionEval: TransitionEval = {
                     conditions,
@@ -1573,12 +1590,32 @@ class LayerEval {
                     subSeqEnd = currentTransitions[iTransition - 1];
                     subSeqEnd.subsequenceBeginIndex = -1;
                     subSeqEnd.destinationWeight = remainingWeight;
+                    // #region TODO
+                    // eslint-disable-next-line no-loop-func
+                    (() => {
+                        const to = subSeqEnd.to;
+                        if (to.kind === NodeKind.animation) {
+                            to._setToPortWeightUsedInStateWeightCondition(remainingWeight);
+                        } else if (to.kind === NodeKind.empty || to.kind === NodeKind.poseExpr) {
+                            to._weightUsedInStateWeightCondition = remainingWeight;
+                        }
+                    })();
+                    // #endregion
                 } else {
                     break;
                 }
             }
         }
 
+        // #region TODO
+        (() => {
+            if (this._currentNode.kind === NodeKind.animation) {
+                this._currentNode._setFromPortWeightUsedInStateWeightCondition(remainingWeight);
+            } else if (this._currentNode.kind === NodeKind.empty || this._currentNode.kind === NodeKind.poseExpr) {
+                this._currentNode._weightUsedInStateWeightCondition = remainingWeight;
+            }
+        })();
+        //#endregion
         this._currentStateWeight = remainingWeight;
         if (this._currentNode.kind === NodeKind.empty) {
             this.passthroughWeight -= this._currentStateWeight;
@@ -2055,6 +2092,8 @@ interface StateMachineInfo {
 }
 
 class PoseExprStateEval extends StateEval {
+    public _weightUsedInStateWeightCondition = 0.0;
+
     public readonly kind = NodeKind.poseExpr;
 
     public constructor (state: PoseExprState, context: PoseExprBindingContext) {
@@ -2144,6 +2183,22 @@ export class MotionStateEval extends StateEval {
         );
     }
 
+    public _getFromPortWeightUsedInStateWeightCondition () {
+        return this._fromPort.weightUsedInStateWeightCondition;
+    }
+
+    public _setFromPortWeightUsedInStateWeightCondition (weight: number) {
+        this._fromPort.weightUsedInStateWeightCondition = weight;
+    }
+
+    public _getToPortWeightUsedInStateWeightCondition () {
+        return this._toPort.weightUsedInStateWeightCondition;
+    }
+
+    public _setToPortWeightUsedInStateWeightCondition (weight: number) {
+        this._toPort.weightUsedInStateWeightCondition = weight;
+    }
+
     public triggerFromPortUpdate (controller: AnimationController) {
         this.components.callMotionStateUpdateMethods(controller, this.getFromPortStatus());
     }
@@ -2229,6 +2284,8 @@ class MotionStateEvalPort {
 
     public progress = 0.0;
 
+    public weightUsedInStateWeightCondition = 0.0;
+
     public readonly statusCache: MotionStateStatus = createStateStatusCache();
 
     public evaluate (context: AnimationGraphEvaluationContext) {
@@ -2270,6 +2327,8 @@ export class SpecialStateEval extends StateEval {
 
 export class EmptyStateEval extends StateEval {
     public readonly kind = NodeKind.empty;
+
+    public _weightUsedInStateWeightCondition = 0.0;
 
     constructor (node: State) {
         super(node);
