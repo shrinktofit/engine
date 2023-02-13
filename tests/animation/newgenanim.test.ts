@@ -2351,7 +2351,7 @@ describe('NewGen Anim', () => {
             {
                 kind: 'onMotionStateExit',
                 id: 'AnimState',
-                status: { progress: getPositionFromLoopedIterations((0.4 * 0.7 + 0.3) / 0.4), },
+                status: { progress: getPositionFromLoopedIterations((0.4 * 0.7 + 0.3) / 0.4), }, // # label:exit-progress
             },
             {
                 kind: 'onMotionStateUpdate',

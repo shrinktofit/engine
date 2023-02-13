@@ -1315,8 +1315,18 @@ class LayerEval {
             return 0.0;
         }
 
-        let maxConsumedTime = 0.0;
+        // Asserts: while updating transition sequences,
+        // the "update consume time" of the last transition, let's say _t_,
+        // always not less than those of preceding transitions.
+        // The reason is, if it's less than, means the last transition does not consume all the `deltaTime`,
+        // which further means the last transition was done and
+        // once the last transition was done, all preceding transitions are dropped.
+        //
+        // All states involved after updating shall also update _t_ times.
+
         let lastTransitionIndex = iTransition;
+        let tailTransitionUpdateConsumedTime = 0.0;
+        let seenTailTransition = false;
         for (; iTransition >= 0; --iTransition) {
             // Find until we met the first concrete state or the very first state.
             /** Subsequence head or the very first state. */
@@ -1344,14 +1354,24 @@ class LayerEval {
                 firstTransition,
                 deltaTime,
             );
-            if (iTransition === 0) {
-                this._accumulateStartStateDeltaTime(updateConsumed);
+            if (!seenTailTransition) {
+                tailTransitionUpdateConsumedTime = updateConsumed;
+                seenTailTransition = true;
             }
-            maxConsumedTime = Math.max(maxConsumedTime, updateConsumed);
 
             // Once the transition is done, all previous transitions should be dropped.
             const done = approx(firstTransition.normalizedElapsedTime, 1.0, 1e-6);
             if (done) {
+                // Before we can drop the start state, we should update its time
+                // so that user know when it really exit.
+                // This fact can be reflected from unit test(label:exit-progress).
+                //
+                // However, we won't update states from previous transitions.
+                // The reason is intuitive -- the previous transition is dropped since later transition done instead of time updating.
+                if (firstState.kind === NodeKind.animation) {
+                    firstState.updateFromPort(updateConsumed);
+                }
+
                 if (firstState.kind === NodeKind.transitionSnapshot) {
                     firstState.clear();
                 }
@@ -1365,10 +1385,28 @@ class LayerEval {
                 break;
             }
 
+            // Accumulates the destination state's time.
+            // Note this step happens only if the transition was not done/dropped.
+            // Otherwise the process "destination state -> very first state"
+            // will cause the new very first state updated twice.
+            {
+                const shouldUpdatePorts = tailTransitionUpdateConsumedTime !== 0;
+                if (shouldUpdatePorts) {
+                    firstTransition.updateDeltaTime += tailTransitionUpdateConsumedTime;
+                }
+
+                if (toState.kind === NodeKind.animation) {
+                    toState.updateToPort(tailTransitionUpdateConsumedTime);
+                }
+            }
+
             lastTransitionIndex = iTransition - 1;
         }
 
-        return maxConsumedTime;
+        // Update the very first state's time.
+        this._accumulateStartStateDeltaTime(tailTransitionUpdateConsumedTime);
+
+        return tailTransitionUpdateConsumedTime;
     }
 
     private _updateTransition (
@@ -1410,15 +1448,6 @@ class LayerEval {
             contrib = Math.min(remainTransitionTime, deltaTime);
             const newTransitionProgress = transition.normalizedElapsedTime = (elapsedTransitionTime + contrib) / transitionDurationAbsolute;
             assertIsTrue(newTransitionProgress >= 0.0 && newTransitionProgress <= 1.0);
-        }
-
-        const shouldUpdatePorts = contrib !== 0;
-
-        if (shouldUpdatePorts) {
-            if (toState.kind === NodeKind.animation) {
-                toState.updateToPort(contrib);
-            }
-            transition.updateDeltaTime += contrib;
         }
 
         return contrib;

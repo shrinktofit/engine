@@ -191,17 +191,17 @@ describe(`Transition sequence`, () => {
                 fixture.c.getExpected(evalMock.current),
                 0.3,
             ),
-            1e-6,
+            6,
         );
 
         evalMock.goto(fixture.transitionDuration * 1.01);
         expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
             __DEBUG_ID__: 'C',
-            progress: expect.toBeAround(evalMock.current / fixture.c.duration, 1e-6),
+            progress: expect.toBeAround(evalMock.current / fixture.c.duration, 6),
         });
         expect(observer.value).toBeCloseTo(
             fixture.c.getExpected(evalMock.current),
-            1e-6,
+            6,
         );
     });
 
@@ -216,31 +216,31 @@ describe(`Transition sequence`, () => {
             evalMock.goto(0.3);
             expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
                 __DEBUG_ID__: getMotionID(0),
-                progress: expect.toBeAround(0.3, 1e-6),
+                progress: expect.toBeAround(0.3, 6),
             });
 
             evalMock.goto(0.9);
             expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
                 __DEBUG_ID__: getMotionID(0),
-                progress: expect.toBeAround(0.9, 1e-6),
+                progress: expect.toBeAround(0.9, 6),
             });
 
             evalMock.goto(1.2);
             expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
                 __DEBUG_ID__: getMotionID(1),
-                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 1e-6),
+                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 6),
             });
 
             evalMock.goto(1.6);
             expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
                 __DEBUG_ID__: getMotionID(2),
-                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 1e-6),
+                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 6),
             });
 
             evalMock.goto(6.2);
             expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
                 __DEBUG_ID__: getMotionID(3),
-                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 1e-6),
+                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 6),
             });
             expect(evalMock.controller.getCurrentTransition(0)).toBeNull();
         });
@@ -255,19 +255,19 @@ describe(`Transition sequence`, () => {
             evalMock.goto(0.3);
             expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
                 __DEBUG_ID__: getMotionID(0),
-                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 1e-6),
+                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 6),
             });
 
             evalMock.goto(1.4);
             expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
                 __DEBUG_ID__: getMotionID(0),
-                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 1e-6),
+                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 6),
             });
 
             evalMock.goto(1.6);
             expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
                 __DEBUG_ID__: getMotionID(3),
-                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 1e-6),
+                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 6),
             });
         });
 
@@ -277,11 +277,11 @@ describe(`Transition sequence`, () => {
             evalMock.goto(5.1);
             expect(evalMock.controller.getCurrentStateStatus(0)).toMatchObject({
                 __DEBUG_ID__: getMotionID(2),
-                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 1e-6),
+                progress: expect.toBeAround(evalMock.current - Math.trunc(evalMock.current), 6),
             });
             expect(evalMock.controller.getCurrentTransition(0)).toMatchObject({
                 duration: 8.0,
-                time: expect.toBeAround(evalMock.current, 1e-6),
+                time: expect.toBeAround(evalMock.current, 6),
             });
         });
 
