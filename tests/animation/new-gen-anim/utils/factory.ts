@@ -5,10 +5,8 @@ import { BinaryCondition, TriggerCondition, UnaryCondition } from "../../../../c
 import { Motion } from "../../../../cocos/animation/marionette/motion";
 import { MotionState } from "../../../../cocos/animation/marionette/motion-state";
 import { Bindable } from "../../../../cocos/animation/marionette/parametric";
-import { MotionExpr } from "../../../../cocos/animation/marionette/pose-expressions/motion-expr";
 import { PoseExpr } from "../../../../cocos/animation/marionette/pose-expressions/pose-expr";
 import { PoseExprGraph } from "../../../../cocos/animation/marionette/pose-expressions/pose-expr-graph";
-import { UseCachedPose } from "../../../../cocos/animation/marionette/pose-expressions/use-cached-pose";
 import { TriggerResetMode } from "../../../../cocos/animation/marionette/variable";
 
 export function createAnimationGraph(params: AnimationGraphParams): AnimationGraph {
@@ -116,6 +114,11 @@ function fillTransition(transition: Transition, params: TransitionAttributes) {
         switch (conditionParams.type) {
             case 'unary': {
                 const condition = new UnaryCondition();
+                if (conditionParams.operator === 'to-be-true') {
+                    condition.operator = UnaryCondition.Operator.TRUTHY;
+                } else if (conditionParams.operator === 'to-be-false') {
+                    condition.operator = UnaryCondition.Operator.FALSY;
+                }
                 fillBindable(condition.operand, conditionParams.operand);
                 return condition;
             }
@@ -182,33 +185,7 @@ function fillTransition(transition: Transition, params: TransitionAttributes) {
     }
 }
 
-function fillPoseExprGraph(poseExprGraph: PoseExprGraph, params: PoseExprGraphParams) {
-    if (params.rootNode) {
-        const root = createPoseExpr(params.rootNode);
-        poseExprGraph.addExpr(root);
-        poseExprGraph.main = root;
-    }
-}
-
-function createPoseExpr(params: PoseExprParams): PoseExpr {
-    if (params instanceof PoseExpr) {
-        return params;
-    }
-    switch (params.type) {
-        case 'motion': {
-            const expr = new MotionExpr();
-            expr.motion = params.motion instanceof Motion ? params.motion : createMotion(params.motion);
-            return expr;
-        }
-        case 'use-stash': {
-            const expr = new UseCachedPose();
-            expr.cacheName = params.stashId;
-            return expr;
-        }
-    }
-}
-
-function createMotion(params: MotionParams): Motion {
+export function createMotion(params: MotionParams): Motion {
     switch (params.type) {
         case 'clip-motion': {
             const clipMotion = new ClipMotion();
@@ -303,6 +280,7 @@ interface TransitionAttributes {
 
 type TransitionConditionParams = {
     type: 'unary';
+    operator?: 'to-be-true' | 'to-be-false',
     operand: BindableParams<boolean>;
 } | {
     type: 'binary';
@@ -321,7 +299,7 @@ type BindableParams<T> = {
     name: string;
 };
 
-type MotionParams = {
+export type MotionParams = {
     type: 'clip-motion',
     clip?: AnimationClip | {
         duration: number;
@@ -336,11 +314,39 @@ interface PoseExprGraphParams {
     rootNode?: PoseExprParams;
 }
 
-type PoseExprParams = PoseExpr | {
-    type: 'use-stash';
-    stashId: string;
-} | {
-    type: 'motion';
-    motion: MotionParams | Motion;
-};
+export type PoseExprParams = PoseExpr | Expr_;
 
+function fillPoseExprGraph(poseExprGraph: PoseExprGraph, params: PoseExprGraphParams) {
+    if (params.rootNode) {
+        const root = createPoseExpr(params.rootNode);
+        poseExprGraph.addExpr(root);
+        poseExprGraph.main = root;
+    }
+}
+
+declare global {
+    interface PoseExprFactoryRegistry {
+    }
+}
+
+type Map_ = {
+    [k in keyof PoseExprFactoryRegistry]: PoseExprFactoryRegistry[k] & { type: k };
+}
+
+const poseExprFactoryMap: Record<string, (params: any) => PoseExpr> = {};
+
+export function addPoseExprFactory<T extends keyof PoseExprFactoryRegistry> (type: T, factory: (params: PoseExprFactoryRegistry[T]) => PoseExpr) {
+    poseExprFactoryMap[type] = factory;
+}
+
+export type Expr_ = Map_[keyof Map_];
+
+export function createPoseExpr(params: PoseExprParams): PoseExpr {
+    if (params instanceof PoseExpr) {
+        return params;
+    } else if (!(params.type in poseExprFactoryMap)) {
+        throw new Error(`${params.type} factory does not exist.`);
+    } else {
+        return poseExprFactoryMap[params.type](params);
+    }
+}

@@ -7,6 +7,8 @@ import { LinearRealValueAnimationFixture } from "../utils/fixtures";
 import { SingleRealValueObserver } from "../utils/single-real-value-observer";
 import '../../../utils/matchers/value-type-asymmetric-matchers';
 
+import './utils/factories/all';
+
 test(`Stash pose`, () => {
     const fixture = {
         stashed_animation: new LinearRealValueAnimationFixture(0, 666, 666),
