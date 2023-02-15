@@ -8,6 +8,7 @@ import { AnimationGraphBindingContext, AnimationGraphEvaluationContext, Animatio
 import { AnimationMask } from '../animation-mask';
 import { XNodeBase } from '../x-node/x-node';
 import { RuntimeStashView } from '../stash/runtime-stash';
+import { RuntimeCoordinator } from '../coordination/runtime-coordinator';
 
 export class PoseExprBindingContext {
     constructor (
@@ -17,6 +18,7 @@ export class PoseExprBindingContext {
         additive: boolean,
         public readonly triggerResetFn: (name: string) => void,
         public readonly stashView: RuntimeStashView,
+        public readonly coordinator: RuntimeCoordinator,
     ) {
         this._additiveFlagStack.push(additive);
     }

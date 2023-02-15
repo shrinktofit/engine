@@ -30,7 +30,6 @@ export function xLink ({
             return;
         }
         const targetConstructor = target.constructor;
-        // @ts-expect-error
         if (!js.isChildClassOf<Constructor<XNodeBase>>(targetConstructor, XNodeBase)) {
             error(`@xLink can be only applied to fields of subclasses of XNodeBase.`);
             return;

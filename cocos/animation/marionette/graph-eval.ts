@@ -56,6 +56,7 @@ import { DefaultTopLevelPose, LayerEvaluationRecord } from './pose-expressions/d
 import { instantiatePoseExpr } from './pose-expressions/instantiation';
 import { RuntimeStashManager } from './stash/runtime-stash';
 import { _StateWeightCondition, _tryConvertToStateWeightCondition } from './__todo-state-weight-condition';
+import { RuntimeCoordinator } from './coordination/runtime-coordinator';
 
 export class AnimationGraphEval {
     private declare _rootPoseExpr: PoseExpr;
@@ -105,6 +106,7 @@ export class AnimationGraphEval {
 
         this._layerEvaluations = graph.layers.map((layer) => {
             const stashManager = new RuntimeStashManager(poseStashAllocator);
+            const coordinator = new RuntimeCoordinator();
             const poseExprBindContext = new PoseExprBindingContext(
                 bindingContext,
                 controller,
@@ -112,6 +114,7 @@ export class AnimationGraphEval {
                 layer.additive,
                 triggerResetFn,
                 stashManager,
+                coordinator,
             );
             for (const [stashId, _] of layer.stashes()) {
                 stashManager.addStash(stashId);
@@ -133,6 +136,7 @@ export class AnimationGraphEval {
             );
             const record = new LayerEvaluationRecord(
                 stashManager,
+                coordinator,
                 stateMachineEval,
                 layer.weight,
                 layer.additive,

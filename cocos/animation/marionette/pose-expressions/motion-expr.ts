@@ -1,16 +1,23 @@
 import { EDITOR } from 'internal:constants';
-import { ccclass, editable, serializable } from '../../../core/data/decorators';
+import { ccclass, displayName, editable, serializable } from '../../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import { ClipMotion } from '../clip-motion';
 import { createEval } from '../create-eval';
 import { Motion, MotionEval, MotionPort } from '../motion';
 import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprUpdateContext } from './pose-expr';
+import { MotionCoordination } from '../coordination/motion-coordination';
+import { RuntimeCoordinationRecord } from '../coordination/runtime-coordinator';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}MotionExpr`)
 export class MotionExpr extends PoseExpr {
     @serializable
     @editable
     public motion: Motion | null = new ClipMotion();
+
+    @serializable
+    @editable
+    @displayName(`协调`)
+    public readonly coordination = new MotionCoordination();
 
     public bind (context: PoseExprBindingContext) {
         const { motion } = this;
@@ -22,18 +29,32 @@ export class MotionExpr extends PoseExpr {
             return;
         }
         this._workspace = new Workspace(motionEval, motionEval.createPort());
+        if (this.coordination.group) {
+            this._runtimeCoordination = context.coordinator.register(this.coordination);
+        }
     }
 
     public reenter () {
         if (this._workspace) {
-            this._workspace.normalizedTime = 0.0;
+            const { _runtimeCoordination: runtimeCoordination } = this;
+            if (runtimeCoordination) {
+                runtimeCoordination.notifyRenter();
+            } else {
+                this._workspace.normalizedTime = 0.0;
+            }
         }
     }
 
     public update (context: PoseExprUpdateContext): void {
         if (this._workspace) {
             const { deltaTime } = context;
-            this._workspace.normalizedTime += deltaTime / this._workspace.motionEval.duration; // TODO: handle duration 0.0
+            const { _runtimeCoordination: runtimeCoordination } = this;
+            const normalizedDeltaTime = deltaTime / this._workspace.motionEval.duration; // TODO: handle duration 0.0
+            if (runtimeCoordination) {
+                runtimeCoordination.notifyUpdate(normalizedDeltaTime, context.directiveAbsoluteWeight);
+            } else {
+                this._workspace.normalizedTime += normalizedDeltaTime;
+            }
         }
     }
 
@@ -41,11 +62,15 @@ export class MotionExpr extends PoseExpr {
         if (!this._workspace) {
             return context.pushDefaultedPose();
         } else {
-            return this._workspace.motionEvalPort.evaluate(this._workspace.normalizedTime, context);
+            const normalizedTime = this._runtimeCoordination
+                ? this._runtimeCoordination.getCoordinatedEnterTime()
+                : this._workspace.normalizedTime;
+            return this._workspace.motionEvalPort.evaluate(normalizedTime, context);
         }
     }
 
     private _workspace: Workspace | null = null;
+    private _runtimeCoordination: RuntimeCoordinationRecord | undefined = undefined;
 }
 
 class Workspace {

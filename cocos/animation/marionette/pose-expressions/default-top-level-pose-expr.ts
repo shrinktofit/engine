@@ -1,6 +1,7 @@
 import { applyDeltaPose, blendPoseInto, Pose, TransformFilter } from '../../core/pose';
 import { AnimationGraphEvaluationContext } from '../animation-graph-context';
 import { AnimationMask } from '../animation-mask';
+import { RuntimeCoordinator } from '../coordination/runtime-coordinator';
 import { TopLevelStateMachineEvaluation } from '../graph-eval';
 import { RuntimeStashManager } from '../stash/runtime-stash';
 import { PoseExpr, PoseExprBindingContext, PoseExprSettleContext, PoseExprUpdateContext } from './pose-expr';
@@ -27,6 +28,7 @@ export class DefaultTopLevelPose extends PoseExpr {
     public update (context: PoseExprUpdateContext): void {
         for (const layer of this._layerRecords) {
             layer.stateMachineEvaluation._update(context);
+            layer.coordinator.coordinate();
         }
     }
 
@@ -52,6 +54,8 @@ export class DefaultTopLevelPose extends PoseExpr {
 export class LayerEvaluationRecord {
     constructor (
         public stashManager: RuntimeStashManager,
+
+        public coordinator: RuntimeCoordinator,
 
         public stateMachineEvaluation: TopLevelStateMachineEvaluation,
 
