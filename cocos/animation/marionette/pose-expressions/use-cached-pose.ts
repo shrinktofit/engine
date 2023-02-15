@@ -4,7 +4,7 @@ import { ccclass, editable, serializable } from '../../../core/data/decorators';
 import { Pose } from '../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import { RuntimeStash } from '../stash/runtime-stash';
-import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSettleContext } from './pose-expr';
+import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSettleContext, PoseExprUpdateContext } from './pose-expr';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}UseStashedPose`)
 export class UseStashedPose extends PoseExpr {
@@ -30,8 +30,8 @@ export class UseStashedPose extends PoseExpr {
         this._runtimeStash?.reenter();
     }
 
-    public update (deltaTime: number): void {
-        this._runtimeStash?.requestUpdate(deltaTime);
+    public update (context: PoseExprUpdateContext): void {
+        this._runtimeStash?.requestUpdate(context);
     }
 
     protected selfEvaluate (context: PoseExprEvaluationContext) {

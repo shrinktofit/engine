@@ -2,9 +2,10 @@ import { EDITOR } from 'internal:constants';
 import { ccclass, serializable } from '../../../core/data/decorators';
 import { blendPoseInto, Pose } from '../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
-import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSettleContext } from './pose-expr';
+import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSettleContext, PoseExprUpdateContext } from './pose-expr';
 import { disconnectPose, poseInput, deletePoseArrayElement, insertPoseArrayElement } from './pose-expr-binding';
 import { disconnectXNode, deleteXNodeArrayElement, insertXNodeArrayElement, xLink } from '../x-node/x-node-binding';
+import { AnimationGraphUpdateContextGenerator } from '../animation-graph-context';
 
 function insertItem (this: BlendInProportion, hint: number) {
     insertPoseArrayElement(this, { propertyKey: 'poses', elementIndex: hint }, null);
@@ -55,9 +56,18 @@ export class BlendInProportion extends PoseExpr {
         }
     }
 
-    public update (deltaTime: number): void {
-        for (const pose of this.poses) {
-            pose?.update(deltaTime);
+    public update (context: PoseExprUpdateContext): void {
+        const {
+            _updateContextGenerator: updateContextGenerator,
+        } = this;
+        const nInputPoses = this.poses.length;
+        for (let iInputPose = 0; iInputPose < nInputPoses; ++iInputPose) {
+            const inputPoseWeight = this.proportions[iInputPose];
+            const inputPoseUpdateContext = updateContextGenerator.generate(
+                context.deltaTime,
+                context.directiveAbsoluteWeight * inputPoseWeight,
+            );
+            this.poses[iInputPose]?.update(inputPoseUpdateContext);
         }
     }
 
@@ -92,4 +102,6 @@ export class BlendInProportion extends PoseExpr {
         // TODO: cause wired behavior in additive layer.
         return context.pushDefaultedPose();
     }
+
+    private _updateContextGenerator = new AnimationGraphUpdateContextGenerator();
 }

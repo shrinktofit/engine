@@ -1,14 +1,14 @@
 import { assertIsTrue } from '../../../core';
 import { Pose } from '../../core/pose';
 import { PoseExprGraphStash } from '../animation-graph';
-import { AnimationGraphEvaluationContext } from '../animation-graph-context';
+import { AnimationGraphEvaluationContext, AnimationGraphUpdateContext, AnimationGraphUpdateContextGenerator } from '../animation-graph-context';
 import { instantiatePoseExpr } from '../pose-expressions/instantiation';
-import { PoseExpr, PoseExprBindingContext } from '../pose-expressions/pose-expr';
+import { PoseExpr, PoseExprBindingContext, PoseExprUpdateContext } from '../pose-expressions/pose-expr';
 
 interface RuntimeStash {
     reenter(): void;
 
-    requestUpdate (deltaTime: number): void;
+    requestUpdate (context: PoseExprUpdateContext): void;
 
     evaluate (context: AnimationGraphEvaluationContext): Pose | null;
 }
@@ -67,6 +67,11 @@ enum StashRecordState {
      * The stash is not ready.
      */
     PENDING,
+
+    /**
+     * The stash is being updated.
+     */
+    UPDATING,
 
     /**
      * The stash has been updated and is ready to evaluate, but it has not been evaluated.
@@ -138,18 +143,31 @@ class RuntimeStashRecord implements RuntimeStash {
         }
     }
 
-    public requestUpdate (deltaTime: number) {
-        assertIsTrue(this._state === StashRecordState.PENDING || this._state === StashRecordState.UPDATED);
-        this._state = StashRecordState.UPDATED;
-        if (deltaTime >= this._maxRequestedUpdateTime) {
-            const t = deltaTime - this._maxRequestedUpdateTime;
-            // Update the `maxRequestedUpdateTime` before firing update of pose expr to ensure we won't run in loop update.
-            this._maxRequestedUpdateTime = deltaTime;
-            // Ensure we won't do multiple `update(0.0)`.
-            if (this._state !== StashRecordState.UPDATED || t !== 0.0) {
-                this._poseExprEval?.update(t);
-            }
+    public requestUpdate (context: AnimationGraphUpdateContext) {
+        const { deltaTime } = context;
+        assertIsTrue(
+            this._state === StashRecordState.PENDING
+            || this._state === StashRecordState.UPDATING
+            || this._state === StashRecordState.UPDATED,
+        );
+
+        // We entered a loop, stop.
+        if (this._state === StashRecordState.UPDATING) {
+            return;
         }
+
+        this._state = StashRecordState.UPDATING;
+        // Note: even `deltaTime < this._maxRequestedUpdateTime`(the `diffDeltaTime` becomes 0.0),
+        // the `context.directiveAbsoluteWeight` might not be 0.0.
+        // We still need to trigger an update since some nodes(such as MotionExpr) needs to accumulate weight.
+        const diffDeltaTime = Math.max(0.0, deltaTime - this._maxRequestedUpdateTime);
+        this._maxRequestedUpdateTime = Math.max(deltaTime, this._maxRequestedUpdateTime);
+        const updateContext = this._updateContextGenerator.generate(
+            diffDeltaTime,
+            context.directiveAbsoluteWeight,
+        );
+        this._poseExprEval?.update(updateContext);
+        this._state = StashRecordState.UPDATED;
     }
 
     public evaluate (context: AnimationGraphEvaluationContext) {
@@ -184,6 +202,7 @@ class RuntimeStashRecord implements RuntimeStash {
     private _poseExprEval: PoseExpr | undefined = undefined;
     private _maxRequestedUpdateTime = 0.0;
     private _evaluationCache: Pose | null = null;
+    private _updateContextGenerator = new AnimationGraphUpdateContextGenerator();
 }
 
 interface RuntimeStashView {

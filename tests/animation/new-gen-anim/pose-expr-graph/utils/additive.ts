@@ -14,7 +14,7 @@ export function createAdditivityCheckMock() {
 
     class PoseExprMock extends PoseExpr {
         bind = bindMock2;
-        evaluate = jest.fn();
+        selfEvaluate = jest.fn();
     }
 
     return {

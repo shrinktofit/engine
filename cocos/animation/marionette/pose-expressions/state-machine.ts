@@ -1,7 +1,7 @@
 import { assertIsTrue } from '../../../core';
 import { ccclass, serializable } from '../../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
-import { PoseExpr, PoseExprBindingContext } from './pose-expr';
+import { PoseExpr, PoseExprBindingContext, PoseExprUpdateContext } from './pose-expr';
 import { Pose } from '../../core/pose';
 import { AnimationGraphEvaluationContext } from '../animation-graph-context';
 import { InterruptionBehavior, StateMachine } from '../animation-graph';
@@ -40,10 +40,10 @@ export class StateMachineExpr extends PoseExpr {
         this._stateMachineEval?.reenter();
     }
 
-    public update (deltaTime: number): void {
+    public update (context: PoseExprUpdateContext): void {
         const { _stateMachineEval: stateMachineEval } = this;
         assertIsTrue(stateMachineEval);
-        stateMachineEval._update(deltaTime);
+        stateMachineEval._update(context);
     }
 
     public selfEvaluate (context: AnimationGraphEvaluationContext): Pose {

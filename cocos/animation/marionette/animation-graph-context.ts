@@ -584,3 +584,31 @@ export class DeferredPoseStashAllocator implements PoseStashAllocator {
 
     private _allocator: PoseHeapAllocator | null = null;
 }
+
+export interface AnimationGraphUpdateContext {
+    readonly deltaTime: number;
+
+    readonly directiveAbsoluteWeight: number;
+}
+
+export class AnimationGraphUpdateContextGenerator {
+    public generate (
+        deltaTime: number,
+        directiveAbsoluteWeight: number,
+    ) {
+        this._context.deltaTime = deltaTime;
+        this._context.directiveAbsoluteWeight = directiveAbsoluteWeight;
+        return this._context as AnimationGraphUpdateContext;
+    }
+
+    private readonly _context: ReusableUpdateContext = {
+        deltaTime: 0.0,
+        directiveAbsoluteWeight: 0.0,
+    };
+}
+
+interface ReusableUpdateContext extends AnimationGraphUpdateContext {
+    deltaTime: number;
+
+    directiveAbsoluteWeight: number;
+}

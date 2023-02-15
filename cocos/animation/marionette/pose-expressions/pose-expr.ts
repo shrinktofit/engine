@@ -4,7 +4,7 @@ import { Node } from '../../../scene-graph';
 import { Pose, TransformFilter } from '../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import type { AnimationController, ReadonlyClipOverrideMap } from '../animation-controller';
-import { AnimationGraphBindingContext, AnimationGraphEvaluationContext } from '../animation-graph-context';
+import { AnimationGraphBindingContext, AnimationGraphEvaluationContext, AnimationGraphUpdateContext } from '../animation-graph-context';
 import { AnimationMask } from '../animation-mask';
 import { XNodeBase } from '../x-node/x-node';
 import { RuntimeStashView } from '../stash/runtime-stash';
@@ -43,6 +43,10 @@ export class PoseExprBindingContext {
 
 export type PoseExprEvaluationContext = AnimationGraphEvaluationContext;
 
+type PoseExprUpdateContext = AnimationGraphUpdateContext;
+
+export type { AnimationGraphUpdateContext as PoseExprUpdateContext };
+
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseExpr`)
 export abstract class PoseExpr extends XNodeBase {
     public abstract bind(context: PoseExprBindingContext): void;
@@ -53,7 +57,7 @@ export abstract class PoseExpr extends XNodeBase {
     public reenter () {
     }
 
-    public update (deltaTime: number): void {
+    public update (context: PoseExprUpdateContext): void {
     }
 
     public evaluate (context: PoseExprEvaluationContext) {

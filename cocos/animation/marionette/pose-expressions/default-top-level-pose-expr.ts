@@ -3,7 +3,7 @@ import { AnimationGraphEvaluationContext } from '../animation-graph-context';
 import { AnimationMask } from '../animation-mask';
 import { TopLevelStateMachineEvaluation } from '../graph-eval';
 import { RuntimeStashManager } from '../stash/runtime-stash';
-import { PoseExpr, PoseExprBindingContext, PoseExprSettleContext } from './pose-expr';
+import { PoseExpr, PoseExprBindingContext, PoseExprSettleContext, PoseExprUpdateContext } from './pose-expr';
 
 export class DefaultTopLevelPose extends PoseExpr {
     constructor (
@@ -24,9 +24,9 @@ export class DefaultTopLevelPose extends PoseExpr {
         }
     }
 
-    public update (deltaTime: number): void {
+    public update (context: PoseExprUpdateContext): void {
         for (const layer of this._layerRecords) {
-            layer.stateMachineEvaluation._update(deltaTime);
+            layer.stateMachineEvaluation._update(context);
         }
     }
 

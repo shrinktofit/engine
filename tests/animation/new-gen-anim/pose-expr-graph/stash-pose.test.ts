@@ -226,8 +226,15 @@ describe(`Stash update`, () => {
         // [0.9s-1.0s]: Motion --> UseStash1
         // [1.0s-1.2s]: UseStash1 --> UseStash2
         evalMock.step(1.2);
-        expect(poseExprMock.update_).toBeCalledTimes(1);
-        expect(poseExprMock.update_).toBeCalledWith(expect.toBeAround(0.3));
+        expect(poseExprMock.update_).toBeCalledTimes(2);
+        // Thread: UseStash1
+        expect(poseExprMock.update_).toHaveBeenNthCalledWith(1, expect.objectContaining({
+            deltaTime: expect.toBeAround(0.3),
+        }));
+        // Thread: UseStash2
+        expect(poseExprMock.update_).toHaveBeenNthCalledWith(2, expect.objectContaining({
+            deltaTime: expect.toBeAround(0.0),
+        }));
         expect(poseExprMock.selfEvaluate_).toBeCalledTimes(1);
     });
 });
@@ -266,7 +273,9 @@ describe(`Dependent stashes`, () => {
         expect(poseExprMockA.reenter_).toBeCalledTimes(1);
         poseExprMockA.reenter_.mockClear();
         expect(poseExprMockA.update_).toBeCalledTimes(1);
-        expect(poseExprMockA.update_).toBeCalledWith(0.1);
+        expect(poseExprMockA.update_).toBeCalledWith(expect.objectContaining({
+            deltaTime: 0.1,
+        }));
         poseExprMockA.update_.mockClear();
         expect(poseExprMockA.selfEvaluate_).toBeCalledTimes(1);
     });
@@ -308,7 +317,11 @@ class PoseExprMock extends PoseExpr {
     }
 
     public update(...args: Parameters<PoseExpr['update']>) {
-        this.update_(...args);
+        const [context] = args;
+        this.update_({
+            deltaTime: context.deltaTime,
+            directiveAbsoluteWeight: context.directiveAbsoluteWeight,
+        });
     }
 
     protected selfEvaluate(context: AnimationGraphEvaluationContext) {

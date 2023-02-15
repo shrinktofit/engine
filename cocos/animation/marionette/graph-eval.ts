@@ -45,11 +45,13 @@ import {
     AnimationGraphBindingContext, AnimationGraphEvaluationContext,
     AnimationGraphLayerWideBindingContext, AnimationGraphPoseLayoutMaintainer, defaultTransformsTag, LayoutChangeFlag, MetaValueRegistry,
     DeferredPoseStashAllocator,
+    AnimationGraphUpdateContext,
+    AnimationGraphUpdateContextGenerator,
 } from './animation-graph-context';
 import { TransformArray } from '../core/transform-array';
 import { applyDeltaPose, blendPoseInto, Pose, TransformFilter } from '../core/pose';
 
-import { PoseExpr, PoseExprBindingContext } from './pose-expressions/pose-expr';
+import { PoseExpr, PoseExprBindingContext, PoseExprUpdateContext } from './pose-expressions/pose-expr';
 import { DefaultTopLevelPose, LayerEvaluationRecord } from './pose-expressions/default-top-level-pose-expr';
 import { instantiatePoseExpr } from './pose-expressions/instantiation';
 import { RuntimeStashManager } from './stash/runtime-stash';
@@ -163,9 +165,14 @@ export class AnimationGraphEval {
             _layerEvaluations: layerEvaluations,
             _evaluationContext: evaluationContext,
             _poseLayoutMaintainer: poseLayoutMaintainer,
+            _rootUpdateContextGenerator: rootUpdateContextGenerator,
         } = this;
 
-        this._rootPoseExpr.update(deltaTime);
+        const updateContext = rootUpdateContextGenerator.generate(
+            deltaTime,
+            1.0,
+        );
+        this._rootPoseExpr.update(updateContext);
         const finalPose = this._rootPoseExpr.evaluate(evaluationContext);
 
         if (this._hasAutoTrigger) {
@@ -276,6 +283,7 @@ export class AnimationGraphEval {
     private declare _root: Node;
     private declare _evaluationContext: AnimationGraphEvaluationContext;
     private declare _poseStashAllocator: DeferredPoseStashAllocator;
+    private _rootUpdateContextGenerator = new AnimationGraphUpdateContextGenerator();
 
     private _initializeContexts () {
         const {
@@ -536,8 +544,8 @@ class LayerEval {
         this._transitionSnapshot.clear();
     }
 
-    public _update (deltaTime: number) {
-        this._eval(deltaTime);
+    public _update (context: AnimationGraphUpdateContext) {
+        this._eval(context);
     }
 
     public evaluate (context: AnimationGraphEvaluationContext): Pose {
@@ -545,9 +553,9 @@ class LayerEval {
         return sampled ?? this._pushNullishPose(context);
     }
 
-    public update (deltaTime: number, context: AnimationGraphEvaluationContext): Pose {
+    public update (updateContext: AnimationGraphUpdateContext, context: AnimationGraphEvaluationContext): Pose {
         if (!this.exited) {
-            this._eval(deltaTime);
+            this._eval(updateContext);
             const sampled = this._sample(context);
             if (sampled) {
                 return sampled;
@@ -661,6 +669,7 @@ class LayerEval {
     private _currentTransitionToNode: ConcreteState | null = null;
     private _currentTransitionPath: TransitionEval[] = [];
     private declare _triggerReset: TriggerResetFn;
+    private _updateContextGenerator = new AnimationGraphUpdateContextGenerator();
     private _fromUpdated = false;
     /** Accumulated delta time of start state(or port). */
     private _fromUpdateDeltaTime = 0.0;
@@ -865,7 +874,8 @@ class LayerEval {
      * @param deltaTime The time piece to update.
      * @returns Remain time piece.
      */
-    private _eval (deltaTime: Readonly<number>) {
+    private _eval (context: AnimationGraphUpdateContext) {
+        const { deltaTime } = context;
         assertIsTrue(!this.exited);
 
         const haltOnNonMotionState = this._continueDanglingTransition();
@@ -946,9 +956,9 @@ class LayerEval {
             }
         }
 
-        this._commitStateUpdates();
-
         this._computeAbsoluteWeights();
+
+        this._commitStateUpdates(context);
 
         return remainTimePiece;
     }
@@ -1524,10 +1534,11 @@ class LayerEval {
         );
     }
 
-    private _commitStateUpdates () {
+    private _commitStateUpdates (parentContext: AnimationGraphUpdateContext) {
         const {
             _currentNode: currentState,
             _currentTransitionPath: currentTransitions,
+            _updateContextGenerator: updateContextGenerator,
         } = this;
         const nTransitions = currentTransitions.length;
         if (this._fromUpdated) {
@@ -1537,7 +1548,11 @@ class LayerEval {
             if (currentState.kind === NodeKind.animation) {
                 currentState.triggerFromPortUpdate(this._controller);
             } else if (currentState.kind === NodeKind.poseExpr) {
-                currentState.update(fromUpdateDeltaTime);
+                const updateContext = updateContextGenerator.generate(
+                    fromUpdateDeltaTime,
+                    parentContext.directiveAbsoluteWeight * this._currentStateWeight,
+                );
+                currentState.update(updateContext);
             }
         }
         for (let iTransition = 0; iTransition < nTransitions; ++iTransition) {
@@ -1545,12 +1560,17 @@ class LayerEval {
             const {
                 to: destinationState,
                 updateDeltaTime,
+                destinationWeight,
             } = transition;
             transition.updateDeltaTime = 0.0;
             if (destinationState.kind === NodeKind.animation) {
                 destinationState.triggerToPortUpdate(this._controller);
             } else if (destinationState.kind === NodeKind.poseExpr) {
-                destinationState.update(updateDeltaTime);
+                const updateContext = updateContextGenerator.generate(
+                    updateDeltaTime,
+                    parentContext.directiveAbsoluteWeight * destinationWeight,
+                );
+                destinationState.update(updateContext);
             }
         }
     }
@@ -2138,8 +2158,8 @@ class PoseExprStateEval extends StateEval {
         this._poseExprEval?.reenter();
     }
 
-    public update (deltaTime: number) {
-        this._poseExprEval?.update(deltaTime);
+    public update (context: PoseExprUpdateContext) {
+        this._poseExprEval?.update(context);
     }
 
     public evaluate (context: AnimationGraphEvaluationContext) {

@@ -1,7 +1,7 @@
 import { ccclass, serializable } from '../../../core/data/decorators';
 import { applyDeltaPose } from '../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
-import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSettleContext } from './pose-expr';
+import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSettleContext, PoseExprUpdateContext } from './pose-expr';
 import { poseInput } from './pose-expr-binding';
 
 /**
@@ -36,9 +36,9 @@ export class AddPose extends PoseExpr {
         this.addition?.reenter();
     }
 
-    public update (deltaTime: number): void {
-        this.base?.update(deltaTime);
-        this.addition?.update(deltaTime);
+    public update (context: PoseExprUpdateContext): void {
+        this.base?.update(context);
+        this.addition?.update(context);
     }
 
     public selfEvaluate (context: PoseExprEvaluationContext) {

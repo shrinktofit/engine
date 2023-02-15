@@ -4,7 +4,7 @@ import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import { ClipMotion } from '../clip-motion';
 import { createEval } from '../create-eval';
 import { Motion, MotionEval, MotionPort } from '../motion';
-import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext } from './pose-expr';
+import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprUpdateContext } from './pose-expr';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}MotionExpr`)
 export class MotionExpr extends PoseExpr {
@@ -30,8 +30,9 @@ export class MotionExpr extends PoseExpr {
         }
     }
 
-    public update (deltaTime: number): void {
+    public update (context: PoseExprUpdateContext): void {
         if (this._workspace) {
+            const { deltaTime } = context;
             this._workspace.normalizedTime += deltaTime / this._workspace.motionEval.duration; // TODO: handle duration 0.0
         }
     }

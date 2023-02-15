@@ -1,6 +1,6 @@
 import { ccclass, editable, serializable, type } from '../../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
-import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSettleContext } from './pose-expr';
+import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSettleContext, PoseExprUpdateContext } from './pose-expr';
 import { poseInput } from './pose-expr-binding';
 import { ccenum, error, Quat, Vec3 } from '../../../core';
 import { TransformHandle } from '../../core/animation-handle';
@@ -73,8 +73,8 @@ export class ApplyTransform extends PoseExpr {
         this.input?.reenter();
     }
 
-    public update (deltaTime: number): void {
-        this.input?.update(deltaTime);
+    public update (context: PoseExprUpdateContext): void {
+        this.input?.update(context);
     }
 
     public selfEvaluate (context: PoseExprEvaluationContext) {
