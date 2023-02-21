@@ -17,7 +17,7 @@ class XNodeInputManager extends NodeInputManager<XNodeBase> {
 
 const xNodeInputManager = new XNodeInputManager();
 
-export function xLink ({
+export function xNodeInput ({
     displayName,
     arrayLike,
 }: {
@@ -26,12 +26,12 @@ export function xLink ({
 } = {}): PropertyDecorator {
     return (target, propertyKey) => {
         if (typeof propertyKey !== 'string') {
-            error(`@xLink can be only applied to string-named fields.`);
+            error(`@xNodeInput can be only applied to string-named fields.`);
             return;
         }
         const targetConstructor = target.constructor;
         if (!js.isChildClassOf<Constructor<XNodeBase>>(targetConstructor, XNodeBase)) {
-            error(`@xLink can be only applied to fields of subclasses of XNodeBase.`);
+            error(`@xNodeInput can be only applied to fields of subclasses of XNodeBase.`);
             return;
         }
         xNodeInputManager.setPropertyNodeInputRecord(targetConstructor, propertyKey, {

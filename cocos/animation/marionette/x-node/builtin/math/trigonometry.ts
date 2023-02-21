@@ -1,13 +1,13 @@
 import { ccclass, editable, serializable } from '../../../../../core/data/decorators';
 import { SingleOutputXNode, XNode } from '../../x-node';
-import { xLink } from '../../x-node-binding';
+import { xNodeInput } from '../../x-node-binding';
 import { CLASS_NAME_PREFIX_X_NODE_MATH } from './prefix';
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODE_MATH}XNodeUnaryNumericExpr`)
 export abstract class XNodeUnaryNumericExpr extends SingleOutputXNode<number> {
     @serializable
     @editable
-    @xLink()
+    @xNodeInput()
     public input = 0.0;
 
     public selfEvaluateDefaultOutput () {

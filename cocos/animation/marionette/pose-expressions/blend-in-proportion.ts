@@ -4,7 +4,7 @@ import { blendPoseInto, Pose } from '../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSettleContext, PoseExprUpdateContext } from './pose-expr';
 import { disconnectPose, poseInput, deletePoseArrayElement, insertPoseArrayElement } from './pose-expr-binding';
-import { disconnectXNode, deleteXNodeArrayElement, insertXNodeArrayElement, xLink } from '../x-node/x-node-binding';
+import { disconnectXNode, deleteXNodeArrayElement, insertXNodeArrayElement, xNodeInput } from '../x-node/x-node-binding';
 import { AnimationGraphUpdateContextGenerator } from '../animation-graph-context';
 
 function insertItem (this: BlendInProportion, hint: number) {
@@ -30,7 +30,7 @@ export class BlendInProportion extends PoseExpr {
     public readonly poses: Array<PoseExpr | null> = [];
 
     @serializable
-    @xLink({
+    @xNodeInput({
         arrayLike: !EDITOR ? undefined : {
             insert: insertItem,
             delete: deleteItem,

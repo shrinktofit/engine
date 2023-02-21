@@ -4,7 +4,7 @@ import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSe
 import { poseInput } from './pose-expr-binding';
 import { ccenum, error, Quat, Vec3 } from '../../../core';
 import { TransformHandle } from '../../core/animation-handle';
-import { xLink } from '../x-node/x-node-binding';
+import { xNodeInput } from '../x-node/x-node-binding';
 
 enum TransformApplyFlag {
     LEAVE_UNCHANGED,
@@ -33,7 +33,7 @@ export class ApplyTransform extends PoseExpr {
 
     @serializable
     @editable
-    @xLink()
+    @xNodeInput()
     public position = new Vec3();
 
     @serializable

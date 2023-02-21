@@ -1,21 +1,51 @@
 import { AnimationController } from "../../../cocos/animation/animation";
 import { MetaValueHandle } from "../../../cocos/animation/core/animation-handle";
 import { Pose } from "../../../cocos/animation/core/pose";
-import { AnimationGraphBindingContext, AnimationGraphPoseLayoutMaintainer, MetaValueRegistry, AnimationGraphEvaluationContext } from "../../../cocos/animation/marionette/animation-graph-context";
-import { AnimationGraph, PoseExpr } from "../../../cocos/animation/marionette/asset-creation";
+import { AnimationGraphEvaluationContext } from "../../../cocos/animation/marionette/animation-graph-context";
+import { AnimationGraph, PoseExpr, XNode } from "../../../cocos/animation/marionette/asset-creation";
 import { AnimationGraphEval } from "../../../cocos/animation/marionette/graph-eval";
-import { getPoseInputField, getPoseInputFieldKeys, getPoseInputFieldMeta, hasPoseInputField, poseInput, setPoseInputField } from "../../../cocos/animation/marionette/pose-expressions/decorator";
 import { PoseExprBindingContext } from "../../../cocos/animation/marionette/pose-expressions/pose-expr";
-import { quat, v3 } from "../../../cocos/core";
+import { assertIsTrue, quat, v3 } from "../../../cocos/core";
 import { Node } from "../../../cocos/scene-graph";
 import { captureErrors } from '../../utils/log-capture';
 import { XNodeGetVariableNumber } from '../../../cocos/animation/marionette/x-node/get-variable';
-import { connectXNode, xLink } from "../../../cocos/animation/marionette/x-node/x-node-link";
-import { RuntimeStashManager } from "../../../cocos/animation/marionette/stash/runtime-stash";
+import { poseInput } from "../../../cocos/animation/marionette/pose-expressions/pose-expr-binding";
+import { xNodeInput } from "../../../cocos/animation/marionette/x-node/x-node-binding";
 import { createAnimationGraph } from "./utils/factory";
 import { AnimationGraphEvalMock } from "./utils/eval-mock";
+import 'jest-extended';
+import {
+    NodeInputKey,
+    NodeInputMetadata,
+    connectAnimationGraphNode,
+    disconnectAnimationGraphNode,
+    getAnimationGraphNodeInputKeys,
+    getAnimationGraphNodeInputBinding,
+    getAnimationGraphNodeInputMetadata,
+    getAnimationGraphNodeInputInsertInfos,
+    isValidAnimationGraphNodeInputKey,
+    insertAnimationGraphNodeInput,
+    deleteAnimationGraphNodeInput,
+    AnimationGraphNode,
+} from "../../../cocos/animation/marionette/pose-expr-graph-binding";
 
-describe(`@poseInput`, () => {
+class UnimplementedPoseExpr extends PoseExpr {
+    public bind(context: PoseExprBindingContext): void {
+        throw new Error("Method not implemented.");
+    }
+
+    protected selfEvaluate(context: AnimationGraphEvaluationContext): Pose {
+        throw new Error("Method not implemented.");
+    }
+}
+
+class UnimplementedXNode extends XNode<any> {
+    protected selfEvaluate(outputs: unknown[]): void {
+        throw new Error("Method not implemented.");
+    }
+}
+
+describe(`Pose expr input declarator: @poseInput`, () => {
     test(`Should emit error if not applied to fields of sub-classes of PoseExpr`, () => {
         const errorWatcher = captureErrors();
 
@@ -52,92 +82,292 @@ describe(`@poseInput`, () => {
 
     //     errorWatcher.stop();
     // });
+});
 
-    test(`Pose input meta access and manipulation`, () => {
-        class NoPoseInput extends UnimplementedPoseExpr { }
-        expect(getPoseInputFieldKeys(new NoPoseInput())).toHaveLength(0);
+describe(`X node input declarator: @xNodeInput`, () => {
+    test(`Should emit error if not applied to fields of sub-classes of PoseExpr`, () => {
+        const errorWatcher = captureErrors();
 
-        class Expr1 extends UnimplementedPoseExpr {
-            @poseInput({})
-            defaulted: PoseExpr | null = null;
-
-            @poseInput({ displayName: 'SomeDisPlayName' })
-            args: PoseExpr | null | null;
+        class _Node {
+            @xNodeInput({})
+            v = 6;
         }
 
-        const expr1 = new Expr1();
+        expect(errorWatcher.captured).toHaveLength(1);
+        expect(errorWatcher.captured[0]).toMatchObject([
+            '@xNodeInput can be only applied to fields of subclasses of XNodeBase.',
+        ]);
 
-        // Pose input field keys query.
-        expect(hasPoseInputField(expr1, 'defaulted')).toBe(true);
-        expect(hasPoseInputField(expr1, 'args')).toBe(true);
-        expect(hasPoseInputField(expr1, 'NonExisting')).toBe(false);
-        expect(getPoseInputFieldKeys(expr1)).toHaveLength(2);
-        expect(getPoseInputFieldKeys(expr1)).toMatchObject(['defaulted', 'args']);
-
-        // Pose input field query: query a non-existing field.
-        expect(getPoseInputField(expr1, 'NonExisting')).toBeNull();
-
-        // Pose input field query.
-        expect(getPoseInputField(expr1, 'defaulted')).toBeNull();
-        const defaultedField = expr1.defaulted = new NoPoseInput();
-        expect(getPoseInputField(expr1, 'defaulted')).toBe(defaultedField);
-        expr1.defaulted = null;
-        expect(getPoseInputField(expr1, 'defaulted')).toBeNull();
-
-        // Pose input field query and set via `setPoseInputField`.
-        expect(getPoseInputField(expr1, 'args')).toBeNull();
-        const argsField = new NoPoseInput();
-        setPoseInputField(expr1, 'args', argsField);
-        expect(getPoseInputField(expr1, 'args')).toBe(argsField);
-        setPoseInputField(expr1, 'args', null);
-        expect(getPoseInputField(expr1, 'args')).toBeNull();
-
-        // Input field meta query.
-        expect(getPoseInputFieldMeta(expr1, 'NonExisting')).toBeUndefined();
-        expect(getPoseInputFieldMeta(expr1, 'defaulted')).toMatchObject({
-            displayName: undefined,
-        });
-        expect(getPoseInputFieldMeta(expr1, 'args')).toMatchObject({
-            displayName: 'SomeDisPlayName',
-        });
-    });
-
-    test.only(`Pose array input`, () => {
-        class Expr extends UnimplementedPoseExpr {
-            @poseInput({ isArray: true })
-            inputs: Array<PoseExpr | null> = [];
-        }
-
-        class InputPoseExpr extends UnimplementedPoseExpr {
-        }
-
-        const expr1 = new Expr();
-        expect(getPoseInputFieldKeys(expr1)).toStrictEqual([]);
-
-        expr1.inputs.length = 1;
-        expect(getPoseInputFieldKeys(expr1)).toStrictEqual(['inputs/0']);
-        expect(hasPoseInputField(expr1, getPoseInputFieldKeys(expr1)[0])).toBe(true);
-
-        expr1.inputs.length = 3;
-        expect(getPoseInputFieldKeys(expr1)).toStrictEqual(['inputs/0', 'inputs/1', 'inputs/2']);
-        for (const key of getPoseInputFieldKeys(expr1)) {
-            expect(hasPoseInputField(expr1, key)).toBe(true);
-        }
-
-        // Delete a middle element.
-        {
-            const lastKey = getPoseInputFieldKeys(expr1)[2];
-            expr1.inputs.splice(1, 1);
-            expect(getPoseInputFieldKeys(expr1)).toStrictEqual(['inputs/0', 'inputs/1']);
-            for (const key of getPoseInputFieldKeys(expr1)) {
-                expect(hasPoseInputField(expr1, key)).toBe(true);
-            }
-            expect(hasPoseInputField(expr1, lastKey)).toBe(false);
-        }
+        errorWatcher.stop();
     });
 });
 
-describe(`Pose expr base class`, () => {
+describe(`Node`, () => {
+    type PosePropertyName = 'pose_input_with_no_displayName_specified' | 'pose_input_with_displayName_specified';
+
+    type XNodePropertyName = 'x_node_input_with_no_displayName_specified' | 'x_node_input_with_displayName_specified';
+
+    interface AnimationGraphNodeTestSuite {
+        makeFundamental: () => {
+            node: AnimationGraphNode,
+        };
+        makeArrayInput: () => {
+            node: AnimationGraphNode;
+            visitArray: () => unknown[];
+        };
+    }
+
+    const testSuitePoseExpr: AnimationGraphNodeTestSuite = (() => {
+        class Fundamental_Node extends UnimplementedPoseExpr {
+            @poseInput({})
+            pose_input_with_no_displayName_specified: PoseExpr | null = null;
+
+            @poseInput({ displayName: 'SomeDisPlayName' })
+            pose_input_with_displayName_specified: PoseExpr | null = null;
+
+            @xNodeInput({})
+            x_node_input_with_no_displayName_specified = 1;
+
+            @xNodeInput({ displayName: 'XNode_SomeDisPlayName' })
+            x_node_input_with_displayName_specified = 2;
+
+            /**
+             * Does not observed by this test case.
+             */
+            @poseInput({ })
+            array_inputs: Array<PoseExpr | null> = [];
+        }
+
+        class ArrayInput_Node extends UnimplementedPoseExpr {
+            @poseInput({})
+            array_inputs: Array<PoseExpr | null> = [];
+        }
+
+        return {
+            makeFundamental: () => {
+                const node = new Fundamental_Node();
+                return {
+                    node,
+                    visitProperty: (propertyKey: string) => node[propertyKey],
+                };
+            },
+            makeArrayInput: () => {
+                const node = new ArrayInput_Node();
+                return {
+                    node,
+                    visitArray: () => node.array_inputs,
+                };
+            },
+        };
+    })();
+
+    const testSuiteXNode: AnimationGraphNodeTestSuite = (() => {
+        class Fundamental_Node extends UnimplementedXNode {
+            @xNodeInput({})
+            x_node_input_with_no_displayName_specified = 1;
+
+            @xNodeInput({ displayName: 'XNode_SomeDisPlayName' })
+            x_node_input_with_displayName_specified = 2;
+
+            /**
+             * Does not observed by this test case.
+             */
+            @xNodeInput({ })
+            array_inputs: Array<PoseExpr | null> = [];
+        }
+
+        class ArrayInput_Node extends UnimplementedXNode {
+            @xNodeInput({})
+            array_inputs: number[] = [];
+        }
+
+        return {
+            makeFundamental: () => {
+                const node = new Fundamental_Node(1);
+                return {
+                    node,
+                };
+            },
+            makeArrayInput: () => {
+                const node = new ArrayInput_Node(1);
+                return {
+                    node,
+                    visitArray: () => node.array_inputs,
+                };
+            },
+        };
+    })();
+
+    describe.each([
+        [`Pose Expr`, testSuitePoseExpr],
+        [`X Node`, testSuiteXNode],
+    ] as [title: string, suite: AnimationGraphNodeTestSuite][])(`%s`, (_, {
+        makeFundamental: makeMainNode,
+        makeArrayInput: makeArrayNode,
+    }) => {
+        test(`Fundamental`, () => {
+            const {
+                node: mainNode,
+            } = makeMainNode();
+
+            const shouldContainPoseInputs = mainNode instanceof PoseExpr;
+
+            // Pose input keys and metadata query.
+            const rawKeys = getAnimationGraphNodeInputKeys(mainNode);
+            expect(rawKeys).toHaveLength(shouldContainPoseInputs ? 4 : 2);
+            expect(rawKeys).toSatisfyAll((k) => isValidAnimationGraphNodeInputKey(mainNode, k));
+            const metadataTable = rawKeys.map((k) => normalizeNodeInputMetadata(getAnimationGraphNodeInputMetadata(mainNode, k)));
+            expect(metadataTable).toStrictEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    displayName: 'x_node_input_with_no_displayName_specified',
+                    deletable: false,
+                    insertPoint: false,
+                }),
+                expect.objectContaining({
+                    displayName: 'XNode_SomeDisPlayName',
+                    deletable: false,
+                    insertPoint: false,
+                }),
+            ]));
+            if (shouldContainPoseInputs) {
+                expect(metadataTable).toStrictEqual(expect.arrayContaining([
+                    expect.objectContaining({
+                        displayName: 'pose_input_with_no_displayName_specified',
+                        deletable: false,
+                        insertPoint: false,
+                    }),
+                    expect.objectContaining({
+                        displayName: 'SomeDisPlayName',
+                        deletable: false,
+                        insertPoint: false,
+                    }),
+                ]));
+            }
+    
+            // Pose inputs binding query.
+            // Note: only pose expr can binding poses.
+            if (shouldContainPoseInputs) {
+                for (const [
+                    expectedDisplayName,
+                    expectedPropertyName,
+                ] of [
+                    ['pose_input_with_no_displayName_specified', 'pose_input_with_no_displayName_specified'],
+                    ['SomeDisPlayName', 'pose_input_with_displayName_specified'],
+                ] as [
+                    expectedDisplayName: string,
+                    expectedPropertyName: PosePropertyName,
+                ][]) {
+                    const key = rawKeys.find((k) => getAnimationGraphNodeInputMetadata(mainNode, k)?.displayName === expectedDisplayName);
+                    expect(key).not.toBeUndefined();
+                    assertIsTrue(key);
+                    // Initial: no binding.
+                    expect(getAnimationGraphNodeInputBinding(mainNode, key)).toBeUndefined();
+                    // Connect and reconnect.
+                    for (let i = 0; i < 2; ++i) {
+                        const bindingPose = new UnimplementedPoseExpr();
+                        // Connect.
+                        connectAnimationGraphNode(mainNode, key, bindingPose);
+                        // `getAnimationGraphNodeInputBinding` should returns the connected pose.
+                        expect(getAnimationGraphNodeInputBinding(mainNode, key)).toBe(bindingPose);
+                        // Corresponding field should also be set.
+                        const property = mainNode[expectedPropertyName];
+                        expect(property).toBe(bindingPose);
+                    }
+                    // Disconnect.
+                    disconnectAnimationGraphNode(mainNode, key);
+                    expect(getAnimationGraphNodeInputBinding(mainNode, key)).toBeUndefined();
+                }
+            }
+
+            // X-node input binding query.
+            for (const [
+                expectedDisplayName,
+                expectedPropertyName,
+            ] of [
+                ['x_node_input_with_no_displayName_specified', 'x_node_input_with_no_displayName_specified'],
+                ['XNode_SomeDisPlayName', 'x_node_input_with_displayName_specified'],
+            ] as [
+                expectedDisplayName: string,
+                expectedPropertyName: XNodePropertyName,
+            ][]) {
+                const key = rawKeys.find((k) => getAnimationGraphNodeInputMetadata(mainNode, k)?.displayName === expectedDisplayName);
+                expect(key).not.toBeUndefined();
+                assertIsTrue(key);
+                // Initial: no binding.
+                expect(getAnimationGraphNodeInputBinding(mainNode, key)).toBeUndefined();
+                // Connect and reconnect.
+                for (let i = 0; i < 2; ++i) {
+                    const bindingNode = new UnimplementedXNode(1);
+                    // Connect.
+                    connectAnimationGraphNode(mainNode, key, bindingNode, 0);
+                    // Query the binding.
+                    expect(getAnimationGraphNodeInputBinding(mainNode, key)).toStrictEqual(expect.objectContaining({
+                        consumerPropertyKey: expectedPropertyName,
+                        consumerElementIndex: -1,
+                        target: bindingNode,
+                        outputIndex: 0,
+                    }));
+                }
+                // Disconnect.
+                disconnectAnimationGraphNode(mainNode, key);
+                expect(getAnimationGraphNodeInputBinding(mainNode, key)).toBeUndefined();
+            }
+        });
+    
+        test(`Array input`, () => {
+            const {
+                node,
+                visitArray,
+            } = makeArrayNode();
+
+            expect(getAnimationGraphNodeInputKeys(node)).toStrictEqual([]);
+    
+            // Array input.
+            const inputInsertInfos = Object.entries(getAnimationGraphNodeInputInsertInfos(node));
+            expect(inputInsertInfos).toHaveLength(1);
+            expect(inputInsertInfos.map(([_, v]) => v)).toStrictEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    displayName: 'array_inputs',
+                }),
+            ]));
+    
+            // Inserts inputs.
+            for (let i = 0; i < 5; ++i) {
+                insertAnimationGraphNodeInput(node, inputInsertInfos[0][0]);
+                const expectedElementCount = i + 1;
+                expect(visitArray()).toHaveLength(expectedElementCount);
+                const keys = getAnimationGraphNodeInputKeys(node);
+                expect(keys).toHaveLength(expectedElementCount);
+                const metadataTable = keys.map((k) => normalizeNodeInputMetadata(getAnimationGraphNodeInputMetadata(node, k)));
+                expect(metadataTable).toStrictEqual(expect.arrayContaining(Array.from({ length: expectedElementCount }, (_, j) => {
+                    return expect.objectContaining({
+                        displayName: `array_inputs ${j}`,
+                        deletable: true,
+                        insertPoint: true,
+                    });
+                })));
+            }
+    
+            // Delete a middle element.
+            const middleInputKey = getAnimationGraphNodeInputKeys(node).find((k) => getAnimationGraphNodeInputMetadata(node, k)?.displayName === `array_inputs 3`);
+            expect(middleInputKey).not.toBeUndefined();
+            assertIsTrue(middleInputKey);
+            deleteAnimationGraphNodeInput(node, middleInputKey);
+            {
+                expect(visitArray()).toHaveLength(4);
+                const keys = getAnimationGraphNodeInputKeys(node);
+                expect(keys).toHaveLength(4);
+                const metadataTable = keys.map((k) => getAnimationGraphNodeInputMetadata(node, k));
+                expect(metadataTable).toStrictEqual(expect.arrayContaining(Array.from({ length: 4 }, (_, j) => {
+                    return expect.objectContaining({
+                        displayName: `array_inputs ${j}`,
+                        deletable: true,
+                        insertPoint: true,
+                    });
+                })));
+            }
+        });
+    });
 });
 
 describe(`Pose expr instantiation`, () => {
@@ -206,7 +436,7 @@ describe(`Pose expr instantiation`, () => {
 describe(`XNode`, () => {
     test(`Get number variable`, () => {
         class OutputNumberPoseExpr extends PoseExpr {
-            @xLink
+            @xNodeInput()
             public value = 0.0;
 
             public bind(context: PoseExprBindingContext): void {
@@ -228,7 +458,9 @@ describe(`XNode`, () => {
         const poseExprMock = new OutputNumberPoseExpr();
         const getVar = new XNodeGetVariableNumber();
         getVar.variableName = '_x';
-        connectXNode(poseExprMock, 'value', getVar);
+        const keys = getAnimationGraphNodeInputKeys(poseExprMock);
+        expect(keys).toHaveLength(1);
+        connectAnimationGraphNode(poseExprMock, keys[0], getVar);
         poseExprState.poseExprGraph.addExpr(poseExprMock);
         poseExprState.poseExprGraph.main = poseExprMock;
         layer.stateMachine.connect(layer.stateMachine.entryState, poseExprState);
@@ -318,15 +550,8 @@ describe(`Reentry`, () => {
     });
 });
 
-class UnimplementedPoseExpr extends PoseExpr {
-    public bind(context: PoseExprBindingContext): void {
-        throw new Error("Method not implemented.");
-    }
-
-    protected selfEvaluate(context: AnimationGraphEvaluationContext): Pose {
-        throw new Error("Method not implemented.");
-    }
-}
+test(`XNode should be evaluated before pose expr updating`, () => {
+});
 
 function checkZeroPose(pose: Pose) {
     for (let iTransform = 0; iTransform < pose.transforms.length; ++iTransform) {
@@ -360,4 +585,12 @@ function createAnimationGraphEval (animationGraph: AnimationGraph, node: Node) {
         graphEval,
         newGenAnim,
     };
+}
+
+function normalizeNodeInputMetadata(nodeInputMetadata?: NodeInputMetadata) {
+    return nodeInputMetadata ? {
+        deletable: false,
+        insertPoint: false,
+        ...nodeInputMetadata
+    } : undefined;
 }

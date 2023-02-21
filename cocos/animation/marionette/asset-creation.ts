@@ -43,27 +43,20 @@ export { AnimationGraphVariant } from './animation-graph-variant';
 export { PoseExprState, PoseExprTransition } from './animation-graph';
 export type { PoseExprGraph } from './pose-expressions/pose-expr-graph';
 export { PoseExpr } from './pose-expressions/pose-expr';
-export {
-    getPoseInputKeys,
-    getPoseInputMetadata,
-    getPoseInputBinding,
-    connectPose,
-    disconnectPose,
-    isValidPoseInput,
-    deletePoseInput,
-    getPoseInputInsertInfos,
-    insertPoseInput,
-} from './pose-expressions/pose-expr-binding';
 
 export { XNode } from './x-node/x-node';
+
 export {
-    getXNodeInputKeys,
-    getXNodeInputMetadata,
-    getXNodeInputBinding,
-    connectXNode,
-    disconnectXNode,
-    isValidXNodeInput,
-    deleteXNodeInput,
-    getXNodeInputInsertInfos,
-    insertXNodeInput,
-} from './x-node/x-node-binding';
+    NodeInputKey,
+    NodeInputMetadata,
+    NodeInputInsertId,
+    getAnimationGraphNodeInputKeys,
+    isValidAnimationGraphNodeInputKey,
+    getAnimationGraphNodeInputMetadata,
+    getAnimationGraphNodeInputBinding,
+    connectAnimationGraphNode,
+    disconnectAnimationGraphNode,
+    getAnimationGraphNodeInputInsertInfos,
+    insertAnimationGraphNodeInput,
+    deleteAnimationGraphNodeInput,
+} from './pose-expr-graph-binding';
