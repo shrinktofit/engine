@@ -551,6 +551,52 @@ describe(`Reentry`, () => {
 });
 
 test(`XNode should be evaluated before pose expr updating`, () => {
+    const recorder = jest.fn();
+
+    class ObservedExpr extends PoseExpr {
+        @xNodeInput()
+        public value = 0.0;
+
+        public bind() { }
+        
+        protected doUpdate() {
+            recorder(this.value);
+        }
+
+        protected selfEvaluate(context: AnimationGraphEvaluationContext): Pose {
+            return context.pushDefaultedPose();
+        }
+        
+        #handle: MetaValueHandle | null = null;
+    }
+
+    const animationGraph = new AnimationGraph();
+    const layer = animationGraph.addLayer();
+    const poseExprState = layer.stateMachine.addPoseExprState();
+    const poseExprMock = new ObservedExpr();
+    const getVar = new XNodeGetVariableNumber();
+    getVar.variableName = '_x';
+    const keys = getAnimationGraphNodeInputKeys(poseExprMock);
+    expect(keys).toHaveLength(1);
+    connectAnimationGraphNode(poseExprMock, keys[0], getVar);
+    poseExprState.poseExprGraph.addExpr(poseExprMock);
+    poseExprState.poseExprGraph.main = poseExprMock;
+    layer.stateMachine.connect(layer.stateMachine.entryState, poseExprState);
+
+    animationGraph.addFloat('_x', 2.);
+
+    const node = new Node();
+    const { graphEval } = createAnimationGraphEval(animationGraph, node);
+    graphEval.update(0.2);
+    expect(recorder).toHaveBeenCalledTimes(1);
+    expect(recorder).toHaveBeenCalledWith(2.);
+    recorder.mockReset();
+
+    graphEval.setValue('_x', 3.);
+    graphEval.update(0.15);
+    expect(recorder).toHaveBeenCalledTimes(1);
+    expect(recorder).toHaveBeenCalledWith(3.);
+    recorder.mockReset();
 });
 
 function checkZeroPose(pose: Pose) {

@@ -25,7 +25,7 @@ export class DefaultTopLevelPose extends PoseExpr {
         }
     }
 
-    public update (context: PoseExprUpdateContext): void {
+    protected doUpdate (context: PoseExprUpdateContext): void {
         for (const layer of this._layerRecords) {
             layer.stateMachineEvaluation._update(context);
             layer.coordinator.coordinate();

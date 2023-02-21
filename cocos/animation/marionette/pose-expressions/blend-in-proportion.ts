@@ -56,7 +56,7 @@ export class BlendInProportion extends PoseExpr {
         }
     }
 
-    public update (context: PoseExprUpdateContext): void {
+    protected doUpdate (context: PoseExprUpdateContext): void {
         const {
             _updateContextGenerator: updateContextGenerator,
         } = this;

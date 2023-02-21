@@ -59,12 +59,16 @@ export abstract class PoseExpr extends XNodeBase {
     public reenter () {
     }
 
-    public update (context: PoseExprUpdateContext): void {
+    public update (context: PoseExprUpdateContext) {
+        this._evaluateBindings();
+        this.doUpdate(context);
     }
 
     public evaluate (context: PoseExprEvaluationContext) {
-        this._evaluateBindings();
         return this.selfEvaluate(context);
+    }
+
+    protected doUpdate (context: PoseExprUpdateContext): void {
     }
 
     protected abstract selfEvaluate(context: PoseExprEvaluationContext): Pose;

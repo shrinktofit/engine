@@ -316,7 +316,7 @@ class PoseExprMock extends PoseExpr {
         this.reenter_(...args);
     }
 
-    public update(...args: Parameters<PoseExpr['update']>) {
+    public doUpdate(...args: Parameters<PoseExpr['update']>) {
         const [context] = args;
         this.update_({
             deltaTime: context.deltaTime,

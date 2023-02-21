@@ -30,7 +30,7 @@ export class UseStashedPose extends PoseExpr {
         this._runtimeStash?.reenter();
     }
 
-    public update (context: PoseExprUpdateContext): void {
+    protected doUpdate (context: PoseExprUpdateContext): void {
         this._runtimeStash?.requestUpdate(context);
     }
 

@@ -45,7 +45,7 @@ export class MotionExpr extends PoseExpr {
         }
     }
 
-    public update (context: PoseExprUpdateContext): void {
+    protected doUpdate (context: PoseExprUpdateContext): void {
         if (this._workspace) {
             const { deltaTime } = context;
             const { _runtimeCoordination: runtimeCoordination } = this;

@@ -36,7 +36,7 @@ export class AddPose extends PoseExpr {
         this.addition?.reenter();
     }
 
-    public update (context: PoseExprUpdateContext): void {
+    protected doUpdate (context: PoseExprUpdateContext): void {
         this.base?.update(context);
         this.addition?.update(context);
     }

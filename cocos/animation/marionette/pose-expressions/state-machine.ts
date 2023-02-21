@@ -40,7 +40,7 @@ export class StateMachineExpr extends PoseExpr {
         this._stateMachineEval?.reenter();
     }
 
-    public update (context: PoseExprUpdateContext): void {
+    protected doUpdate (context: PoseExprUpdateContext): void {
         const { _stateMachineEval: stateMachineEval } = this;
         assertIsTrue(stateMachineEval);
         stateMachineEval._update(context);
