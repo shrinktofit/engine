@@ -2,6 +2,7 @@ import { EditorExtendable, serializable } from '../../../core';
 import { ccclass } from '../../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import { VarInstance } from '../variable';
+import { EnterNodeInfo } from '../pose-graph/enter-node-info';
 
 type Outputs = unknown[];
 
@@ -10,6 +11,8 @@ export class XNodeBase extends EditorExtendable {
     }
 
     public getTitle?(): string;
+
+    public getEnterInfo?(): EnterNodeInfo | undefined;
 
     /**
      * @internal
@@ -160,6 +163,10 @@ export abstract class XNode<TValue> extends XNodeBase {
     constructor (outputCount: number) {
         super();
         this._outputs = new Array(outputCount);
+    }
+
+    public get outputCount () {
+        return this._outputs.length;
     }
 
     public getDefaultOutput () {

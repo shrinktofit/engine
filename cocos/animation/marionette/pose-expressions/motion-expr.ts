@@ -7,8 +7,19 @@ import { Motion, MotionEval, MotionPort } from '../motion';
 import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprUpdateContext } from './pose-expr';
 import { MotionCoordination } from '../coordination/motion-coordination';
 import { RuntimeCoordinationRecord } from '../coordination/runtime-coordinator';
+import { poseExprGraphCreateNodeFactory } from '../pose-graph/pose-graph-node-common';
+import { POSE_EXPR_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
+import { getEnterInfo, makeCreateNodeFactory } from './play-or-sample-motion-pose-node-shared';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}MotionExpr`)
+@poseExprGraphCreateNodeFactory(makeCreateNodeFactory(
+    (motionText) => `${POSE_EXPR_GRAPH_NODE_MENU_PREFIX_POSE}播放动画/播放 ${motionText}`,
+    (motion) => {
+        const node = new MotionExpr();
+        node.motion = motion;
+        return node;
+    },
+))
 export class MotionExpr extends PoseExpr {
     @serializable
     @editable
@@ -89,4 +100,6 @@ if (EDITOR) {
         const motionName = this.motion instanceof ClipMotion ? this.motion.clip?.name ?? '' : `混合动作`;
         return motionName ? `播放 ${motionName}` : `播放动作`;
     };
+
+    MotionExpr.prototype.getEnterInfo = getEnterInfo;
 }

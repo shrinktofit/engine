@@ -5,6 +5,8 @@ import { poseInput } from './pose-expr-binding';
 import { ccenum, error, Quat, Vec3 } from '../../../core';
 import { TransformHandle } from '../../core/animation-handle';
 import { xNodeInput } from '../x-node/x-node-binding';
+import { poseExprGraphNodeMenu } from '../pose-graph/pose-graph-node-common';
+import { POSE_EXPR_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 
 enum TransformApplyFlag {
     LEAVE_UNCHANGED,
@@ -17,6 +19,7 @@ enum TransformApplyFlag {
 ccenum(TransformApplyFlag);
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}ApplyTransform`)
+@poseExprGraphNodeMenu(`${POSE_EXPR_GRAPH_NODE_MENU_PREFIX_POSE}变换`)
 export class ApplyTransform extends PoseExpr {
     @serializable
     @poseInput({ displayName: '输入姿态' })
@@ -33,7 +36,7 @@ export class ApplyTransform extends PoseExpr {
 
     @serializable
     @editable
-    @xNodeInput()
+    @xNodeInput({ displayName: '位置' })
     public position = new Vec3();
 
     @serializable
@@ -43,6 +46,7 @@ export class ApplyTransform extends PoseExpr {
 
     @serializable
     @editable
+    @xNodeInput({ displayName: '旋转' })
     public rotation = new Quat();
 
     public bind (context: PoseExprBindingContext) {

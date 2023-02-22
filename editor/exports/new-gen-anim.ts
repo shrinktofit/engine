@@ -43,3 +43,5 @@ export {
 export {
     StateMachineExpr,
 } from '../../cocos/animation/marionette/pose-expressions/state-machine';
+
+export * from '../src/marionette/pose-expr-graph-editor-api';

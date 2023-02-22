@@ -46,17 +46,5 @@ export { PoseExpr } from './pose-expressions/pose-expr';
 
 export { XNode } from './x-node/x-node';
 
-export {
-    NodeInputKey,
-    NodeInputMetadata,
-    NodeInputInsertId,
-    getAnimationGraphNodeInputKeys,
-    isValidAnimationGraphNodeInputKey,
-    getAnimationGraphNodeInputMetadata,
-    getAnimationGraphNodeInputBinding,
-    connectAnimationGraphNode,
-    disconnectAnimationGraphNode,
-    getAnimationGraphNodeInputInsertInfos,
-    insertAnimationGraphNodeInput,
-    deleteAnimationGraphNodeInput,
-} from './pose-expr-graph-binding';
+export * from './pose-graph/op/index'
+export type { EnterNodeInfo } from './pose-graph/enter-node-info';

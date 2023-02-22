@@ -6,6 +6,8 @@ import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSe
 import { disconnectPose, poseInput, deletePoseArrayElement, insertPoseArrayElement } from './pose-expr-binding';
 import { disconnectXNode, deleteXNodeArrayElement, insertXNodeArrayElement, xNodeInput } from '../x-node/x-node-binding';
 import { AnimationGraphUpdateContextGenerator } from '../animation-graph-context';
+import { poseExprGraphNodeMenu } from '../pose-graph/pose-graph-node-common';
+import { POSE_EXPR_GRAPH_NODE_MENU_PREFIX_POSE_BLEND } from './menu-common';
 
 function insertItem (this: BlendInProportion, hint: number) {
     insertPoseArrayElement(this, { propertyKey: 'poses', elementIndex: hint }, null);
@@ -18,6 +20,7 @@ function deleteItem (this: BlendInProportion, index: number) {
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}BlendInProportion`)
+@poseExprGraphNodeMenu(`${POSE_EXPR_GRAPH_NODE_MENU_PREFIX_POSE_BLEND}按比例混合`)
 export class BlendInProportion extends PoseExpr {
     @serializable
     @poseInput({

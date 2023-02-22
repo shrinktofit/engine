@@ -1,10 +1,39 @@
 import { EDITOR } from 'internal:constants';
 import { editable, Quat, serializable, Vec3 } from '../../../core';
 import { ccclass } from '../../../core/data/class-decorator';
-import { VarInstance } from '../variable';
+import { VariableType, VarInstance } from '../variable';
 import { CLASS_NAME_PREFIX_X_NODES } from './builtin/prefix';
 import { SingleOutputXNode, XNodeLinkContext } from './x-node';
+import {
+    PoseExprGraphCreateNodeEntry, PoseExprGraphCreateNodeFactory, poseExprGraphCreateNodeFactory, poseExprGraphNodeHide,
+} from '../pose-graph/pose-graph-node-common';
 
+const createNodeFactory: PoseExprGraphCreateNodeFactory<string> = {
+    // eslint-disable-next-line arrow-body-style
+    listEntries: (context) => {
+        // eslint-disable-next-line arrow-body-style
+        const entries: PoseExprGraphCreateNodeEntry<string>[] = [];
+        for (const [variableName, { type }] of context.animationGraph.variables) {
+            if (type === VariableType.TRIGGER) {
+                continue;
+            }
+            entries.push({
+                arg: variableName,
+                menu: `获取变量/${variableName}`,
+            });
+        }
+        return entries;
+    },
+
+    create: (arg) => {
+        const node = new XNodeGetVariableNumber();
+        node.variableName = arg;
+        return node;
+    },
+};
+
+@ccclass(`${CLASS_NAME_PREFIX_X_NODES}XNodeGetVariable`)
+@poseExprGraphCreateNodeFactory(createNodeFactory)
 export abstract class XNodeGetVariable<T> extends SingleOutputXNode<T> {
     @editable
     @serializable
@@ -24,6 +53,7 @@ if (EDITOR) {
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODES}XNodeGetVariableNumber`)
+@poseExprGraphNodeHide()
 export class XNodeGetVariableNumber extends XNodeGetVariable<number> {
     public selfEvaluateDefaultOutput (): number {
         return this._varInstance?.value as number; // TODO
@@ -31,6 +61,7 @@ export class XNodeGetVariableNumber extends XNodeGetVariable<number> {
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODES}XNodeGetVariableBoolean`)
+@poseExprGraphNodeHide()
 export class XNodeGetVariableBoolean extends XNodeGetVariable<boolean> {
     public selfEvaluateDefaultOutput (): boolean {
         return this._varInstance?.value as boolean; // TODO
@@ -38,6 +69,7 @@ export class XNodeGetVariableBoolean extends XNodeGetVariable<boolean> {
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODES}XNodeGetVariableVec3`)
+@poseExprGraphNodeHide()
 export class XNodeGetVariableVec3 extends XNodeGetVariable<Vec3> {
     public selfEvaluateDefaultOutput (): Readonly<Vec3> {
         return this._varInstance?.value as unknown as Vec3; // TODO
@@ -45,6 +77,7 @@ export class XNodeGetVariableVec3 extends XNodeGetVariable<Vec3> {
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODES}XNodeGetVariableQuat`)
+@poseExprGraphNodeHide()
 export class XNodeGetVariableQuat extends XNodeGetVariable<Quat> {
     @editable
     @serializable

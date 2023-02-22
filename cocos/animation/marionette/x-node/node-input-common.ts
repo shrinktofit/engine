@@ -1,10 +1,10 @@
-export interface NodeInputKey {
+export interface PoseGraphInputKey {
     readonly propertyKey: string;
 
     readonly elementIndex: number;
 }
 
-export interface NodeInputArrayLikeOptions {
+export interface PoseGraphNodeInputArrayLikeOptions {
     insert(hint: number): void;
     delete(index: number): void;
 }
@@ -14,10 +14,10 @@ export interface PropertyNodeInputMetadata {
 }
 
 export interface PropertyNodeInputPrivateMetadata {
-    arrayLike?: NodeInputArrayLikeOptions;
+    arrayLike?: PoseGraphNodeInputArrayLikeOptions;
 }
 
-export interface NodeInputMetadata {
+export interface PoseGraphNodeInputMetadata {
     displayName?: string;
 
     deletable?: boolean;
@@ -30,7 +30,7 @@ type Constructor = Function;
 
 type PropertyNodeInputRecord = PropertyNodeInputMetadata & PropertyNodeInputPrivateMetadata;
 
-export type NodeInputInsertId = string;
+export type PoseGraphNodeInputInsertId = string;
 
 // eslint-disable-next-line @typescript-eslint/ban-types
 export abstract class NodeInputManager<TTInstanceType extends object> {
@@ -45,7 +45,7 @@ export abstract class NodeInputManager<TTInstanceType extends object> {
         classInputRecord[propertyKey] = Object.freeze(metadata);
     }
 
-    public getInputKeys (object: TTInstanceType): readonly NodeInputKey[] {
+    public getInputKeys (object: TTInstanceType): readonly PoseGraphInputKey[] {
         const record = this._classInputMap.get(object.constructor);
         if (!record) {
             return [];
@@ -60,10 +60,10 @@ export abstract class NodeInputManager<TTInstanceType extends object> {
                 result.push({ propertyKey, elementIndex: -1 });
             }
             return result;
-        }, [] as NodeInputKey[]);
+        }, [] as PoseGraphInputKey[]);
     }
 
-    public getInputMetadata (object: TTInstanceType, key: NodeInputKey): Readonly<NodeInputMetadata> | undefined {
+    public getInputMetadata (object: TTInstanceType, key: PoseGraphInputKey): Readonly<PoseGraphNodeInputMetadata> | undefined {
         const { propertyKey, elementIndex } = key;
         const propertyInputRecord = this._getPropertyNodeInputRecord(object, propertyKey);
         if (!propertyInputRecord) {
@@ -86,12 +86,15 @@ export abstract class NodeInputManager<TTInstanceType extends object> {
         };
     }
 
-    public hasInput (object: TTInstanceType, key: NodeInputKey) {
+    public hasInput (object: TTInstanceType, key: PoseGraphInputKey) {
         const classInputRecord = this._classInputMap.get(object.constructor);
         if (!classInputRecord) {
             return false;
         }
         const { propertyKey, elementIndex } = key;
+        if (!(propertyKey in classInputRecord)) {
+            return false;
+        }
         const field = object[propertyKey];
         if (Array.isArray(field)) {
             if (elementIndex < 0 || elementIndex >= field.length) {
@@ -101,8 +104,8 @@ export abstract class NodeInputManager<TTInstanceType extends object> {
         return true;
     }
 
-    public getInputInsertInfos (object: TTInstanceType): Readonly<Record<NodeInputInsertId, { displayName: string; }>> {
-        const result: Record<NodeInputInsertId, { displayName: string; }> = {};
+    public getInputInsertInfos (object: TTInstanceType): Readonly<Record<PoseGraphNodeInputInsertId, { displayName: string; }>> {
+        const result: Record<PoseGraphNodeInputInsertId, { displayName: string; }> = {};
         const classInputRecord = this._classInputMap.get(object.constructor);
         if (classInputRecord) {
             for (const propertyKey in classInputRecord) {
@@ -115,7 +118,7 @@ export abstract class NodeInputManager<TTInstanceType extends object> {
         return result;
     }
 
-    public deleteInput (object: TTInstanceType, key: NodeInputKey) {
+    public deleteInput (object: TTInstanceType, key: PoseGraphInputKey) {
         const {
             propertyKey,
             elementIndex,
@@ -138,7 +141,7 @@ export abstract class NodeInputManager<TTInstanceType extends object> {
         }
     }
 
-    public insertInput (object: TTInstanceType, insertId: NodeInputInsertId) {
+    public insertInput (object: TTInstanceType, insertId: PoseGraphNodeInputInsertId) {
         const propertyKey = insertId;
         const propertyInputRecord = this._getPropertyNodeInputRecord(object, propertyKey);
         if (!propertyInputRecord) {
@@ -156,9 +159,9 @@ export abstract class NodeInputManager<TTInstanceType extends object> {
         }
     }
 
-    protected abstract onInsertArrayElementInput(object: TTInstanceType, key: NodeInputKey): void;
+    protected abstract onInsertArrayElementInput(object: TTInstanceType, key: PoseGraphInputKey): void;
 
-    protected abstract onDeleteArrayElementInput (object: TTInstanceType, key: NodeInputKey): void;
+    protected abstract onDeleteArrayElementInput (object: TTInstanceType, key: PoseGraphInputKey): void;
 
     private _classInputMap = new WeakMap<Constructor, Record<PropertyKey, PropertyNodeInputRecord>>();
 

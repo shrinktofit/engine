@@ -1,12 +1,33 @@
 import { EDITOR } from 'internal:constants';
 import { warn } from '../../../core';
 import { ccclass, editable, serializable } from '../../../core/data/decorators';
-import { Pose } from '../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
+import { PoseExprGraphCreateNodeFactory, poseExprGraphCreateNodeFactory } from '../pose-graph/pose-graph-node-common';
 import { RuntimeStash } from '../stash/runtime-stash';
+import { POSE_EXPR_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSettleContext, PoseExprUpdateContext } from './pose-expr';
 
+const createNodeFactory: PoseExprGraphCreateNodeFactory<string> = {
+    // eslint-disable-next-line arrow-body-style
+    listEntries: (context) => {
+        // eslint-disable-next-line arrow-body-style
+        return [...context.animationGraph.layers[context.layerIndex].stashes()].map(([stashId]) => {
+            return {
+                arg: stashId,
+                menu: `${POSE_EXPR_GRAPH_NODE_MENU_PREFIX_POSE}使用暂存的姿势/${stashId}`,
+            };
+        });
+    },
+
+    create: (arg) => {
+        const node = new UseStashedPose();
+        node.stashName = arg;
+        return node;
+    },
+};
+
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}UseStashedPose`)
+@poseExprGraphCreateNodeFactory(createNodeFactory)
 export class UseStashedPose extends PoseExpr {
     @serializable
     @editable
@@ -44,5 +65,12 @@ export class UseStashedPose extends PoseExpr {
 if (EDITOR) {
     UseStashedPose.prototype.getTitle = function getTitle (this: UseStashedPose) {
         return `使用暂存的姿势 ${this.stashName}`;
+    };
+
+    UseStashedPose.prototype.getEnterInfo = function getTitle (this: UseStashedPose) {
+        return {
+            type: 'stash',
+            stashName: this.stashName,
+        };
     };
 }

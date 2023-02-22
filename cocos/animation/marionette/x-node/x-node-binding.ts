@@ -2,15 +2,15 @@
 
 import { error, js } from '../../../core';
 import { PoseExpr } from '../pose-expressions/pose-expr';
-import { NodeInputManager, NodeInputKey, PropertyNodeInputPrivateMetadata, NodeInputInsertId } from './node-input-common';
+import { NodeInputManager, PoseGraphInputKey, PropertyNodeInputPrivateMetadata, PoseGraphNodeInputInsertId } from './node-input-common';
 import { XNode, XNodeBase } from './x-node';
 
 class XNodeInputManager extends NodeInputManager<XNodeBase> {
-    protected onInsertArrayElementInput (object: XNodeBase, key: NodeInputKey): void {
+    protected onInsertArrayElementInput (object: XNodeBase, key: PoseGraphInputKey): void {
         insertXNodeArrayElement(object as XLinkDestination, key, 0 /* TODO */);
     }
 
-    protected onDeleteArrayElementInput (object: XNodeBase, key: NodeInputKey): void {
+    protected onDeleteArrayElementInput (object: XNodeBase, key: PoseGraphInputKey): void {
         deleteXNodeArrayElement(object as XLinkDestination, key);
     }
 }
@@ -51,11 +51,11 @@ export function getXNodeInputKeys (node: XNodeBase) {
     return xNodeInputManager.getInputKeys(node);
 }
 
-export function getXNodeInputMetadata (node: XNodeBase, inputKey: NodeInputKey) {
+export function getXNodeInputMetadata (node: XNodeBase, inputKey: PoseGraphInputKey) {
     return xNodeInputManager.getInputMetadata(node, inputKey);
 }
 
-export function getXNodeInputBinding (node: XNodeBase, inputKey: NodeInputKey) {
+export function getXNodeInputBinding (node: XNodeBase, inputKey: PoseGraphInputKey) {
     const { propertyKey, elementIndex } = inputKey;
     if (elementIndex >= 0) {
         return node._findArrayElementBinding(propertyKey, elementIndex);
@@ -64,7 +64,7 @@ export function getXNodeInputBinding (node: XNodeBase, inputKey: NodeInputKey) {
     }
 }
 
-export function connectXNode (destination: XLinkDestination, inputKey: NodeInputKey, source: XNode<unknown>, outputIndex = 0) {
+export function connectXNode (destination: XLinkDestination, inputKey: PoseGraphInputKey, source: XNode<unknown>, outputIndex = 0) {
     const {
         propertyKey,
         elementIndex,
@@ -83,7 +83,7 @@ export function connectXNode (destination: XLinkDestination, inputKey: NodeInput
     }
 }
 
-export function disconnectXNode (node: XLinkDestination, inputKey: NodeInputKey) {
+export function disconnectXNode (node: XLinkDestination, inputKey: PoseGraphInputKey) {
     if (inputKey.elementIndex >= 0) {
         node._deleteArrayElementBinding(inputKey.propertyKey, inputKey.elementIndex);
     } else {
@@ -91,15 +91,15 @@ export function disconnectXNode (node: XLinkDestination, inputKey: NodeInputKey)
     }
 }
 
-export function isValidXNodeInput (node: XLinkDestination, inputKey: NodeInputKey) {
+export function isValidXNodeInput (node: XLinkDestination, inputKey: PoseGraphInputKey) {
     return xNodeInputManager.hasInput(node, inputKey);
 }
 
-export function deleteXNodeInput (node: XLinkDestination, inputKey: NodeInputKey) {
+export function deleteXNodeInput (node: XLinkDestination, inputKey: PoseGraphInputKey) {
     xNodeInputManager.deleteInput(node, inputKey);
 }
 
-export function insertXNodeArrayElement (node: XLinkDestination, inputKey: NodeInputKey, value: unknown) {
+export function insertXNodeArrayElement (node: XLinkDestination, inputKey: PoseGraphInputKey, value: unknown) {
     const {
         propertyKey,
         elementIndex,
@@ -116,7 +116,7 @@ export function insertXNodeArrayElement (node: XLinkDestination, inputKey: NodeI
     node._moveArrayElementBindingForward(propertyKey, elementIndex + 1, false);
 }
 
-export function deleteXNodeArrayElement (node: XLinkDestination, inputKey: NodeInputKey) {
+export function deleteXNodeArrayElement (node: XLinkDestination, inputKey: PoseGraphInputKey) {
     const {
         propertyKey,
         elementIndex,
@@ -143,6 +143,21 @@ export function getXNodeInputInsertInfos (node: XLinkDestination) {
     return xNodeInputManager.getInputInsertInfos(node);
 }
 
-export function insertXNodeInput (node: XLinkDestination, insertId: NodeInputInsertId) {
+export function insertXNodeInput (node: XLinkDestination, insertId: PoseGraphNodeInputInsertId) {
     xNodeInputManager.insertInput(node, insertId);
+}
+
+export function getXNodeInputConstantValue (node: XLinkDestination, inputKey: PoseGraphInputKey): unknown {
+    const {
+        propertyKey,
+        elementIndex,
+    } = inputKey;
+    const property = node[propertyKey];
+    if (!Array.isArray(property)) {
+        return property;
+    }
+    if (elementIndex < 0 || elementIndex >= property.length) {
+        return undefined;
+    }
+    return property[elementIndex];
 }

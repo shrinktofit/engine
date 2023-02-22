@@ -1,6 +1,8 @@
 import { ccclass, serializable } from '../../../core/data/decorators';
 import { applyDeltaPose } from '../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
+import { poseExprGraphNodeMenu } from '../pose-graph/pose-graph-node-common';
+import { POSE_EXPR_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { PoseExpr, PoseExprBindingContext, PoseExprEvaluationContext, PoseExprSettleContext, PoseExprUpdateContext } from './pose-expr';
 import { poseInput } from './pose-expr-binding';
 
@@ -10,6 +12,7 @@ import { poseInput } from './pose-expr-binding';
  * @note When evaluating addition pose, the context is switched to "additive" mode.
  */
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}AddPose`)
+@poseExprGraphNodeMenu(`${POSE_EXPR_GRAPH_NODE_MENU_PREFIX_POSE}混加姿势`)
 export class AddPose extends PoseExpr {
     @serializable
     @poseInput({ displayName: 'Base' })

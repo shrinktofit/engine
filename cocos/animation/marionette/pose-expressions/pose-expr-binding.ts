@@ -2,24 +2,24 @@ import { assertIsTrue, error, js, warn } from '../../../core';
 import { PoseExpr } from './pose-expr';
 import {
     NodeInputManager,
-    NodeInputKey,
+    PoseGraphInputKey,
     PropertyNodeInputPrivateMetadata,
-    NodeInputInsertId,
+    PoseGraphNodeInputInsertId,
 } from '../x-node/node-input-common';
 
 class PoseExprInputManager extends NodeInputManager<PoseExpr> {
-    protected onInsertArrayElementInput (object: PoseExpr, key: NodeInputKey): void {
+    protected onInsertArrayElementInput (object: PoseExpr, key: PoseGraphInputKey): void {
         insertPoseArrayElement(object, key, null);
     }
 
-    public onDeleteArrayElementInput (object: PoseExpr, key: NodeInputKey): void {
+    public onDeleteArrayElementInput (object: PoseExpr, key: PoseGraphInputKey): void {
         deletePoseArrayElement(object, key);
     }
 }
 
 const poseExprInputManager = new PoseExprInputManager();
 
-function setBinding (object: PoseExpr, key: NodeInputKey, value: PoseExpr | null) {
+function setBinding (object: PoseExpr, key: PoseGraphInputKey, value: PoseExpr | null) {
     const { propertyKey, elementIndex } = key;
     const property = object[propertyKey];
     if (Array.isArray(property)) {
@@ -61,11 +61,11 @@ export function getPoseInputKeys (poseExpr: PoseExpr) {
     return poseExprInputManager.getInputKeys(poseExpr);
 }
 
-export function getPoseInputMetadata (poseExpr: PoseExpr, key: NodeInputKey) {
+export function getPoseInputMetadata (poseExpr: PoseExpr, key: PoseGraphInputKey) {
     return poseExprInputManager.getInputMetadata(poseExpr, key);
 }
 
-export function getPoseInputBinding (poseExpr: PoseExpr, key: NodeInputKey): PoseExpr | undefined {
+export function getPoseInputBinding (poseExpr: PoseExpr, key: PoseGraphInputKey): PoseExpr | undefined {
     const { propertyKey, elementIndex } = key;
     const property = poseExpr[propertyKey];
     let value: unknown;
@@ -80,23 +80,23 @@ export function getPoseInputBinding (poseExpr: PoseExpr, key: NodeInputKey): Pos
     return value instanceof PoseExpr ? value : undefined;
 }
 
-export function connectPose (object: PoseExpr, key: NodeInputKey, value: PoseExpr) {
+export function connectPose (object: PoseExpr, key: PoseGraphInputKey, value: PoseExpr) {
     setBinding(object, key, value);
 }
 
-export function disconnectPose (object: PoseExpr, key: NodeInputKey) {
+export function disconnectPose (object: PoseExpr, key: PoseGraphInputKey) {
     setBinding(object, key, null);
 }
 
-export function isValidPoseInput (object: PoseExpr, inputKey: NodeInputKey) {
+export function isValidPoseInput (object: PoseExpr, inputKey: PoseGraphInputKey) {
     return poseExprInputManager.hasInput(object, inputKey);
 }
 
-export function deletePoseInput (poseExpr: PoseExpr, key: NodeInputKey) {
+export function deletePoseInput (poseExpr: PoseExpr, key: PoseGraphInputKey) {
     poseExprInputManager.deleteInput(poseExpr, key);
 }
 
-export function insertPoseArrayElement (poseExpr: PoseExpr, inputKey: NodeInputKey, value: unknown) {
+export function insertPoseArrayElement (poseExpr: PoseExpr, inputKey: PoseGraphInputKey, value: unknown) {
     const {
         propertyKey,
         elementIndex,
@@ -111,7 +111,7 @@ export function insertPoseArrayElement (poseExpr: PoseExpr, inputKey: NodeInputK
     // No binding needs to update.
 }
 
-export function deletePoseArrayElement (poseExpr: PoseExpr, inputKey: NodeInputKey) {
+export function deletePoseArrayElement (poseExpr: PoseExpr, inputKey: PoseGraphInputKey) {
     const {
         propertyKey,
         elementIndex,
@@ -135,6 +135,6 @@ export function getPoseInputInsertInfos (poseExpr: PoseExpr) {
     return poseExprInputManager.getInputInsertInfos(poseExpr);
 }
 
-export function insertPoseInput (node: PoseExpr, insertId: NodeInputInsertId) {
+export function insertPoseInput (node: PoseExpr, insertId: PoseGraphNodeInputInsertId) {
     poseExprInputManager.insertInput(node, insertId);
 }

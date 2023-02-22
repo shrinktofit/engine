@@ -1,3 +1,4 @@
+import { EDITOR } from 'internal:constants';
 import { assertIsTrue } from '../../../core';
 import { ccclass, serializable } from '../../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
@@ -6,8 +7,11 @@ import { Pose } from '../../core/pose';
 import { AnimationGraphEvaluationContext } from '../animation-graph-context';
 import { InterruptionBehavior, StateMachine } from '../animation-graph';
 import { TopLevelStateMachineEvaluation } from '../graph-eval';
+import { poseExprGraphNodeMenu } from '../pose-graph/pose-graph-node-common';
+import { POSE_EXPR_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}StateMachineExpr`)
+@poseExprGraphNodeMenu(`${POSE_EXPR_GRAPH_NODE_MENU_PREFIX_POSE}状态机`)
 export class StateMachineExpr extends PoseExpr {
     @serializable
     public stateMachine = new StateMachine();
@@ -53,4 +57,13 @@ export class StateMachineExpr extends PoseExpr {
     }
 
     private _stateMachineEval: TopLevelStateMachineEvaluation | undefined;
+}
+
+if (EDITOR) {
+    StateMachineExpr.prototype.getEnterInfo = function getEnterInfo (this: StateMachineExpr) {
+        return {
+            type: 'state-machine',
+            target: this.stateMachine,
+        };
+    };
 }

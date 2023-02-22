@@ -9,6 +9,7 @@ import { AnimationMask } from '../animation-mask';
 import { XNodeBase } from '../x-node/x-node';
 import { RuntimeStashView } from '../stash/runtime-stash';
 import { RuntimeCoordinator } from '../coordination/runtime-coordinator';
+import { poseExprGraphNodeHide } from '../pose-graph/pose-graph-node-common';
 
 export class PoseExprBindingContext {
     constructor (
@@ -50,6 +51,7 @@ type PoseExprUpdateContext = AnimationGraphUpdateContext;
 export type { AnimationGraphUpdateContext as PoseExprUpdateContext };
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseExpr`)
+@poseExprGraphNodeHide()
 export abstract class PoseExpr extends XNodeBase {
     public abstract bind(context: PoseExprBindingContext): void;
 
