@@ -37,7 +37,7 @@ import { AnimationMask } from './animation-mask';
 import { onAfterDeserializedTag } from '../../serialization/deserialize-symbols';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
 import { AnimationGraphLike } from './animation-graph-like';
-import { renameObjectProperty } from '../../core/utils/internal';
+import { createInstanceofProxy, renameObjectProperty } from '../../core/utils/internal';
 import { PoseExpr } from './pose-expressions/pose-expr';
 import { PoseExprGraph } from './pose-expressions/pose-expr-graph';
 
@@ -86,7 +86,9 @@ type TransitionView = Omit<Transition, 'from' | 'to'> & {
     readonly to: Transition['to'];
 };
 
-export type { TransitionView as Transition };
+const TransitionView = createInstanceofProxy(Transition);
+
+export { TransitionView as Transition };
 
 export type TransitionInternal = Transition;
 
@@ -182,7 +184,9 @@ type AnimationTransitionView = Omit<AnimationTransition, 'from' | 'to'> & {
     readonly to: AnimationTransition['to'];
 };
 
-export type { AnimationTransitionView as AnimationTransition };
+const AnimationTransitionView = createInstanceofProxy(AnimationTransition);
+
+export { AnimationTransitionView as AnimationTransition };
 
 export function isAnimationTransition (transition: TransitionView): transition is AnimationTransitionView {
     return transition instanceof AnimationTransition;
@@ -201,7 +205,7 @@ export class EmptyState extends State {
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}EmptyStateTransition`)
-export class EmptyStateTransition extends Transition {
+class EmptyStateTransition extends Transition {
     /**
      * The transition duration, in seconds.
      */
@@ -232,6 +236,12 @@ export class EmptyStateTransition extends Transition {
         that.relativeDestinationStart = this.relativeDestinationStart;
     }
 }
+
+const EmptyStateTransitionView = createInstanceofProxy(EmptyStateTransition);
+
+type EmptyStateTransitionView = EmptyStateTransition;
+
+export { EmptyStateTransitionView as EmptyStateTransition };
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseExprState`)
 export class PoseExprState extends State {
@@ -273,25 +283,6 @@ class PoseExprTransition extends Transition {
      */
     @serializable
     public interruptionSource = TransitionInterruptionSource.NONE;
-}
-
-/**
- * Creates a proxy object `c` so that `o instanceof c`, where `o` is an instance of `constructor`.
- * This function is used to hide the new of `constructor` in the same time keep `instanceof` usable.
- * @param constructor The construct to proxy.
- * @returns The proxy object.
- */
-// eslint-disable-next-line @typescript-eslint/ban-types
-function createInstanceofProxy<TConstructor extends Function> (constructor: TConstructor): TConstructor {
-    const value = Object.create(null, {
-        [Symbol.hasInstance]: {
-            value (instance: unknown) {
-                return instance instanceof constructor;
-            },
-        },
-    });
-
-    return value as unknown as TConstructor;
 }
 
 type PoseExprTransition_ = PoseExprTransition;

@@ -1,7 +1,7 @@
 
 import { lerp, Vec3, warnID } from '../../cocos/core';
 import { AnimationBlend1D, AnimationBlend2D, Condition, InvalidTransitionError, VariableNotDefinedError, ClipMotion, AnimationBlendDirect, VariableType, AnimationMask, AnimationGraphVariant } from '../../cocos/animation/marionette/asset-creation';
-import { AnimationGraph, StateMachine, Transition, isAnimationTransition, AnimationTransition, TransitionInterruptionSource, State, Layer } from '../../cocos/animation/marionette/animation-graph';
+import { AnimationGraph, StateMachine, Transition, isAnimationTransition, AnimationTransition, TransitionInterruptionSource, State, Layer, EmptyStateTransition } from '../../cocos/animation/marionette/animation-graph';
 import { VariableTypeMismatchedError } from '../../cocos/animation/marionette/errors';
 import { AnimationGraphEval, MotionStateStatus, ClipStatus } from '../../cocos/animation/marionette/graph-eval';
 import { createGraphFromDescription } from '../../cocos/animation/marionette/__tmp__/graph-from-description';
@@ -475,6 +475,50 @@ describe('NewGen Anim', () => {
                 t03_1,
                 t02_0,
             ]);
+        });
+
+        test.only(`Encapsulation of Transition/AnimationTransition/EmptyStateTransition`, () => {
+            const graph = new AnimationGraph();
+            const { stateMachine } = graph.addLayer();
+
+            // These bindings are not constructible.
+            expect(() => new Transition(
+                stateMachine.addMotion(),
+                stateMachine.addMotion(),
+            )).toThrowError();
+            expect(() => new AnimationTransition(
+                stateMachine.addMotion(),
+                stateMachine.addMotion(),
+            )).toThrowError();
+            expect(() => new EmptyStateTransition(
+                stateMachine.addMotion(),
+                stateMachine.addMotion(),
+            )).toThrowError();
+
+            // But they can be used as operand of instanceof.
+            {
+                const t = stateMachine.connect(
+                    stateMachine.entryState,
+                    stateMachine.addMotion(),
+                );
+                expect(t).toBeInstanceOf(Transition);
+            }
+            {
+                const t = stateMachine.connect(
+                    stateMachine.addMotion(),
+                    stateMachine.addMotion(),
+                );
+                expect(t).toBeInstanceOf(AnimationTransition);
+                expect(t).toBeInstanceOf(Transition);
+            }
+            {
+                const t = stateMachine.connect(
+                    stateMachine.addEmpty(),
+                    stateMachine.addMotion(),
+                );
+                expect(t).toBeInstanceOf(EmptyStateTransition);
+                expect(t).toBeInstanceOf(Transition);
+            }
         });
     });
 
