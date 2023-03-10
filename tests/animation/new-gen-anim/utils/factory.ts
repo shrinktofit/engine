@@ -125,6 +125,14 @@ function fillTransition(transition: Transition, params: TransitionAttributes) {
             }
             case 'binary': {
                 const condition = new BinaryCondition();
+                switch (conditionParams.operator) {
+                    case '==': condition.operator = BinaryCondition.Operator.EQUAL_TO; break;
+                    case '!=': condition.operator = BinaryCondition.Operator.NOT_EQUAL_TO; break;
+                    case '>': condition.operator = BinaryCondition.Operator.GREATER_THAN; break;
+                    case '>=': condition.operator = BinaryCondition.Operator.GREATER_THAN_OR_EQUAL_TO; break;
+                    case '<': condition.operator = BinaryCondition.Operator.LESS_THAN; break;
+                    case '<=': condition.operator = BinaryCondition.Operator.LESS_THAN_OR_EQUAL_TO; break;
+                }
                 fillBindable(condition.lhs, conditionParams.lhs);
                 fillBindable(condition.rhs, conditionParams.rhs);
                 return condition;
@@ -290,6 +298,7 @@ type TransitionConditionParams = {
     operand: BindableParams<boolean>;
 } | {
     type: 'binary';
+    operator: '==' | '!=' | '>' | '<' | '>=' | '<=';
     lhs: BindableParams<number>;
     rhs: BindableParams<number>;
 } | {
