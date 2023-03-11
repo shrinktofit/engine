@@ -10,6 +10,9 @@ import { VarInstance } from './variable';
 import { AnimationMask } from './animation-mask';
 import { error } from '../../core';
 import { partition } from '../../core/algorithm/partition';
+import { AnimationClipGraphBindingContext } from './animation-graph-animation-clip-binding';
+import { PoseStashAllocator } from './pose-graph/stash/runtime-stash';
+import { PoseHeapAllocator } from '../core/pose-heap-allocator';
 
 /**
  * This module contains stuffs related to animation graph's evaluation.
@@ -63,7 +66,7 @@ export type VarRegistry = Record<string, VarInstance>;
 /**
  * The binding context of an animation graph.
  */
-export class AnimationGraphBindingContext {
+export class AnimationGraphBindingContext implements AnimationClipGraphBindingContext {
     constructor (origin: Node, poseLayoutMaintainer: AnimationGraphPoseLayoutMaintainer, varRegistry: VarRegistry) {
         this._origin = origin;
         this._layoutMaintainer = poseLayoutMaintainer;
@@ -557,4 +560,55 @@ class MetaValueHandleInternal implements MetaValueHandle {
     }
 
     private _host: AnimationGraphPoseLayoutMaintainer;
+}
+
+export class DeferredPoseStashAllocator implements PoseStashAllocator {
+    get allocatedPoseCount () {
+        assertIsTrue(this._allocator);
+        return this._allocator.allocatedCount;
+    }
+
+    public reset (layout: PoseLayout) {
+        this._allocator = new PoseHeapAllocator(layout.transformCount, layout.metaValueCount);
+    }
+
+    public allocatePose (): Pose {
+        assertIsTrue(this._allocator);
+        return this._allocator.allocatePose();
+    }
+
+    public destroyPose (pose: Pose): void {
+        assertIsTrue(this._allocator);
+        return this._allocator.destroyPose(pose);
+    }
+
+    private _allocator: PoseHeapAllocator | null = null;
+}
+
+export interface AnimationGraphUpdateContext {
+    readonly deltaTime: number;
+
+    readonly directiveAbsoluteWeight: number;
+}
+
+export class AnimationGraphUpdateContextGenerator {
+    public generate (
+        deltaTime: number,
+        directiveAbsoluteWeight: number,
+    ) {
+        this._context.deltaTime = deltaTime;
+        this._context.directiveAbsoluteWeight = directiveAbsoluteWeight;
+        return this._context as AnimationGraphUpdateContext;
+    }
+
+    private readonly _context: ReusableUpdateContext = {
+        deltaTime: 0.0,
+        directiveAbsoluteWeight: 0.0,
+    };
+}
+
+interface ReusableUpdateContext extends AnimationGraphUpdateContext {
+    deltaTime: number;
+
+    directiveAbsoluteWeight: number;
 }

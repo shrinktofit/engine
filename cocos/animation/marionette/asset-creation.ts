@@ -40,3 +40,12 @@ export { BindableNumber, BindableBoolean } from './parametric';
 export { AnimationMask } from './animation-mask';
 export { AnimationGraphVariant } from './animation-graph-variant';
 export { Motion } from './motion';
+
+export { PoseState, PoseTransition } from './animation-graph';
+export type { PoseGraph } from './pose-graph/pose-graph';
+export { PoseNode } from './pose-graph/pose-node';
+
+export { XNode } from './pose-graph/x-node';
+
+export * from './pose-graph/op/index'
+export type { EnterNodeInfo } from './pose-graph/enter-node-info';

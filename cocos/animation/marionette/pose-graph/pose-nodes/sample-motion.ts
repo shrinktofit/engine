@@ -1,0 +1,84 @@
+import { EDITOR } from 'internal:constants';
+import { clamp01 } from '../../../../core';
+import { ccclass, editable, serializable } from '../../../../core/data/decorators';
+import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
+import { ClipMotion } from '../../clip-motion';
+import { createEval } from '../../create-eval';
+import { Motion, MotionEval, MotionPort } from '../../motion';
+import { PoseNode, PoseNodeBindingContext } from '../pose-node';
+import { Pose } from '../../../core/pose';
+import { AnimationGraphEvaluationContext } from '../../animation-graph-context';
+import { xNodeInput } from '../x-node-binding';
+import { poseGraphCreateNodeFactory } from '../pose-graph-node-common';
+import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
+import { getEnterInfo, makeCreateNodeFactory } from './play-or-sample-motion-pose-node-shared';
+
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}SampleMotionNode`)
+@poseGraphCreateNodeFactory(makeCreateNodeFactory(
+    (motionText) => `${POSE_GRAPH_NODE_MENU_PREFIX_POSE}采样动画/采样 ${motionText}`,
+    (motion) => {
+        const node = new SampleMotionNode();
+        node.motion = motion;
+        return node;
+    },
+))
+export class SampleMotionNode extends PoseNode {
+    @serializable
+    @editable
+    public motion: Motion | null = new ClipMotion();
+
+    @serializable
+    @editable
+    @xNodeInput()
+    public time = 0.0;
+
+    @serializable
+    @editable
+    public useNormalizedTime = false;
+
+    public bind (context: PoseNodeBindingContext) {
+        const { motion } = this;
+        if (!motion) {
+            return;
+        }
+        const motionEval = motion[createEval](context, context.clipOverrides ?? null);
+        if (!motionEval) {
+            return;
+        }
+        const workspace = new SampleMotionNodeWorkspace(motionEval, motionEval.createPort());
+        this._workspace = workspace;
+    }
+
+    public selfEvaluate (context: AnimationGraphEvaluationContext): Pose {
+        const { _workspace: workspace } = this;
+
+        if (!workspace) {
+            return context.pushDefaultedPose();
+        }
+
+        const time = this.time;
+        const normalizedTime = this.useNormalizedTime
+            ? time
+            : time / workspace.motionEval.duration;
+        return workspace.motionEvalPort.evaluate(clamp01(normalizedTime), context);
+    }
+
+    private _workspace: SampleMotionNodeWorkspace | null = null;
+}
+
+class SampleMotionNodeWorkspace {
+    constructor (
+        public motionEval: MotionEval,
+        public motionEvalPort: MotionPort,
+    ) {
+    }
+}
+
+if (EDITOR) {
+    SampleMotionNode.prototype.getTitle = function getTitle (this: SampleMotionNode) {
+        const motionName = this.motion instanceof ClipMotion ? this.motion.clip?.name ?? '' : `混合动作`;
+        return motionName ? `采样 ${motionName}` : `采样动作`;
+    };
+
+    SampleMotionNode.prototype.getEnterInfo = getEnterInfo;
+}

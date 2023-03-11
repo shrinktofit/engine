@@ -22,9 +22,9 @@
  THE SOFTWARE.
 */
 
-import { ccclass, serializable } from 'cc.decorator';
-import { DEBUG } from 'internal:constants';
-import { js, clamp, assertIsNonNullable, assertIsTrue, EditorExtendable, shift } from '../../core';
+import { ccclass, editable, serializable } from 'cc.decorator';
+import { BUILD, DEBUG } from 'internal:constants';
+import { js, clamp, assertIsNonNullable, assertIsTrue, EditorExtendable, shift, ccenum } from '../../core';
 import { MotionEval, MotionEvalContext } from './motion';
 import type { Condition } from './condition';
 import { OwnedBy, assertsOwnedBy, own, markAsDangling, ownerSymbol } from './ownership';
@@ -38,6 +38,7 @@ import { onAfterDeserializedTag } from '../../serialization/deserialize-symbols'
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
 import { AnimationGraphLike } from './animation-graph-like';
 import { renameObjectProperty } from '../../core/utils/internal';
+import { PoseGraph } from './pose-graph/pose-graph';
 
 export { State };
 
@@ -231,6 +232,81 @@ export class EmptyStateTransition extends Transition {
     }
 }
 
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseState`)
+export class PoseState extends State {
+    @serializable
+    public poseGraph = new PoseGraph();
+
+    /**
+     * // TODO: HACK
+     * @internal
+     */
+    public __callOnAfterDeserializeRecursive () {
+        this.poseGraph.__callOnAfterDeserializeRecursive();
+    }
+}
+
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseTransition`)
+class PoseTransition extends Transition {
+    /**
+     * The transition duration, in seconds.
+     */
+    @serializable
+    public duration = 0.3;
+
+    /**
+     * @internal This field is exposed for **experimental editor only** usage.
+     */
+    get interruptible () {
+        return this.interruptionSource !== TransitionInterruptionSource.NONE;
+    }
+
+    set interruptible (value) {
+        this.interruptionSource = value
+            ? TransitionInterruptionSource.CURRENT_STATE_THEN_NEXT_STATE
+            : TransitionInterruptionSource.NONE;
+    }
+
+    /**
+     * @internal This field is exposed for **internal** usage.
+     */
+    @serializable
+    public interruptionSource = TransitionInterruptionSource.NONE;
+}
+
+/**
+ * Creates a proxy object `c` so that `o instanceof c`, where `o` is an instance of `constructor`.
+ * This function is used to hide the new of `constructor` in the same time keep `instanceof` usable.
+ * @param constructor The construct to proxy.
+ * @returns The proxy object.
+ */
+// eslint-disable-next-line @typescript-eslint/ban-types
+function createInstanceofProxy<TConstructor extends Function> (constructor: TConstructor): TConstructor {
+    const value = Object.create(null, {
+        [Symbol.hasInstance]: {
+            value (instance: unknown) {
+                return instance instanceof constructor;
+            },
+        },
+    });
+
+    return value as unknown as TConstructor;
+}
+
+type PoseTransition_ = PoseTransition;
+const PoseTransition_ = createInstanceofProxy(PoseTransition);
+export {
+    PoseTransition_ as PoseTransition,
+};
+
+export enum InterruptionBehavior {
+    SNAPSHOT,
+
+    CONCURRENT,
+}
+
+ccenum(InterruptionBehavior);
+
 @ccclass('cc.animation.StateMachine')
 export class StateMachine extends EditorExtendable {
     @serializable
@@ -259,6 +335,27 @@ export class StateMachine extends EditorExtendable {
             const state = this._states[iState];
             if (state instanceof SubStateMachine) {
                 state.stateMachine.__callOnAfterDeserializeRecursive();
+            } else if (state instanceof PoseState) {
+                state.__callOnAfterDeserializeRecursive();
+            }
+        }
+
+        // TODO: remove this
+        if (BUILD) {
+            assertIsTrue(`Please remove this code!`);
+        }
+        for (let iState = 0; iState < nStates; ++iState) {
+            const state = this._states[iState];
+            if (state instanceof PoseState) {
+                const transitions = this.getOutgoings(state);
+                for (const transition of transitions) {
+                    if (!(transition instanceof PoseTransition)) {
+                        const to = transition.to;
+                        const conditions = transition.conditions;
+                        this.removeTransition(transition);
+                        this.connect(state, to, conditions);
+                    }
+                }
             }
         }
     }
@@ -381,6 +478,10 @@ export class StateMachine extends EditorExtendable {
         return this._addState(new EmptyState());
     }
 
+    public addPoseState () {
+        return this._addState(new PoseState());
+    }
+
     /**
      * Removes specified state from this state machine.
      * @param state The state to remove.
@@ -421,6 +522,14 @@ export class StateMachine extends EditorExtendable {
      * @param from Source state.
      * @param to Target state.
      * @param condition The transition condition.
+     */
+    public connect (from: PoseState, to: State, conditions?: Condition[]): PoseTransition;
+
+    /**
+     * Connect two states.
+     * @param from Source state.
+     * @param to Target state.
+     * @param condition The transition condition.
      * @throws `InvalidTransitionError` if:
      * - the target state is entry or any, or
      * - the source state is exit.
@@ -443,9 +552,11 @@ export class StateMachine extends EditorExtendable {
 
         const transition = from instanceof MotionState || from === this._anyState
             ? new AnimationTransition(from, to, conditions)
-            : from instanceof EmptyState
-                ? new EmptyStateTransition(from, to, conditions)
-                : new Transition(from, to, conditions);
+            : from instanceof PoseState
+                ? new PoseTransition(from, to, conditions)
+                : from instanceof EmptyState
+                    ? new EmptyStateTransition(from, to, conditions)
+                    : new Transition(from, to, conditions);
 
         own(transition, this);
         this._transitions.push(transition);
@@ -697,6 +808,14 @@ export class SubStateMachine extends InteractiveState {
     private _stateMachine: StateMachine = new StateMachine();
 }
 
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseGraphStash`)
+class PoseGraphStash extends EditorExtendable {
+    @serializable
+    public poseGraph = new PoseGraph();
+}
+
+export { PoseGraphStash };
+
 @ccclass('cc.animation.Layer')
 export class Layer implements OwnedBy<AnimationGraph> {
     [ownerSymbol]: AnimationGraph | undefined;
@@ -716,6 +835,26 @@ export class Layer implements OwnedBy<AnimationGraph> {
     @serializable
     public additive = false;
 
+    public stashes (): Iterable<Readonly<[string, PoseGraphStash]>> {
+        return Object.entries(this._stashes);
+    }
+
+    public getStash (id: string): PoseGraphStash | undefined {
+        return this._stashes[id];
+    }
+
+    public addStash (id: string) {
+        return this._stashes[id] = new PoseGraphStash();
+    }
+
+    public removeStash (id: string) {
+        delete this._stashes[id];
+    }
+
+    public renameStash (id: string, newId: string) {
+        this._stashes = renameObjectProperty(this._stashes, id, newId);
+    }
+
     /**
      * @marked_as_engine_private
      */
@@ -726,6 +865,9 @@ export class Layer implements OwnedBy<AnimationGraph> {
     get stateMachine () {
         return this._stateMachine;
     }
+
+    @serializable
+    private _stashes: Record<string, PoseGraphStash> = {};
 }
 
 export enum LayerBlending {
@@ -878,6 +1020,9 @@ export class AnimationGraph extends AnimationGraphLike implements AnimationGraph
     public declare readonly __brand: 'AnimationGraph';
 
     @serializable
+    public interruptionBehavior = InterruptionBehavior.SNAPSHOT;
+
+    @serializable
     private _layers: Layer[] = [];
 
     @serializable
@@ -893,6 +1038,9 @@ export class AnimationGraph extends AnimationGraphLike implements AnimationGraph
         for (let iLayer = 0; iLayer < nLayers; ++iLayer) {
             const layer = layers[iLayer];
             layer.stateMachine.__callOnAfterDeserializeRecursive();
+            for (const [_, stash] of layer.stashes()) {
+                stash.poseGraph.__callOnAfterDeserializeRecursive();
+            }
         }
     }
 

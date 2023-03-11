@@ -30,6 +30,8 @@ import { TransformHandle } from '../core/animation-handle';
 import { Pose } from '../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
 import { Binder, RuntimeBinding, TrackBinding, TrackPath } from '../tracks/track';
+import { removeIf } from '../../core/utils/array';
+import { TransformFlag } from '../animation-clip-manipulation';
 
 const SPLIT_METHOD_ENABLED = TEST || EDITOR;
 
@@ -61,6 +63,18 @@ export class ExoticAnimation {
         const nodeAnimation = new ExoticNodeAnimation(path);
         this._nodeAnimations.push(nodeAnimation);
         return nodeAnimation;
+    }
+
+    public removeNodeAnimation (path: string, flags: TransformFlag) {
+        const { _nodeAnimations: nodeAnimations } = this;
+        const index = nodeAnimations.findIndex((nodeAnimation) => nodeAnimation.path === path);
+        if (index >= 0) {
+            const nodeAnimation = nodeAnimations[index];
+            nodeAnimation.remove(flags);
+            if (nodeAnimation.empty) {
+                this._nodeAnimations.splice(index, 0);
+            }
+        }
     }
 
     public collectAnimatedJoints () {
@@ -96,6 +110,10 @@ class ExoticNodeAnimation {
         this._path = path;
     }
 
+    get empty () {
+        return !(this._position || this._rotation || this._scale);
+    }
+
     public createPosition (times: FloatArray, values: FloatArray) {
         this._position = new ExoticTrack(times, new ExoticVec3TrackValues(values));
     }
@@ -106,6 +124,18 @@ class ExoticNodeAnimation {
 
     public createScale (times: FloatArray, values: FloatArray) {
         this._scale = new ExoticTrack(times, new ExoticVec3TrackValues(values));
+    }
+
+    public remove (flags: TransformFlag) {
+        if ((flags & TransformFlag.POSITION) === TransformFlag.POSITION) {
+            this._position = null;
+        }
+        if ((flags & TransformFlag.ROTATION) === TransformFlag.ROTATION) {
+            this._rotation = null;
+        }
+        if ((flags & TransformFlag.SCALE) === TransformFlag.SCALE) {
+            this._scale = null;
+        }
     }
 
     public createEvaluator (binder: Binder) {
