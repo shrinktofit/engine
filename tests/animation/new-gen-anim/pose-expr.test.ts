@@ -468,7 +468,7 @@ describe(`Pose node instantiation`, () => {
             }
 
             public bind(context: PoseNodeBindingContext): void {
-                this._handle = context.outerContext.bineMetaValue('x');
+                this._handle = context.outerContext.bindAuxiliaryCurve('x');
             }
 
             protected selfEvaluate(context: AnimationGraphEvaluationContext): Pose {
@@ -519,7 +519,7 @@ describe(`XNode`, () => {
             public value = 0.0;
 
             public bind(context: PoseNodeBindingContext): void {
-                this.#handle = context.outerContext.bineMetaValue('x');
+                this.#handle = context.outerContext.bindAuxiliaryCurve('x');
             }
 
             protected selfEvaluate(context: AnimationGraphEvaluationContext): Pose {
