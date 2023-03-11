@@ -553,8 +553,11 @@ class LayerEval {
         this._currentStateWeight = 0.0;
         for (const transition of this._currentTransitionPath) {
             transition.activated = false;
-            if (transition.to.kind === NodeKind.animation) {
-                transition.to.debugResetFromPort();
+            transition.to.isDestination = false; // Reset transition role.
+            if (DEBUG) {
+                if (transition.to.kind === NodeKind.animation) {
+                    transition.to.debugResetFromPort();
+                }
             }
         }
         this._currentTransitionPath.length = 0;

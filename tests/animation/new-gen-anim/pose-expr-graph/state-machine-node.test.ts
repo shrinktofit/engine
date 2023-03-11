@@ -1,7 +1,9 @@
 import { AnimationController } from "../../../../cocos/animation/animation";
+import { InterruptionBehavior } from "../../../../cocos/animation/marionette/animation-graph";
+import { lerp } from "../../../../exports/base";
 import { AnimationGraphEvalMock } from "../utils/eval-mock";
 import { createAnimationGraph, StateMachineParams, VariableDeclarationParams } from "../utils/factory";
-import { LinearRealValueAnimationFixture } from "../utils/fixtures";
+import { ConstantRealValueAnimationFixture, LinearRealValueAnimationFixture } from "../utils/fixtures";
 import { SingleRealValueObserver } from "../utils/single-real-value-observer";
 import './utils/factories/state-machine-node-factory';
 
@@ -36,6 +38,110 @@ describe(`Reentering`, () => {
         triggerStateMachineReenter(evalMock.controller);
         evalMock.step(0.4);
         expect(valueObserver.value).toBeCloseTo(fixture.motion.getExpected(0.4));
+    });
+
+    describe(`Reentering should reset the state's transition role`, () => {
+        test(`Bugfix: reentering cause wrong state weight condition`, () => {
+            const fixture = {
+                transition_source_animation: new ConstantRealValueAnimationFixture(1.),
+                transition_destination_animation: new ConstantRealValueAnimationFixture(2.),
+                interruption_destination_animation: new ConstantRealValueAnimationFixture(4.),
+                transition_duration: 1.0,
+                interruption_duration: 1.0,
+                interruption_state_weight_threshold: 0.5,
+            };
+            expect(fixture.interruption_state_weight_threshold).toBeGreaterThan(0.0);
+            expect(fixture.interruption_state_weight_threshold).toBeLessThan(1.0);
+
+            const tInterruptionBegin =
+                fixture.transition_duration * fixture.interruption_state_weight_threshold;
+            const tInterruptionBeginBiased1 =
+                tInterruptionBegin * 1.01;
+            const tInterruptionBeginBiased2 =
+                tInterruptionBegin * 1.02;
+    
+            const valueObserver = new SingleRealValueObserver();
+
+            const {
+                animationGraph,
+                triggerStateMachineExit,
+                triggerStateMachineReenter,
+            } = createReenteringTestEssentials({
+                states: {
+                    'transition-source': {
+                        type: 'motion',
+                        motion: fixture.transition_source_animation.createMotion(
+                            valueObserver.getCreateMotionContext()),
+                    },
+                    'transition-destination': {
+                        type: 'motion',
+                        motion: fixture.transition_destination_animation.createMotion(
+                            valueObserver.getCreateMotionContext()),
+                    },
+                    'interruption-destination': {
+                        type: 'motion',
+                        motion: fixture.interruption_destination_animation.createMotion(
+                            valueObserver.getCreateMotionContext()),
+                    },
+                },
+                entryTransitions: [{ to: 'transition-source' }],
+                transitions: [{
+                    from: 'transition-source', to: 'transition-destination',
+                    duration: fixture.transition_duration,
+                    exitTimeEnabled: false,
+                    conditions: [{ type: 'unary', operator: 'to-be-true', operand: { type: 'constant', value: true } }],
+                }, {
+                    from: 'transition-destination', to: 'interruption-destination',
+                    duration: fixture.interruption_duration,
+                    exitTimeEnabled: false,
+                    conditions: [{
+                        type: 'binary', operator: '>=',
+                        lhs: { type: 'variable', name: '#StateWeight' },
+                        rhs: { type: 'constant', value: fixture.interruption_state_weight_threshold },
+                    }],
+                }],
+            });
+
+            animationGraph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
+    
+            const evalMock = new AnimationGraphEvalMock(valueObserver.root, animationGraph);
+    
+            // About to trigger the interruption.
+            evalMock.goto(tInterruptionBeginBiased1);
+
+            // Trigger the interruption.
+            evalMock.goto(tInterruptionBeginBiased2);
+            expect(valueObserver.value).toBeCloseTo(
+                lerp(
+                    lerp(
+                        fixture.transition_source_animation.getExpected(evalMock.current),
+                        fixture.transition_destination_animation.getExpected(evalMock.current),
+                        evalMock.current / fixture.transition_duration,
+                    ),
+                    fixture.interruption_destination_animation.getExpected(evalMock.lastDeltaTime),
+                    evalMock.lastDeltaTime / fixture.interruption_duration,
+                ),
+                5,
+            );
+
+            // This should leave the state machine unused.
+            triggerStateMachineExit(evalMock.controller);
+            evalMock.step(0.0 /* Any time. */);
+            expect(valueObserver.value).toBeCloseTo(0.0, 5);
+
+            // Reenter the state machine.
+            // The transition should again be triggered. But go before the interruption can happen.
+            triggerStateMachineReenter(evalMock.controller);
+            evalMock.step(tInterruptionBegin * 0.5);
+            expect(valueObserver.value).toBeCloseTo(
+                lerp(
+                    fixture.transition_source_animation.getExpected(evalMock.lastDeltaTime),
+                    fixture.transition_destination_animation.getExpected(evalMock.lastDeltaTime),
+                    evalMock.lastDeltaTime / fixture.transition_duration,
+                ),
+                5,
+            );
+        });
     });
 
     function createReenteringTestEssentials(
