@@ -719,6 +719,63 @@ describe(`Transition sequence`, () => {
             );
         });
     });
+
+    test(`Transition to a state multiple times through different transitions`, () => {
+        const fixture = {
+            a_animation: new LinearRealValueAnimationFixture(1., 2., 3.),
+            b_animation: new LinearRealValueAnimationFixture(4., 5., 6.),
+            c_animation: new LinearRealValueAnimationFixture(7., 8., 9.),
+        };
+
+        const observer = new SingleRealValueObserver();
+
+        enum TransitionId {
+            A_B,
+            B_C,
+            C_B,
+        }
+
+        const uniformTransitionDuration = 0.3;
+
+        const graph = createAnimationGraph({
+            variableDeclarations: { 'transitionId': { type: 'int', value: TransitionId.A_B } },
+            layers: [{
+                stateMachine: {
+                    states: {
+                        'A': { type: 'motion', motion: fixture.a_animation.createMotion(observer.getCreateMotionContext()) },
+                        'B': { type: 'motion', motion: fixture.b_animation.createMotion(observer.getCreateMotionContext()) },
+                        'C': { type: 'motion', motion: fixture.c_animation.createMotion(observer.getCreateMotionContext()) },
+                    },
+                    entryTransitions: [{ to: 'A' }],
+                    transitions: [{
+                        from: 'A', to: 'B',
+                        duration: uniformTransitionDuration,
+                        exitTimeEnabled: false,
+                        conditions: [{ type: 'binary', 'operator': '==', 'lhs': { type: 'variable', name: 'transitionId' }, rhs: { type :'constant', value: TransitionId.A_B } }],
+                    }, {
+                        from: 'B', to: 'C',
+                        duration: uniformTransitionDuration,
+                        exitTimeEnabled: false,
+                        conditions:  [{ type: 'binary', 'operator': '==', 'lhs': { type: 'variable', name: 'transitionId' }, rhs: { type :'constant', value: TransitionId.A_B } }],
+                    }, {
+                        from: 'C', to: 'B',
+                        duration: uniformTransitionDuration,
+                        exitTimeEnabled: false,
+                        conditions:  [{ type: 'binary', 'operator': '==', 'lhs': { type: 'variable', name: 'transitionId' }, rhs: { type :'constant', value: TransitionId.A_B } }],
+                    }],
+                },
+            }],
+        });
+        graph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
+        
+        const evalMock = new AnimationGraphEvalMock(observer.root, graph);
+
+        evalMock.step(uniformTransitionDuration * 0.1);
+        evalMock.controller.setValue('transitionId', TransitionId.B_C);
+        evalMock.step(uniformTransitionDuration * 0.1);
+        evalMock.controller.setValue('transitionId', TransitionId.C_B);
+        evalMock.step(uniformTransitionDuration * 0.1);
+    });
 });
 
 function calculateExpectedTransitionSequenceResult(

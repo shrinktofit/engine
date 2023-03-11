@@ -57,6 +57,7 @@ import { instantiatePoseGraph } from './pose-graph/instantiation';
 import { RuntimeStashManager } from './pose-graph/stash/runtime-stash';
 import { RuntimeCoordinator } from './pose-graph/coordination/runtime-coordinator';
 import { AnimationGraphEvent, GraphEventTarget } from './event';
+import { TransitionBindingContext, StateWeightObserver } from './binary-condition';
 
 export class AnimationGraphEval {
     private declare _rootPoseNode: PoseNode;
@@ -494,10 +495,12 @@ class LayerEval {
             outerContext: context,
             additive: isAdditiveLayer,
         };
+        const transitionContextGenerator = new TransitionBindingContextGenerator();
         const { entry, exit } = this._addStateMachine(
             stateMachine,
             null,
             myContext,
+            transitionContextGenerator,
             poseNodeBindContext,
             clipOverrides,
             name,
@@ -505,6 +508,7 @@ class LayerEval {
         this._topLevelEntry = entry;
         this._topLevelExit = exit;
         this._currentNode = entry;
+        entry.increaseRunningReference();
         this._resetTrigger = triggerResetFn;
 
         this._mask = mask;
@@ -530,10 +534,12 @@ class LayerEval {
         if (this._currentNode.kind === NodeKind.animation) {
             this._currentNode.debugResetFromPort();
         }
-        this._currentNode = this._topLevelEntry;
+        this._topLevelEntry.increaseRunningReference();
+        this._alterCurrentStateViolently(this._topLevelEntry);
         this._currentStateWeight = 0.0;
         for (const transition of this._currentTransitionPath) {
             transition.activated = false;
+            transition.to.decreaseRunningReference();
             if (DEBUG) {
                 if (transition.to.kind === NodeKind.animation) {
                     transition.to.debugResetFromPort();
@@ -705,6 +711,7 @@ class LayerEval {
         graph: StateMachine,
         parentStateMachineInfo: StateMachineInfo | null,
         context: AnimationGraphLayerWideBindingContext,
+        transitionContextGenerator: TransitionBindingContextGenerator,
         poseNodeBindingContext: PoseNodeBindingContext,
         clipOverrides: ReadonlyClipOverrideMap | null,
         __DEBUG_ID__: string,
@@ -763,6 +770,7 @@ class LayerEval {
                     node.stateMachine,
                     stateMachineInfo,
                     context,
+                    transitionContextGenerator,
                     poseNodeBindingContext,
                     clipOverrides,
                     `${__DEBUG_ID__}/${node.name}`,
@@ -818,6 +826,7 @@ class LayerEval {
 
                 const conditions = outgoing.conditions.map((condition) => condition[createEval](
                     context.outerContext,
+                    transitionContextGenerator.generate(fromNode),
                 ));
 
                 const transitionEval: TransitionEval = {
@@ -926,6 +935,7 @@ class LayerEval {
             const { _currentNode: currentNode } = this;
 
             this._currentStateWeight = 1.0;
+            this._currentNode.resetWeightUsedInCondition(1.0);
             const transitionMatch = this._matchCurrentNodeTransition(remainTimePiece);
 
             if (transitionMatch) {
@@ -1316,6 +1326,8 @@ class LayerEval {
             transition.startEvent.emit(this._eventTarget);
         }
 
+        transition.to.increaseRunningReference();
+
         this._currentTransitionPath.push(transition);
     }
 
@@ -1375,6 +1387,13 @@ class LayerEval {
 
         assertIsNonNullable(currentTransitions.length > 0);
         assertIsNonNullable(currentTransitionToNode);
+
+        // Reset the "weight-used-in-condition" for all states in transition chain.
+        // This could be done for single state more than one times.
+        veryFirstState.resetWeightUsedInCondition(0.0);
+        for (let iTransition = 0; iTransition < currentTransitions.length; ++iTransition) {
+            currentTransitions[iTransition].to.resetWeightUsedInCondition(0.0);
+        }
 
         let iTransition = currentTransitions.length - 1;
 
@@ -1486,6 +1505,7 @@ class LayerEval {
             {
                 const destinationWeight = firstTransition.normalizedElapsedTime * remainingWeight;
                 lastTransition.destinationWeight = destinationWeight;
+                toState.addWeightUsedInCondition(destinationWeight);
                 remainingWeight *= (1.0 - firstTransition.normalizedElapsedTime);
             }
 
@@ -1495,8 +1515,23 @@ class LayerEval {
         // Update the very first state's time.
         this._accumulateCurrentStateDeltaTime(tailTransitionUpdateConsumedTime);
         this._currentStateWeight = remainingWeight;
+        this._currentNode.addWeightUsedInCondition(remainingWeight);
 
         return tailTransitionUpdateConsumedTime;
+    }
+
+    /**
+     * Normally, the alternation of "current node" can only be caused by transition update.
+     * But there are some exceptions:
+     * - In state machine's constructor, the "current node" is directly set as top level entry state.
+     * - When state machine reentered, the "current node" is forced set as top level entry state.
+     * - When a transition match, the "current node" is replaced as the transition snapshot pseudo state.
+     * This method handle the later 2 alternations.
+     */
+    private _alterCurrentStateViolently (state: NodeEval) {
+        state.increaseRunningReference();
+        this._currentNode.decreaseRunningReference();
+        this._currentNode = state;
     }
 
     private _updateTransition (
@@ -1574,6 +1609,9 @@ class LayerEval {
             if (transition.endEvent) {
                 transition.endEvent.emit(this._eventTarget);
             }
+            if (iTransition !== lastTransitionIndex) {
+                transition.to.decreaseRunningReference();
+            }
         }
 
         // Do some cleanup works.
@@ -1611,6 +1649,7 @@ class LayerEval {
             }
         }
 
+        this._currentNode.decreaseRunningReference();
         this._currentNode = toState;
 
         // If there's no transition any more. Do some works.
@@ -1827,7 +1866,7 @@ class LayerEval {
         // They will be inactivated when the snapshot is cleared.
         this._dropAllTransitions(false);
         // Install the snapshot as "current"
-        this._currentNode = this._transitionSnapshot;
+        this._alterCurrentStateViolently(this._transitionSnapshot);
         const ranIntoNonMotionState = this._switchTo(transition);
         return ranIntoNonMotionState;
     }
@@ -2116,6 +2155,49 @@ export class StateEval {
     public transitionInFinishedEvent: AnimationGraphEvent | undefined = undefined;
 
     public transitionOutFinishedEvent: AnimationGraphEvent | undefined = undefined;
+
+    /**
+     * Should be called once a state was queued into transition sequence
+     * or is marked as current node.
+     */
+    public increaseRunningReference () {
+        if (this._runningReferences === 0) {
+            this._weightUsedInCondition = 0.0;
+        }
+        ++this._runningReferences;
+    }
+
+    /**
+     * Should be called once a state was queued out into transition sequence
+     * or is unset as current node.
+     */
+    public decreaseRunningReference () {
+        assertIsTrue(this._runningReferences > 0);
+        --this._runningReferences;
+        if (this._runningReferences === 0) {
+            this._weightUsedInCondition = Number.NaN;
+        }
+    }
+
+    public get weightUsedInCondition () {
+        assertIsTrue(!Number.isNaN(this._weightUsedInCondition));
+        return this._weightUsedInCondition;
+    }
+
+    public resetWeightUsedInCondition (weight: 0.0 | 1.0) {
+        if (DEBUG) {
+            assertIsTrue(this._runningReferences > 0);
+        }
+        this._weightUsedInCondition = weight;
+    }
+
+    public addWeightUsedInCondition (value: number) {
+        assertIsTrue(!Number.isNaN(this._weightUsedInCondition));
+        this._weightUsedInCondition += value;
+    }
+
+    private _runningReferences = 0;
+    private _weightUsedInCondition = Number.NaN;
 }
 
 type StateMachineComponentMotionStateCallbackName = keyof Pick<
@@ -2205,8 +2287,6 @@ function assignEvents (stateEval: StateEval, node: EventifiedState) {
 }
 
 class PoseStateEval extends StateEval {
-    public _weightUsedInStateWeightCondition = 0.0;
-
     public readonly kind = NodeKind.poseState;
 
     public constructor (state: PoseState, context: PoseNodeBindingContext) {
@@ -2309,22 +2389,6 @@ export class MotionStateEval extends StateEval {
             this.duration,
             deltaTime * this._speed,
         );
-    }
-
-    public _getFromPortWeightUsedInStateWeightCondition () {
-        return this._fromPort.weightUsedInStateWeightCondition;
-    }
-
-    public _setFromPortWeightUsedInStateWeightCondition (weight: number) {
-        this._fromPort.weightUsedInStateWeightCondition = weight;
-    }
-
-    public _getToPortWeightUsedInStateWeightCondition () {
-        return this._toPort.weightUsedInStateWeightCondition;
-    }
-
-    public _setToPortWeightUsedInStateWeightCondition (weight: number) {
-        this._toPort.weightUsedInStateWeightCondition = weight;
     }
 
     public triggerFromPortUpdate (controller: AnimationController) {
@@ -2611,4 +2675,34 @@ class AnimationGraphSettleContextImpl extends PoseNodeSettleContext {
     public createTransformFilter (mask: Readonly<AnimationMask>, origin: Node): TransformFilter {
         return this._layoutMaintainer.createTransformFilter(mask, origin);
     }
+}
+
+class ReusableTransitionBindingContext {
+    public setState (startState: NodeEval) {
+        this._startStateEval = startState;
+    }
+
+    public createStateWeightVisitor (): StateWeightObserver {
+        const {
+            _startStateEval: state,
+        } = this;
+        assertIsTrue(state);
+        return {
+            observe () {
+                return state.weightUsedInCondition;
+            },
+        };
+    }
+
+    private _startStateEval: NodeEval | undefined = undefined;
+}
+
+class TransitionBindingContextGenerator {
+    public generate (startState: NodeEval) {
+        const { _cache: cache } = this;
+        cache.setState(startState);
+        return cache as TransitionBindingContext;
+    }
+
+    private _cache = new ReusableTransitionBindingContext();
 }

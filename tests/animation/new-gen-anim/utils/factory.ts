@@ -290,6 +290,7 @@ interface TransitionAttributes {
     relativeDuration?: boolean;
     destinationStart?: number;
     relativeDestinationStart?: boolean;
+    interruptible?: boolean;
 }
 
 type TransitionConditionParams = {
