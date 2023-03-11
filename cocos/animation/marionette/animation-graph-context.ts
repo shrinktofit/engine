@@ -14,6 +14,7 @@ import { AnimationClipGraphBindingContext } from './animation-graph-animation-cl
 import { PoseStashAllocator } from './pose-graph/stash/runtime-stash';
 import { PoseHeapAllocator } from '../core/pose-heap-allocator';
 import { GraphEventTarget } from './event';
+import { EvaluationTimeAuxiliaryCurveVisitor } from './parametric';
 
 /**
  * This module contains stuffs related to animation graph's evaluation.
@@ -115,6 +116,15 @@ export class AnimationGraphBindingContext implements AnimationClipGraphBindingCo
         return this._varRegistry[id];
     }
 
+    public createEvaluationTimeAuxiliaryCurveVisitor (name: string): EvaluationTimeAuxiliaryCurveVisitor {
+        const registry = this._layoutMaintainer.auxiliaryCurveRegistry;
+        return {
+            get value () {
+                return registry.get(name);
+            },
+        };
+    }
+
     private _origin: Node;
 
     private _eventTarget: GraphEventTarget;
@@ -193,6 +203,10 @@ export class AnimationGraphPoseLayoutMaintainer {
 
     get metaValueCount () {
         return this._metaValueRecords.length;
+    }
+
+    get auxiliaryCurveRegistry () {
+        return this._metaValueRegistry;
     }
 
     @checkBindStatus(true)

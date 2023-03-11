@@ -55,9 +55,9 @@ import { PoseNode, PoseNodeBindingContext, PoseNodeUpdateContext } from './pose-
 import { DefaultTopLevelPose, LayerEvaluationRecord } from './pose-graph/pose-nodes/default-top-level-pose-node';
 import { instantiatePoseGraph } from './pose-graph/instantiation';
 import { RuntimeStashManager } from './pose-graph/stash/runtime-stash';
-import { _StateWeightCondition, _tryConvertToStateWeightCondition } from './__todo-state-weight-condition';
 import { RuntimeCoordinator } from './pose-graph/coordination/runtime-coordinator';
 import { AnimationGraphEvent, GraphEventTarget } from './event';
+import { TransitionBindingContext, StateWeightObserver } from './binary-condition';
 
 export class AnimationGraphEval {
     private declare _rootPoseNode: PoseNode;
@@ -512,10 +512,12 @@ class LayerEval {
             outerContext: context,
             additive: isAdditiveLayer,
         };
+        const transitionContextGenerator = new TransitionBindingContextGenerator();
         const { entry, exit } = this._addStateMachine(
             stateMachine,
             null,
             myContext,
+            transitionContextGenerator,
             poseNodeBindContext,
             clipOverrides,
             name,
@@ -523,6 +525,7 @@ class LayerEval {
         this._topLevelEntry = entry;
         this._topLevelExit = exit;
         this._currentNode = entry;
+        entry.isHead = true;
         this._resetTrigger = triggerResetFn;
 
         this._mask = mask;
@@ -539,10 +542,16 @@ class LayerEval {
 
     public reenter () {
         // Known problem: no callbacks are triggered.
-        this._currentNode = this._topLevelEntry;
+        if (this._currentNode.kind === NodeKind.animation) {
+            this._currentNode.debugResetFromPort();
+        }
+        this._setCurrentState(this._topLevelEntry);
         this._currentStateWeight = 0.0;
         for (const transition of this._currentTransitionPath) {
             transition.activated = false;
+            if (transition.to.kind === NodeKind.animation) {
+                transition.to.debugResetFromPort();
+            }
         }
         this._currentTransitionPath.length = 0;
         this._currentTransitionToNode = null;
@@ -693,6 +702,7 @@ class LayerEval {
         graph: StateMachine,
         parentStateMachineInfo: StateMachineInfo | null,
         context: AnimationGraphLayerWideBindingContext,
+        transitionContextGenerator: TransitionBindingContextGenerator,
         poseNodeBindingContext: PoseNodeBindingContext,
         clipOverrides: ReadonlyClipOverrideMap | null,
         __DEBUG_ID__: string,
@@ -750,6 +760,7 @@ class LayerEval {
                     node.stateMachine,
                     stateMachineInfo,
                     context,
+                    transitionContextGenerator,
                     poseNodeBindingContext,
                     clipOverrides,
                     `${__DEBUG_ID__}/${node.name}`,
@@ -803,23 +814,10 @@ class LayerEval {
                     toNode = nodeEval;
                 }
 
-                const conditions = outgoing.conditions.map((condition) => {
-                    let stateWeightCondition: _StateWeightCondition | undefined;
-                    if (isConcreteState(fromNode)) {
-                        const from = fromNode;
-                        stateWeightCondition = _tryConvertToStateWeightCondition(condition, { get weight () {
-                            if (from.kind === NodeKind.animation) {
-                                return from._getFromPortWeightUsedInStateWeightCondition();
-                            } else {
-                                return from._weightUsedInStateWeightCondition;
-                            }
-                        } });
-                    }
-                    if (stateWeightCondition) {
-                        return stateWeightCondition[createEval](context.outerContext);
-                    }
-                    return condition[createEval](context.outerContext);
-                });
+                const conditions = outgoing.conditions.map((condition) => condition[createEval](
+                    context.outerContext,
+                    transitionContextGenerator.generate(fromNode),
+                ));
 
                 const transitionEval: TransitionEval = {
                     conditions,
@@ -1319,6 +1317,8 @@ class LayerEval {
             transition.startEvent.emit(this._eventTarget);
         }
 
+        to.isDestination = true; // Change transition role.
+
         this._currentTransitionPath.push(transition);
     }
 
@@ -1448,7 +1448,11 @@ class LayerEval {
                 // However, we won't update states from previous transitions.
                 // The reason is intuitive -- the previous transition is dropped since later transition done instead of time updating.
                 if (firstState.kind === NodeKind.animation) {
-                    firstState.updateFromPort(updateConsumed);
+                    if (firstState === veryFirstState) {
+                        firstState.updateFromPort(updateConsumed);
+                    } else {
+                        firstState.updateToPort(updateConsumed);
+                    }
                 }
 
                 if (firstState.kind === NodeKind.transitionSnapshot) {
@@ -1486,6 +1490,19 @@ class LayerEval {
         this._accumulateCurrentStateDeltaTime(tailTransitionUpdateConsumedTime);
 
         return tailTransitionUpdateConsumedTime;
+    }
+
+    private _setCurrentState (state: NodeEval) {
+        // Drop old state's node.
+        this._currentNode.isHead = false;
+
+        // #transition-snapshot-transition-role
+        // Note: transition snapshot pseudo state has no transition role defined!
+        if (state.kind !== NodeKind.transitionSnapshot) {
+            state.isHead = true;
+        }
+
+        this._currentNode = state;
     }
 
     private _updateTransition (
@@ -1550,12 +1567,12 @@ class LayerEval {
         const toState = currentTransitionPath[lastTransitionIndex].to;
 
         // Call exist hooks on call states on the subpath.
-        this._callExitMethods(firstState);
+        this._callExitMethods(firstState, firstState === this._currentNode);
         for (let iTransition = 0; iTransition <= lastTransitionIndex; ++iTransition) {
             const transition = currentTransitionPath[iTransition];
             const { to } = transition;
             if (to.kind === NodeKind.exit) {
-                this._callExitMethods(to);
+                this._callExitMethods(to, false);
             }
             if (inactivate) {
                 transition.activated = false;
@@ -1563,6 +1580,7 @@ class LayerEval {
             if (transition.endEvent) {
                 transition.endEvent.emit(this._eventTarget);
             }
+            to.isDestination = false;
         }
 
         // Do some cleanup works.
@@ -1591,7 +1609,13 @@ class LayerEval {
         }
 
         // Redefine the very first state.
-        this._currentNode = toState;
+        if (DEBUG) {
+            // If we're doing real dropping, reset from port.
+            if (inactivate && this._currentNode.kind === NodeKind.animation) {
+                this._currentNode.debugResetFromPort();
+            }
+        }
+        this._setCurrentState(toState);
 
         // If there's no transition any more. Do some works.
         if (currentTransitionPath.length === 0) {
@@ -1701,6 +1725,12 @@ class LayerEval {
                 const { normalizedElapsedTime } = sebSeqBegin;
                 const currentAbsoluteRatio = normalizedElapsedTime * remainingWeight;
                 subSeqEnd.destinationWeight = currentAbsoluteRatio;
+                // #region TODO
+                // eslint-disable-next-line no-loop-func
+                (() => {
+                    subSeqEnd.to.destinationWeightUsedInCondition = currentAbsoluteRatio;
+                })();
+                // #endregion
                 subSeqEnd.subsequenceBeginIndex = iTransition;
                 remainingWeight *= (1.0 - normalizedElapsedTime);
 
@@ -1712,33 +1742,26 @@ class LayerEval {
                     subSeqEnd = currentTransitions[iTransition - 1];
                     subSeqEnd.subsequenceBeginIndex = -1;
                     subSeqEnd.destinationWeight = remainingWeight;
-                    // #region TODO
-                    // eslint-disable-next-line no-loop-func
-                    (() => {
-                        const to = subSeqEnd.to;
-                        if (to.kind === NodeKind.animation) {
-                            to._setToPortWeightUsedInStateWeightCondition(remainingWeight);
-                        } else if (to.kind === NodeKind.empty || to.kind === NodeKind.poseState) {
-                            to._weightUsedInStateWeightCondition = remainingWeight;
-                        }
-                    })();
-                    // #endregion
                 } else {
                     break;
                 }
             }
         }
 
+        this._currentStateWeight = remainingWeight;
         // #region TODO
         (() => {
-            if (this._currentNode.kind === NodeKind.animation) {
-                this._currentNode._setFromPortWeightUsedInStateWeightCondition(remainingWeight);
-            } else if (this._currentNode.kind === NodeKind.empty || this._currentNode.kind === NodeKind.poseState) {
-                this._currentNode._weightUsedInStateWeightCondition = remainingWeight;
+            // See #transition-snapshot-transition-role
+            const { _currentNode: currentNode } = this;
+            switch (currentNode.kind) {
+            case NodeKind.transitionSnapshot:
+                break;
+            default:
+                this._currentNode.headWeightUsedInCondition = remainingWeight;
+                break;
             }
         })();
         //#endregion
-        this._currentStateWeight = remainingWeight;
         if (this._currentNode.kind === NodeKind.empty) {
             this.passthroughWeight -= this._currentStateWeight;
         }
@@ -1892,7 +1915,7 @@ class LayerEval {
         // They will be inactivated when the snapshot is cleared.
         this._dropAllTransitions(false);
         // Install the snapshot as "current"
-        this._currentNode = this._transitionSnapshot;
+        this._setCurrentState(this._transitionSnapshot);
         const ranIntoNonMotionState = this._switchTo(transition);
         return ranIntoNonMotionState;
     }
@@ -1981,13 +2004,13 @@ class LayerEval {
         }
     }
 
-    private _callExitMethods (node: NodeEval) {
+    private _callExitMethods (node: NodeEval, fromPort: boolean) {
         const { _controller: controller } = this;
         switch (node.kind) {
         default:
             break;
         case NodeKind.animation: {
-            node.components.callMotionStateExitMethods(controller, node.getFromPortStatus());
+            node.components.callMotionStateExitMethods(controller, fromPort ? node.getFromPortStatus() : node.getToPortStatus());
             break;
         }
         case NodeKind.exit:
@@ -2181,6 +2204,85 @@ export class StateEval {
     public transitionInFinishedEvent: AnimationGraphEvent | undefined = undefined;
 
     public transitionOutFinishedEvent: AnimationGraphEvent | undefined = undefined;
+
+    public get isHead () {
+        return !!(this._transitionRole & TransitionRole.HEAD);
+    }
+
+    public set isHead (value) {
+        // If (value && isHead === true), means there's a circular.
+        // For example:
+        // A --> B --> A
+        // A has both head and destination role.
+        // Once dropping (A --> B -->), A again be head.
+        // So don't asserts:
+        // assertIsTrue(this.isHead !== value, `The state has already been head.`);
+
+        if (value) {
+            this._transitionRole |= TransitionRole.HEAD;
+            this._headWeightUsedInCondition = 0.0;
+        } else {
+            this._transitionRole &= ~TransitionRole.HEAD;
+            if (DEBUG) {
+                this._headWeightUsedInCondition = Number.NaN;
+            }
+        }
+    }
+
+    public get headWeightUsedInCondition () {
+        return this._headWeightUsedInCondition;
+    }
+
+    public set headWeightUsedInCondition (value) {
+        assertIsTrue(this.isHead);
+        this._headWeightUsedInCondition = value;
+    }
+
+    public get isDestination () {
+        return !!(this._transitionRole & TransitionRole.DESTINATION);
+    }
+
+    public set isDestination (value) {
+        assertIsTrue(this.isDestination !== value, `The state has already been destination.`);
+        if (value) {
+            this._transitionRole |= TransitionRole.DESTINATION;
+            this._destinationWeightUsedInCondition = 0.0;
+        } else {
+            this._transitionRole &= ~TransitionRole.DESTINATION;
+            if (DEBUG) {
+                this._destinationWeightUsedInCondition = Number.NaN;
+            }
+        }
+    }
+
+    public get destinationWeightUsedInCondition () {
+        return this._destinationWeightUsedInCondition;
+    }
+
+    public set destinationWeightUsedInCondition (value) {
+        assertIsTrue(this.isDestination);
+        this._destinationWeightUsedInCondition = value;
+    }
+
+    public get weightUsedInCondition () {
+        let weight = 0.0;
+        if (this.isHead) {
+            weight += this.headWeightUsedInCondition;
+        }
+        if (this.isDestination) {
+            weight += this.destinationWeightUsedInCondition;
+        }
+        return weight;
+    }
+
+    private _transitionRole = 0;
+    private _headWeightUsedInCondition = 0.0;
+    private _destinationWeightUsedInCondition = 0.0;
+}
+
+enum TransitionRole {
+    HEAD = 1,
+    DESTINATION = 2,
 }
 
 type StateMachineComponentMotionStateCallbackName = keyof Pick<
@@ -2270,8 +2372,6 @@ function assignEvents (stateEval: StateEval, node: EventifiedState) {
 }
 
 class PoseStateEval extends StateEval {
-    public _weightUsedInStateWeightCondition = 0.0;
-
     public readonly kind = NodeKind.poseState;
 
     public constructor (state: PoseState, context: PoseNodeBindingContext) {
@@ -2372,22 +2472,6 @@ export class MotionStateEval extends StateEval {
         );
     }
 
-    public _getFromPortWeightUsedInStateWeightCondition () {
-        return this._fromPort.weightUsedInStateWeightCondition;
-    }
-
-    public _setFromPortWeightUsedInStateWeightCondition (weight: number) {
-        this._fromPort.weightUsedInStateWeightCondition = weight;
-    }
-
-    public _getToPortWeightUsedInStateWeightCondition () {
-        return this._toPort.weightUsedInStateWeightCondition;
-    }
-
-    public _setToPortWeightUsedInStateWeightCondition (weight: number) {
-        this._toPort.weightUsedInStateWeightCondition = weight;
-    }
-
     public triggerFromPortUpdate (controller: AnimationController) {
         this.components.callMotionStateUpdateMethods(controller, this.getFromPortStatus());
     }
@@ -2412,6 +2496,10 @@ export class MotionStateEval extends StateEval {
         this._toPort.progress = at;
     }
 
+    public debugResetFromPort () {
+        this._fromPort.progress = Number.NaN;
+    }
+
     public finishTransition () {
         this._fromPort.progress = this._toPort.progress;
         if (DEBUG) {
@@ -2431,10 +2519,6 @@ export class MotionStateEval extends StateEval {
     }
 
     public sampleToPort (context: AnimationGraphEvaluationContext): Pose | null {
-        if (DEBUG) {
-            // See `this.finishTransition()`
-            assertIsTrue(!Number.isNaN(this._toPort.progress));
-        }
         return this._toPort.evaluate(context) ?? null;
     }
 
@@ -2471,7 +2555,17 @@ class MotionStateEvalPort {
 
     public readonly motionPort: MotionPort | null = null;
 
-    public progress = 0.0;
+    public get progress () {
+        if (DEBUG) {
+            // See `this.finishTransition()`
+            assertIsTrue(!Number.isNaN(this._progress));
+        }
+        return this._progress;
+    }
+
+    public set progress (value) {
+        this._progress = value;
+    }
 
     public weightUsedInStateWeightCondition = 0.0;
 
@@ -2489,6 +2583,8 @@ class MotionStateEvalPort {
         stateStatus.progress = normalizeProgress(this.progress);
         return stateStatus;
     }
+
+    private _progress = Number.NaN;
 }
 
 function calcProgressUpdate (currentProgress: number, duration: number, deltaTime: number) {
@@ -2642,3 +2738,33 @@ interface TransitionEval {
 }
 
 export type { VarInstance } from './variable';
+
+class ReusableTransitionBindingContext {
+    public setState (startState: NodeEval) {
+        this._startStateEval = startState;
+    }
+
+    public createStateWeightVisitor (): StateWeightObserver {
+        const {
+            _startStateEval: state,
+        } = this;
+        assertIsTrue(state);
+        return {
+            observe () {
+                return state.weightUsedInCondition;
+            },
+        };
+    }
+
+    private _startStateEval: NodeEval | undefined = undefined;
+}
+
+class TransitionBindingContextGenerator {
+    public generate (startState: NodeEval) {
+        const { _cache: cache } = this;
+        cache.setState(startState);
+        return cache as TransitionBindingContext;
+    }
+
+    private _cache = new ReusableTransitionBindingContext();
+}
