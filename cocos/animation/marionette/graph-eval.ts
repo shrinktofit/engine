@@ -25,7 +25,7 @@
 import { DEBUG, TEST } from 'internal:constants';
 import {
     AnimationGraph, Layer, StateMachine, State, isAnimationTransition,
-    SubStateMachine, EmptyState, EmptyStateTransition, TransitionInterruptionSource, PoseState, PoseTransition, InterruptionBehavior,
+    SubStateMachine, EmptyState, EmptyStateTransition, TransitionInterruptionSource, PoseState, PoseTransition, InterruptionBehavior, DurationalTransition,
 } from './animation-graph';
 import { MotionEval, MotionEvalContext, MotionPort } from './motion';
 import type { Node } from '../../scene-graph/node';
@@ -40,7 +40,7 @@ import { MAX_ANIMATION_LAYER } from '../../3d/skeletal-animation/limits';
 import { AnimationClip } from '../animation-clip';
 import type { AnimationController } from './animation-controller';
 import { StateMachineComponent } from './state-machine-component';
-import { InteractiveState } from './state';
+import { EventifiedState, InteractiveState } from './state';
 import {
     AnimationGraphBindingContext, AnimationGraphEvaluationContext,
     AnimationGraphLayerWideBindingContext, AnimationGraphPoseLayoutMaintainer, defaultTransformsTag, LayoutChangeFlag, MetaValueRegistry,
@@ -56,6 +56,7 @@ import { DefaultTopLevelPose, LayerEvaluationRecord, AllPreviousLayersResultMana
 import { instantiatePoseGraph } from './pose-graph/instantiation';
 import { RuntimeStashManager } from './pose-graph/stash/runtime-stash';
 import { RuntimeCoordinator } from './pose-graph/coordination/runtime-coordinator';
+import { AnimationGraphEvent, GraphEventTarget } from './event';
 
 export class AnimationGraphEval {
     private declare _rootPoseNode: PoseNode;
@@ -67,7 +68,10 @@ export class AnimationGraphEval {
         time: 0.0,
     };
 
-    constructor (graph: AnimationGraph, root: Node, controller: AnimationController, clipOverrides: ReadonlyClipOverrideMap | null) {
+    constructor (
+        graph: AnimationGraph, root: Node, controller: AnimationController, clipOverrides: ReadonlyClipOverrideMap | null,
+        eventTarget: GraphEventTarget,
+    ) {
         if (DEBUG) {
             if (graph.layers.length >= MAX_ANIMATION_LAYER) {
                 throw new Error(
@@ -95,7 +99,7 @@ export class AnimationGraphEval {
         const poseLayoutMaintainer = new AnimationGraphPoseLayoutMaintainer(root, this._metaValueRegistry);
         this._poseLayoutMaintainer = poseLayoutMaintainer;
 
-        const bindingContext = new AnimationGraphBindingContext(root, poseLayoutMaintainer, this._varInstances);
+        const bindingContext = new AnimationGraphBindingContext(root, poseLayoutMaintainer, this._varInstances, eventTarget);
         this._bindingContext = bindingContext;
 
         const settleContext = new AnimationGraphSettleContextImpl(root, poseLayoutMaintainer);
@@ -485,6 +489,7 @@ class LayerEval {
 
         this.name = name;
         this._controller = controller;
+        this._eventTarget = context.eventTarget;
         this.additive = isAdditiveLayer;
         const myContext: AnimationGraphLayerWideBindingContext = {
             outerContext: context,
@@ -662,6 +667,7 @@ class LayerEval {
     }
 
     private declare _controller: AnimationController;
+    private _eventTarget: GraphEventTarget;
     /**
      * Preserved here for clip overriding.
      */
@@ -828,20 +834,25 @@ class LayerEval {
                     normalizedElapsedTime: Number.NaN,
                     destinationWeight: Number.NaN,
                     updateDeltaTime: Number.NaN,
+                    startEvent: undefined,
+                    endEvent: undefined,
                 };
+
+                if (outgoing instanceof DurationalTransition) {
+                    transitionEval.startEvent = outgoing.startEvent;
+                    transitionEval.endEvent = outgoing.endEvent;
+                    transitionEval.destinationStart = outgoing.destinationStart;
+                    transitionEval.relativeDestinationStart = outgoing.relativeDestinationStart;
+                }
 
                 if (isAnimationTransition(outgoing)) {
                     transitionEval.duration = outgoing.duration;
                     transitionEval.normalizedDuration = outgoing.relativeDuration;
                     transitionEval.exitConditionEnabled = outgoing.exitConditionEnabled;
                     transitionEval.exitCondition = outgoing.exitCondition;
-                    transitionEval.destinationStart = outgoing.destinationStart;
-                    transitionEval.relativeDestinationStart = outgoing.relativeDestinationStart;
                     transitionEval.interruption = outgoing.interruptionSource;
                 } else if (outgoing instanceof EmptyStateTransition) {
                     transitionEval.duration = outgoing.duration;
-                    transitionEval.destinationStart = outgoing.destinationStart;
-                    transitionEval.relativeDestinationStart = outgoing.relativeDestinationStart;
                 } else if (outgoing instanceof PoseTransition) {
                     transitionEval.duration = outgoing.duration;
                     transitionEval.interruption = outgoing.interruptionSource;
@@ -941,6 +952,8 @@ class LayerEval {
                 if (ranIntoNonMotionState) {
                     break;
                 }
+
+                currentNode.transitionOutEvent?.emit(this._eventTarget);
 
                 continueNextIterationForce = true;
             } else { // If no transition matched, we update current node.
@@ -1259,6 +1272,10 @@ class LayerEval {
 
         transition.updateDeltaTime = 0.0;
 
+        if (transition.startEvent) {
+            transition.startEvent.emit(this._eventTarget);
+        }
+
         this._currentTransitionPath.push(transition);
     }
 
@@ -1299,6 +1316,8 @@ class LayerEval {
             targetNode.reenter();
         }
         this._callEnterMethods(targetNode);
+
+        targetNode.transitionInEvent?.emit(this._eventTarget);
     }
 
     /**
@@ -1511,6 +1530,9 @@ class LayerEval {
             }
             if (inactivate) {
                 transition.activated = false;
+            }
+            if (transition.endEvent) {
+                transition.endEvent.emit(this._eventTarget);
             }
         }
 
@@ -2020,6 +2042,14 @@ export class StateEval {
     public readonly name: string;
 
     public outgoingTransitions: readonly TransitionEval[] = [];
+
+    public transitionInEvent: AnimationGraphEvent | undefined = undefined;
+
+    public transitionOutEvent: AnimationGraphEvent | undefined = undefined;
+
+    public transitionInFinishedEvent: AnimationGraphEvent | undefined = undefined;
+
+    public transitionOutFinishedEvent: AnimationGraphEvent | undefined = undefined;
 }
 
 type StateMachineComponentMotionStateCallbackName = keyof Pick<
@@ -2101,6 +2131,13 @@ interface StateMachineInfo {
     components: InstantiatedComponents | null;
 }
 
+function assignEvents (stateEval: StateEval, node: EventifiedState) {
+    stateEval.transitionInEvent = node.transitionInEvent;
+    stateEval.transitionOutEvent = node.transitionOutEvent;
+    stateEval.transitionInFinishedEvent = node.enteredEvent;
+    stateEval.transitionOutFinishedEvent = node.exitedEvent;
+}
+
 class PoseStateEval extends StateEval {
     public _weightUsedInStateWeightCondition = 0.0;
 
@@ -2113,6 +2150,7 @@ class PoseStateEval extends StateEval {
             node.bind(context);
             this._poseNodeEval = node;
         }
+        assignEvents(this, state);
     }
 
     public settle (context: PoseNodeSettleContext) {
@@ -2163,6 +2201,8 @@ export class MotionStateEval extends StateEval {
         this._toPort = new MotionStateEvalPort(sourceEval?.createPort() ?? null);
 
         this.components = new InstantiatedComponents(node);
+
+        assignEvents(this, node);
     }
 
     public readonly kind = NodeKind.animation;
@@ -2486,6 +2526,10 @@ interface TransitionEval {
      * Reset as 0 on transition activated or at the end of the tick.
      */
     updateDeltaTime: number;
+
+    startEvent: AnimationGraphEvent | undefined;
+
+    endEvent: AnimationGraphEvent | undefined;
 }
 
 export type { VarInstance } from './variable';

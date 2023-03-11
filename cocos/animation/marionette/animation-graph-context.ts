@@ -13,6 +13,7 @@ import { partition } from '../../core/algorithm/partition';
 import { AnimationClipGraphBindingContext } from './animation-graph-animation-clip-binding';
 import { PoseStashAllocator } from './pose-graph/stash/runtime-stash';
 import { PoseHeapAllocator } from '../core/pose-heap-allocator';
+import { GraphEventTarget } from './event';
 
 /**
  * This module contains stuffs related to animation graph's evaluation.
@@ -67,14 +68,19 @@ export type VarRegistry = Record<string, VarInstance>;
  * The binding context of an animation graph.
  */
 export class AnimationGraphBindingContext implements AnimationClipGraphBindingContext {
-    constructor (origin: Node, poseLayoutMaintainer: AnimationGraphPoseLayoutMaintainer, varRegistry: VarRegistry) {
+    constructor (origin: Node, poseLayoutMaintainer: AnimationGraphPoseLayoutMaintainer, varRegistry: VarRegistry, eventTarget: GraphEventTarget) {
         this._origin = origin;
         this._layoutMaintainer = poseLayoutMaintainer;
         this._varRegistry = varRegistry;
+        this._eventTarget = eventTarget;
     }
 
     get origin () {
         return this._origin;
+    }
+
+    get eventTarget () {
+        return this._eventTarget;
     }
 
     public bindTransform (bone: string): TransformHandle | null {
@@ -110,6 +116,8 @@ export class AnimationGraphBindingContext implements AnimationClipGraphBindingCo
     }
 
     private _origin: Node;
+
+    private _eventTarget: GraphEventTarget;
 
     private _layoutMaintainer: AnimationGraphPoseLayoutMaintainer;
 

@@ -8,6 +8,7 @@ import { LegacyBlendStateBuffer } from '../../cocos/3d/skeletal-animation/skelet
 import { AnimationGraph } from '../../cocos/animation/marionette/animation-graph';
 import { ClipMotion } from '../../cocos/animation/marionette/clip-motion';
 import { AnimationGraphEval } from '../../cocos/animation/marionette/graph-eval';
+import { createGraphEventTarget } from '../../cocos/animation/marionette/event';
 
 test('Common target', () => {
     @ccclass('TestComponent')
@@ -457,6 +458,6 @@ function evaluateClipSingleFrameMarionette (clip: AnimationClip, node: Node, tim
     clipMotion.clip = clip;
     layer.stateMachine.connect(layer.stateMachine.entryState, motion);
     const controller = node.addComponent(AnimationController) as AnimationController;
-    const graphEval = new AnimationGraphEval(animationGraph, node, controller);
+    const graphEval = new AnimationGraphEval(animationGraph, node, controller, null, createGraphEventTarget());
     graphEval.update(time);
 }

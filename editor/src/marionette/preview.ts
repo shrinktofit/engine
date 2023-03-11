@@ -11,6 +11,7 @@ import {
     AnimationGraphBindingContext, AnimationGraphEvaluationContext, AnimationGraphLayerWideBindingContext, AnimationGraphPoseLayoutMaintainer, defaultTransformsTag, MetaValueRegistry,
 } from '../../../cocos/animation/marionette/animation-graph-context';
 import { blendPoseInto, Pose } from '../../../cocos/animation/core/pose';
+import { createGraphEventTarget, GraphEventTarget } from '../../../cocos/animation/marionette/event';
 
 class AnimationGraphPartialPreviewer {
     constructor(root: Node) {
@@ -72,7 +73,8 @@ class AnimationGraphPartialPreviewer {
         const poseLayoutMaintainer = new AnimationGraphPoseLayoutMaintainer(this._root, new MetaValueRegistry());
         this._poseLayoutMaintainer = poseLayoutMaintainer;
 
-        const bindingContext = new AnimationGraphBindingContext(this._root, this._poseLayoutMaintainer, this._varInstances);
+        const bindingContext = new AnimationGraphBindingContext(
+            this._root, this._poseLayoutMaintainer, this._varInstances, createGraphEventTarget());
 
         poseLayoutMaintainer.startBind();
 

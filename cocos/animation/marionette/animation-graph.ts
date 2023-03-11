@@ -32,13 +32,14 @@ import { TriggerResetMode, Value, VariableType } from './variable';
 import { InvalidTransitionError } from './errors';
 import { createEval } from './create-eval';
 import { MotionState } from './motion-state';
-import { State, outgoingsSymbol, incomingsSymbol, InteractiveState } from './state';
+import { State, outgoingsSymbol, incomingsSymbol, InteractiveState, EventifiedState } from './state';
 import { AnimationMask } from './animation-mask';
 import { onAfterDeserializedTag } from '../../serialization/deserialize-symbols';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
 import { AnimationGraphLike } from './animation-graph-like';
 import { renameObjectProperty } from '../../core/utils/internal';
 import { PoseGraph } from './pose-graph/pose-graph';
+import { AnimationGraphEvent } from './event';
 
 export { State };
 
@@ -97,8 +98,67 @@ export enum TransitionInterruptionSource {
     NEXT_STATE_THEN_CURRENT_STATE,
 }
 
+/**
+ * Creates a proxy object `c` so that `o instanceof c`, where `o` is an instance of `constructor`.
+ * This function is used to hide the new of `constructor` in the same time keep `instanceof` usable.
+ * @param constructor The construct to proxy.
+ * @returns The proxy object.
+ */
+// eslint-disable-next-line @typescript-eslint/ban-types
+function createInstanceofProxy<TConstructor extends Function> (constructor: TConstructor): TConstructor {
+    const value = Object.create(null, {
+        [Symbol.hasInstance]: {
+            value (instance: unknown) {
+                return instance instanceof constructor;
+            },
+        },
+    });
+
+    return value as unknown as TConstructor;
+}
+
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}DurationalTransition`)
+class DurationalTransition extends Transition {
+    @serializable
+    @editable
+    public startEvent = new AnimationGraphEvent();
+
+    @serializable
+    @editable
+    public endEvent = new AnimationGraphEvent();
+
+    /**
+     * @en The start time of (final) destination motion state when this transition starts.
+     * Its unit is seconds if `relativeDestinationStart` is `false`,
+     * Otherwise, its unit is the duration of destination motion state.
+     * @zh 此过渡开始时，（最终）目标动作状态的起始时间。
+     * 如果 `relativeDestinationStart`为 `false`，其单位是秒，否则其单位是目标动作状态的周期。
+     */
+    @serializable
+    public destinationStart = 0.0;
+
+    /**
+      * @en Determines the unit of destination start time. See `destinationStart`.
+      * @zh 决定了目标起始时间的单位。见 `destinationStart`。
+      */
+    @serializable
+    public relativeDestinationStart = false;
+
+    public copyTo (that: DurationalTransition) {
+        super.copyTo(that);
+        that.destinationStart = this.destinationStart;
+        that.relativeDestinationStart = this.relativeDestinationStart;
+    }
+}
+
+type DurationalTransition_ = DurationalTransition;
+const DurationalTransition_ = createInstanceofProxy(DurationalTransition);
+export {
+    DurationalTransition_ as DurationalTransition,
+};
+
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}AnimationTransition`)
-class AnimationTransition extends Transition {
+class AnimationTransition extends DurationalTransition {
     /**
      * The transition duration.
      * The unit of the duration is the real duration of transition source
@@ -115,23 +175,6 @@ class AnimationTransition extends Transition {
 
     @serializable
     public exitConditionEnabled = true;
-
-    /**
-     * @en The start time of (final) destination motion state when this transition starts.
-     * Its unit is seconds if `relativeDestinationStart` is `false`,
-     * Otherwise, its unit is the duration of destination motion state.
-     * @zh 此过渡开始时，（最终）目标动作状态的起始时间。
-     * 如果 `relativeDestinationStart`为 `false`，其单位是秒，否则其单位是目标动作状态的周期。
-     */
-    @serializable
-    public destinationStart = 0.0;
-
-    /**
-     * @en Determines the unit of destination start time. See `destinationStart`.
-     * @zh 决定了目标起始时间的单位。见 `destinationStart`。
-     */
-    @serializable
-    public relativeDestinationStart = false;
 
     get exitCondition () {
         return this._exitCondition;
@@ -161,8 +204,6 @@ class AnimationTransition extends Transition {
         that.relativeDuration = this.relativeDuration;
         that.exitConditionEnabled = this.exitConditionEnabled;
         that.exitCondition = this.exitCondition;
-        that.destinationStart = this.destinationStart;
-        that.relativeDestinationStart = this.relativeDestinationStart;
         that.interruptible = this.interruptible;
     }
 
@@ -200,40 +241,21 @@ export class EmptyState extends State {
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}EmptyStateTransition`)
-export class EmptyStateTransition extends Transition {
+export class EmptyStateTransition extends DurationalTransition {
     /**
      * The transition duration, in seconds.
      */
     @serializable
     public duration = 0.3;
 
-    /**
-     * @en The start time of (final) destination motion state when this transition starts.
-     * Its unit is seconds if `relativeDestinationStart` is `false`,
-     * Otherwise, its unit is the duration of destination motion state.
-     * @zh 此过渡开始时，（最终）目标动作状态的起始时间。
-     * 如果 `relativeDestinationStart`为 `false`，其单位是秒，否则其单位是目标动作状态的周期。
-     */
-    @serializable
-    public destinationStart = 0.0;
-
-    /**
-      * @en Determines the unit of destination start time. See `destinationStart`.
-      * @zh 决定了目标起始时间的单位。见 `destinationStart`。
-      */
-    @serializable
-    public relativeDestinationStart = false;
-
     public copyTo (that: EmptyStateTransition) {
         super.copyTo(that);
         that.duration = this.duration;
-        that.destinationStart = this.destinationStart;
-        that.relativeDestinationStart = this.relativeDestinationStart;
     }
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseState`)
-export class PoseState extends State {
+export class PoseState extends EventifiedState {
     @serializable
     public poseGraph = new PoseGraph();
 
@@ -247,7 +269,7 @@ export class PoseState extends State {
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseTransition`)
-class PoseTransition extends Transition {
+class PoseTransition extends DurationalTransition {
     /**
      * The transition duration, in seconds.
      */
@@ -272,25 +294,12 @@ class PoseTransition extends Transition {
      */
     @serializable
     public interruptionSource = TransitionInterruptionSource.NONE;
-}
 
-/**
- * Creates a proxy object `c` so that `o instanceof c`, where `o` is an instance of `constructor`.
- * This function is used to hide the new of `constructor` in the same time keep `instanceof` usable.
- * @param constructor The construct to proxy.
- * @returns The proxy object.
- */
-// eslint-disable-next-line @typescript-eslint/ban-types
-function createInstanceofProxy<TConstructor extends Function> (constructor: TConstructor): TConstructor {
-    const value = Object.create(null, {
-        [Symbol.hasInstance]: {
-            value (instance: unknown) {
-                return instance instanceof constructor;
-            },
-        },
-    });
-
-    return value as unknown as TConstructor;
+    public copyTo (that: PoseTransition) {
+        super.copyTo(that);
+        that.duration = this.duration;
+        that.interruptionSource = this.interruptionSource;
+    }
 }
 
 type PoseTransition_ = PoseTransition;

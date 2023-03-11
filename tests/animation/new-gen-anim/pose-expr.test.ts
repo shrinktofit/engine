@@ -16,6 +16,7 @@ import { AnimationGraphEvalMock } from "./utils/eval-mock";
 import 'jest-extended';
 import { poseGraphOp } from "../../../cocos/animation/marionette/pose-graph/op";
 import { PoseGraphNodeShell } from "../../../cocos/animation/marionette/pose-graph/node-shell";
+import { createGraphEventTarget } from "../../../cocos/animation/marionette/event";
 
 class UnimplementedPoseNode extends PoseNode {
     public bind(context: PoseNodeBindingContext): void {
@@ -755,6 +756,7 @@ function createAnimationGraphEval (animationGraph: AnimationGraph, node: Node) {
         node,
         newGenAnim,
         null,
+        createGraphEventTarget(),
     );
     // @ts-expect-error HACK
     newGenAnim._graphEval = graphEval;
