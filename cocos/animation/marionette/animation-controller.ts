@@ -31,6 +31,7 @@ import type { MotionStateStatus, TransitionStatus, ClipStatus, ReadonlyClipOverr
 import { Value } from './variable';
 import { AnimationGraphVariant, AnimationGraphVariantRunTime } from './animation-graph-variant';
 import { AnimationGraphLike } from './animation-graph-like';
+import { createGraphEventTarget, GraphEventReceiver, GraphEventTarget } from './event';
 
 const { ccclass, menu, type, serializable, editable, formerlySerializedAs } = _decorator;
 
@@ -76,6 +77,12 @@ export class AnimationController extends Component {
 
     private _graphEval: AnimationGraphEval | null = null;
 
+    private _graphEventTarget = createGraphEventTarget();
+
+    public get graphEventReceiver () {
+        return this._graphEventTarget as GraphEventReceiver;
+    }
+
     /**
      * @zh 获取动画图的层级数量。如果控制器没有指定动画图，则返回 0。
      * @en Gets the count of layers in the animation graph.
@@ -100,7 +107,7 @@ export class AnimationController extends Component {
                 assertIsTrue(graph instanceof AnimationGraph);
                 originalGraph = graph;
             }
-            const graphEval = new AnimationGraphEval(originalGraph, this.node, this, clipOverrides);
+            const graphEval = new AnimationGraphEval(originalGraph, this.node, this, clipOverrides, this._graphEventTarget);
             this._graphEval = graphEval;
         }
     }

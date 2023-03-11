@@ -31,6 +31,7 @@ import '../utils/matchers/value-type-asymmetric-matchers';
 import { AnimationBlend1DFixture, LinearRealValueAnimationFixture, ConstantRealValueAnimationFixture, RealValueAnimationFixture } from './new-gen-anim/utils/fixtures';
 import { NodeTransformValueObserver } from './new-gen-anim/utils/node-transform-value-observer';
 import { SingleRealValueObserver } from './new-gen-anim/utils/single-real-value-observer';
+import { createGraphEventTarget } from '../../cocos/animation/marionette/event';
 
 const DEFAULT_AROUND_NUM_DIGITS = 5;
 
@@ -5357,6 +5358,7 @@ function createAnimationGraphEval (animationGraph: AnimationGraph | AnimationGra
         node,
         newGenAnim,
         (animationGraph instanceof AnimationGraph) ? null : animationGraph.clipOverrides,
+        createGraphEventTarget(),
     );
     // @ts-expect-error HACK
     newGenAnim._graphEval = graphEval;
@@ -5370,6 +5372,7 @@ function createAnimationGraphEval2 (animationGraph: AnimationGraph | AnimationGr
         node,
         newGenAnim,
         (animationGraph instanceof AnimationGraph) ? null : animationGraph.clipOverrides,
+        createGraphEventTarget(),
     );
     // @ts-expect-error HACK
     newGenAnim._graphEval = graphEval;

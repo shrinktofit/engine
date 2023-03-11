@@ -41,3 +41,5 @@ export type { ClipStatus, TransitionStatus, MotionStateStatus } from './animatio
 export { VariableType } from './parametric';
 export { StateMachineComponent } from './state-machine-component';
 export type { Value } from './variable';
+
+export type { GraphEventReceiver } from './event';

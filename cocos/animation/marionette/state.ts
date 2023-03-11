@@ -24,11 +24,12 @@
 
 import { OwnedBy, ownerSymbol } from './ownership';
 import type { Layer, StateMachine, TransitionInternal } from './animation-graph';
-import { EditorExtendable, js, editorExtrasTag, _decorator } from '../../core';
+import { EditorExtendable, js, editorExtrasTag, _decorator, editable } from '../../core';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
 import { StateMachineComponent } from './state-machine-component';
 import { instantiate } from '../../serialization/instantiate';
 import { cloneAnimationGraphEditorExtrasFrom } from './animation-graph-editor-extras-clone-helper';
+import { AnimationGraphEvent } from './event';
 
 export const outgoingsSymbol = Symbol('[[Outgoing transitions]]');
 
@@ -59,8 +60,26 @@ export class State extends EditorExtendable implements OwnedBy<Layer | StateMach
 
 type StateMachineComponentConstructor<T extends StateMachineComponent> = Constructor<T>;
 
+export class EventifiedState extends State {
+    @editable
+    @serializable
+    public transitionInEvent = new AnimationGraphEvent();
+
+    @editable
+    @serializable
+    public enteredEvent = new AnimationGraphEvent();
+
+    @editable
+    @serializable
+    public transitionOutEvent = new AnimationGraphEvent();
+
+    @editable
+    @serializable
+    public exitedEvent = new AnimationGraphEvent();
+}
+
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}InteractiveState`)
-export class InteractiveState extends State {
+export class InteractiveState extends EventifiedState {
     get components (): Iterable<StateMachineComponent> {
         return this._components;
     }
