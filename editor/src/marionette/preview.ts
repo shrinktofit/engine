@@ -69,7 +69,7 @@ class AnimationGraphPartialPreviewer {
     private _motionRecords: MotionEvalRecord[] = [];
 
     private _updateAllRecords() {
-        const poseLayoutMaintainer = new AnimationGraphPoseLayoutMaintainer(new MetaValueRegistry());
+        const poseLayoutMaintainer = new AnimationGraphPoseLayoutMaintainer(this._root, new MetaValueRegistry());
         this._poseLayoutMaintainer = poseLayoutMaintainer;
 
         const bindingContext = new AnimationGraphBindingContext(this._root, this._poseLayoutMaintainer, this._varInstances);
@@ -82,10 +82,7 @@ class AnimationGraphPartialPreviewer {
 
         poseLayoutMaintainer.endBind();
 
-        const evaluationContext = new AnimationGraphEvaluationContext({
-            transformCount: poseLayoutMaintainer.transformCount,
-            metaValueCount: poseLayoutMaintainer.metaValueCount,
-        });
+        const evaluationContext = poseLayoutMaintainer.createEvaluationContext();
 
         poseLayoutMaintainer.fetchDefaultTransforms(evaluationContext[defaultTransformsTag]);
 
@@ -423,7 +420,7 @@ class MotionEvalRecord {
         // Tracking issue: https://github.com/cocos/cocos-engine/issues/14640
         const motionEval = this._motion[createEval]({
             additive: false,
-            up: bindContext,
+            outerContext: bindContext,
         } as unknown as AnimationGraphLayerWideBindingContext, null);
 
         if (!motionEval) {

@@ -1,7 +1,7 @@
 import { DEBUG } from 'internal:constants';
 import { Node } from '../../scene-graph';
 import { assertIsTrue } from '../../core/data/utils/asserts';
-import { Pose, TransformFilter } from '../core/pose';
+import { Pose, PoseTransformSpace, TransformFilter } from '../core/pose';
 import { PoseAllocator } from '../core/pose-allocator';
 import { TransformArray } from '../core/transform-array';
 import { TransformHandle, MetaValueHandle } from '../core/animation-handle';
@@ -10,6 +10,9 @@ import { VarInstance } from './variable';
 import { AnimationMask } from './animation-mask';
 import { error } from '../../core';
 import { partition } from '../../core/algorithm/partition';
+import { AnimationClipGraphBindingContext } from './animation-graph-animation-clip-binding';
+import { PoseStashAllocator } from './pose-graph/stash/runtime-stash';
+import { PoseHeapAllocator } from '../core/pose-heap-allocator';
 
 /**
  * This module contains stuffs related to animation graph's evaluation.
@@ -63,7 +66,7 @@ export type VarRegistry = Record<string, VarInstance>;
 /**
  * The binding context of an animation graph.
  */
-export class AnimationGraphBindingContext {
+export class AnimationGraphBindingContext implements AnimationClipGraphBindingContext {
     constructor (origin: Node, poseLayoutMaintainer: AnimationGraphPoseLayoutMaintainer, varRegistry: VarRegistry) {
         this._origin = origin;
         this._layoutMaintainer = poseLayoutMaintainer;
@@ -172,7 +175,11 @@ const checkBindStatus = (bindStarted = false): MethodDecorator => (_, _propertyK
 };
 
 export class AnimationGraphPoseLayoutMaintainer {
-    constructor (metaValueRegistry: MetaValueRegistry) {
+    /**
+     * @param origin This node and all nodes under this node can be bound.
+     */
+    constructor (origin: Node, metaValueRegistry: MetaValueRegistry) {
+        this._origin = origin;
         this._metaValueRegistry = metaValueRegistry;
     }
 
@@ -186,6 +193,57 @@ export class AnimationGraphPoseLayoutMaintainer {
 
     @checkBindStatus(true)
     public getOrCreateTransformBinding (node: Node) {
+        const {
+            _origin: origin,
+        } = this;
+
+        // Ensure the node is origin or under origin.
+        let debugIntegrityCheckLengthOfPathToOrigin = 0;
+        let isValidNode = false;
+        for (let current: Node | null = node; current; current = current.parent) {
+            if (current === origin) {
+                isValidNode = true;
+                break;
+            }
+            if (DEBUG) {
+                ++debugIntegrityCheckLengthOfPathToOrigin;
+            }
+        }
+        if (!isValidNode) {
+            return null;
+        }
+
+        // Get or create the handle for the node.
+        const handle = this._getOrCreateTransformBinding(node);
+
+        // Also try to create handles for ancestors if we're not bounding origin.
+        // In other words, origin is not bound by default
+        // except that you explicitly bind to it.
+        if (node !== origin) {
+            for (let parent: Node | null = node.parent; ; parent = parent.parent) {
+                if (DEBUG) {
+                    --debugIntegrityCheckLengthOfPathToOrigin;
+                    assertIsTrue(debugIntegrityCheckLengthOfPathToOrigin >= 0);
+                }
+                assertIsTrue(parent);
+                // But discard the result.
+                // eslint-disable-next-line no-void
+                void this._getOrCreateTransformBinding(parent);
+                if (parent === origin) {
+                    break;
+                }
+            }
+        }
+
+        if (DEBUG) {
+            assertIsTrue(debugIntegrityCheckLengthOfPathToOrigin === 0);
+        }
+
+        return handle;
+    }
+
+    @checkBindStatus(true)
+    private _getOrCreateTransformBinding (node: Node) {
         const { _transformRecords: transformRecords } = this;
 
         const transformIndex = transformRecords.findIndex((transformRecord) => transformRecord.node === node);
@@ -238,6 +296,20 @@ export class AnimationGraphPoseLayoutMaintainer {
             metaValueRecords.push(metaValueRecord);
             return metaValueRecord.handle;
         }
+    }
+
+    public createEvaluationContext () {
+        assertIsTrue(!this._bindStarted);
+        return new AnimationGraphEvaluationContext(
+            this.transformCount,
+            this.metaValueCount,
+            this._parentTable.slice(),
+        );
+    }
+
+    public resetPoseStashAllocator (allocator: DeferredPoseStashAllocator) {
+        assertIsTrue(!this._bindStarted);
+        allocator._reset(this.transformCount, this.metaValueCount);
     }
 
     public createTransformFilter (mask: Readonly<AnimationMask>, origin: Node) {
@@ -374,6 +446,30 @@ export class AnimationGraphPoseLayoutMaintainer {
             changeFlags |= LayoutChangeFlag.META_VALUE_COUNT;
         }
 
+        // Reconstruct the parent table.
+        const { _parentTable: parentTable, _origin: origin } = this;
+        parentTable.length = transformRecords.length;
+        for (let iTransform = 0; iTransform < transformRecords.length; ++iTransform) {
+            const { node } = transformRecords[iTransform];
+            if (node === origin) {
+                parentTable[iTransform] = -1;
+                continue;
+            }
+            const parent = node.parent;
+            if (parent === origin) {
+                // If the parent is the origin, the origin can be bound or not.
+                const parentIndex = transformRecords.findIndex((record) => record.node === parent);
+                parentTable[iTransform] = parentIndex >= 0 ? parentIndex : -1;
+            } else {
+                // In other case we have the promise: parent of a node should have also been bound.
+                const parentIndex = transformRecords.findIndex((record) => record.node === parent);
+                assertIsTrue(parentIndex >= 0, `Parent node is not bound!`);
+                // This is what we promised and what the evaluation context required.
+                assertIsTrue(parentIndex < iTransform);
+                parentTable[iTransform] = parentIndex;
+            }
+        }
+
         this._bindStarted = false;
 
         // Do some checks in debug mode.
@@ -399,9 +495,11 @@ export class AnimationGraphPoseLayoutMaintainer {
         return changeFlags;
     }
 
+    private _origin: Node;
     private _metaValueRegistry: MetaValueRegistry;
     private _metaValueRecords: MetaValueRecord[] = [];
     private _transformRecords: TransformRecord[] = [];
+    private _parentTable: number[] = [];
 
     private _bindStarted = false;
     private _transformCountBeforeBind = -1;
@@ -472,10 +570,28 @@ function trimRecords<TRecord extends AnimationRecord<any>> (records: TRecord[]) 
 
 export const defaultTransformsTag = Symbol('[[DefaultTransforms]]');
 
-export class AnimationGraphEvaluationContext {
-    constructor (layout: PoseLayout) {
-        this._poseAllocator = new PoseAllocator(layout.transformCount, layout.metaValueCount);
-        this[defaultTransformsTag] = new TransformArray(layout.transformCount);
+const cacheTransform_spaceConversion = new Transform();
+const cacheParentTransform_spaceConversion = new Transform();
+
+class AnimationGraphEvaluationContext {
+    constructor (
+        transformCount: number,
+        metaValueCount: number,
+        parentTable: readonly number[],
+    ) {
+        if (DEBUG) {
+            assertIsTrue(transformCount === parentTable.length);
+            // We requires all parents are in front of children in `parentTable`.
+            assertIsTrue(parentTable.every((parentIndex, currentIndex) => {
+                if (parentIndex < 0) { // Root node
+                    return true;
+                }
+                return parentIndex < currentIndex;
+            }));
+        }
+        this._poseAllocator = new PoseAllocator(transformCount, metaValueCount);
+        this._parentTable = parentTable;
+        this[defaultTransformsTag] = new TransformArray(transformCount);
     }
 
     public destroy () {
@@ -495,6 +611,13 @@ export class AnimationGraphEvaluationContext {
         const pose = this._poseAllocator.push();
         pose.transforms.set(this[defaultTransformsTag]);
         pose.metaValues.fill(0.0);
+        pose._poseTransformSpace = PoseTransformSpace.LOCAL;
+        return pose;
+    }
+
+    public pushDefaultedPoseInSkeletalSpace () {
+        const pose = this.pushDefaultedPose();
+        this._poseTransformsSpaceLocalToSkeletal(pose);
         return pose;
     }
 
@@ -502,6 +625,7 @@ export class AnimationGraphEvaluationContext {
         const pose = this._poseAllocator.push();
         pose.transforms.fill(ZERO_DELTA_TRANSFORM);
         pose.metaValues.fill(0.0);
+        pose._poseTransformSpace = PoseTransformSpace.LOCAL;
         return pose;
     }
 
@@ -509,6 +633,7 @@ export class AnimationGraphEvaluationContext {
         const pose = this._poseAllocator.push();
         pose.transforms.set(src.transforms);
         pose.metaValues.set(src.metaValues);
+        pose._poseTransformSpace = src._poseTransformSpace;
         return pose;
     }
 
@@ -516,8 +641,48 @@ export class AnimationGraphEvaluationContext {
         this._poseAllocator.pop();
     }
 
+    /** @internal */
+    public _poseTransformsSpaceLocalToSkeletal (pose: Pose) {
+        const { transforms } = pose;
+        const { length: nTransforms } = transforms;
+        for (let iTransform = 0; iTransform < nTransforms; ++iTransform) {
+            const parentTransformIndex = this._parentTable[iTransform];
+            if (parentTransformIndex < 0) { // Root node
+                continue;
+            }
+            const transform = transforms.getTransform(iTransform, cacheTransform_spaceConversion);
+            const parentTransform = transforms.getTransform(parentTransformIndex, cacheParentTransform_spaceConversion);
+            Transform.multiply(transform, transform, parentTransform);
+            transforms.setTransform(iTransform, transform);
+        }
+
+        pose._poseTransformSpace = PoseTransformSpace.SKELETAL;
+    }
+
+    /** @internal */
+    public _poseTransformsSpaceSkeletalToLocal (pose: Pose) {
+        const { transforms } = pose;
+        const { length: nTransforms } = transforms;
+        for (let iTransform = nTransforms - 1; iTransform >= 0; --iTransform) {
+            const parentTransformIndex = this._parentTable[iTransform];
+            if (parentTransformIndex < 0) { // Root node
+                continue;
+            }
+            const transform = transforms.getTransform(iTransform, cacheTransform_spaceConversion);
+            const parentTransform = transforms.getTransform(parentTransformIndex, cacheParentTransform_spaceConversion);
+            Transform.calculateRelative(transform, transform, parentTransform);
+            transforms.setTransform(iTransform, transform);
+        }
+
+        pose._poseTransformSpace = PoseTransformSpace.LOCAL;
+    }
+
     private _poseAllocator: PoseAllocator;
+
+    private _parentTable: readonly number[];
 }
+
+export type { AnimationGraphEvaluationContext };
 
 export interface PoseLayout {
     transformCount: number;
@@ -557,4 +722,58 @@ class MetaValueHandleInternal implements MetaValueHandle {
     }
 
     private _host: AnimationGraphPoseLayoutMaintainer;
+}
+
+export class DeferredPoseStashAllocator implements PoseStashAllocator {
+    get allocatedPoseCount () {
+        assertIsTrue(this._allocator);
+        return this._allocator.allocatedCount;
+    }
+
+    /** @internal */
+    public _reset (transformCount: number, metaValueCount: number) {
+        this._allocator = new PoseHeapAllocator(transformCount, metaValueCount);
+    }
+
+    public allocatePose (): Pose {
+        assertIsTrue(this._allocator);
+        const pose = this._allocator.allocatePose();
+        pose._poseTransformSpace = PoseTransformSpace.LOCAL;
+        return pose;
+    }
+
+    public destroyPose (pose: Pose): void {
+        assertIsTrue(this._allocator);
+        return this._allocator.destroyPose(pose);
+    }
+
+    private _allocator: PoseHeapAllocator | null = null;
+}
+
+export interface AnimationGraphUpdateContext {
+    readonly deltaTime: number;
+
+    readonly directiveAbsoluteWeight: number;
+}
+
+export class AnimationGraphUpdateContextGenerator {
+    public generate (
+        deltaTime: number,
+        directiveAbsoluteWeight: number,
+    ) {
+        this._context.deltaTime = deltaTime;
+        this._context.directiveAbsoluteWeight = directiveAbsoluteWeight;
+        return this._context as AnimationGraphUpdateContext;
+    }
+
+    private readonly _context: ReusableUpdateContext = {
+        deltaTime: 0.0,
+        directiveAbsoluteWeight: 0.0,
+    };
+}
+
+interface ReusableUpdateContext extends AnimationGraphUpdateContext {
+    deltaTime: number;
+
+    directiveAbsoluteWeight: number;
 }
