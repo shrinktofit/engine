@@ -699,6 +699,8 @@ class LayerEval {
 
     private readonly _interruptionBehavior: InterruptionBehavior;
 
+    private readonly _tickTransitionsResultCache = new TickTransitionResultCache();
+
     private _addStateMachine (
         graph: StateMachine,
         parentStateMachineInfo: StateMachineInfo | null,
@@ -906,30 +908,19 @@ class LayerEval {
             // Update current transition if we're in transition.
             // If currently no transition, we simple fallthrough.
             if (this._currentTransitionPath.length > 0) {
-                const transitionMatch = this._detectInterruption(remainTimePiece, interruptingTransitionMatchCache);
-                if (transitionMatch) {
-                    remainTimePiece -= transitionMatch.requires;
-                    const ranIntoNonMotionState = this._interruptionBehavior === InterruptionBehavior.SNAPSHOT
-                        ? this._interrupt(transitionMatch)
-                        : this._interruptConcurrently(transitionMatch);
-                    if (ranIntoNonMotionState) {
-                        break;
+                const {
+                    action,
+                    consumed: tickTransitionsConsumed,
+                } = this._tickTransitions(remainTimePiece, this._tickTransitionsResultCache);
+                if (action === TickTransitionResultAction.BREAK) {
+                    break;
+                } else {
+                    remainTimePiece -= tickTransitionsConsumed;
+                    if (action === TickTransitionResultAction.FORCE_CONTINUE) {
+                        continueNextIterationForce = true;
                     }
-                    continueNextIterationForce = true;
                     continue;
                 }
-
-                const currentUpdatingConsume = this._updateCurrentTransition(remainTimePiece);
-                remainTimePiece -= currentUpdatingConsume;
-                if (this._currentNode.kind === NodeKind.exit) {
-                    break;
-                }
-                if (this._currentTransitionPath.length === 0) {
-                    // If the update invocation finished the transition,
-                    // We force restart the iteration
-                    continueNextIterationForce = true;
-                }
-                continue;
             }
 
             const { _currentNode: currentNode } = this;
@@ -966,6 +957,56 @@ class LayerEval {
         this._commitStateUpdates(context);
 
         return remainTimePiece;
+    }
+
+    private _tickTransitions (deltaTime: number, result: TickTransitionResultCache): TickTransitionResult {
+        assertIsTrue(this._currentTransitionPath.length !== 0);
+
+        const interruptionMatch = this._detectInterruption(deltaTime, interruptingTransitionMatchCache);
+
+        // Once we found a interruption match. It can race with transition updating.
+        if (interruptionMatch) {
+            const { requires: interruptionRequires } = interruptionMatch;
+            let consumed = 0.0;
+            // If the interruption requires 0 time. It always win.
+            if (interruptionRequires !== 0) {
+                // Otherwise we need firstly do a trial update.
+                const trialDeltaTime = interruptionRequires;
+                const trialUpdateConsumed = this._updateCurrentTransition(trialDeltaTime);
+                if (this._currentTransitionPath.length === 0) {
+                    // The transitions finished after the trail update, this is not a interruption.
+                    return result.setContinue(trialUpdateConsumed, true);
+                } else {
+                    // Otherwise, the transitions can not be finished before interruption.
+                    // The interruption is able to occur.
+                    consumed = trialUpdateConsumed;
+                }
+            }
+            // The real interruption occurs.
+            const ranIntoNonMotionState = this._interruptionBehavior === InterruptionBehavior.SNAPSHOT
+                ? this._interrupt(interruptionMatch)
+                : this._interruptConcurrently(interruptionMatch);
+            if (ranIntoNonMotionState) {
+                return result.setBreak();
+            } else {
+                return result.setContinue(consumed, true);
+            }
+        }
+
+        const currentUpdatingConsume = this._updateCurrentTransition(deltaTime);
+
+        // Break if we ran into non concrete state.
+        if (this._currentNode.kind === NodeKind.exit) {
+            return result.setBreak();
+        }
+
+        // If the update invocation finished the transition,
+        // Force restart the iteration even we consumed all the delta time.
+        if (this._currentTransitionPath.length === 0) {
+            return result.setContinue(currentUpdatingConsume, true);
+        }
+
+        return result.setContinue(currentUpdatingConsume, false);
     }
 
     private _sample (context: AnimationGraphEvaluationContext): Pose | null {
@@ -1715,7 +1756,7 @@ class LayerEval {
             // TODO
         }
 
-        let motion1: MotionStateEval | null = null;
+        let motion1: MotionStateEval | PoseStateEval | null = null;
         let motion1IsCurrentState = false;
         if (interruption === TransitionInterruptionSource.NEXT_STATE_THEN_CURRENT_STATE) {
             motion1 = getInterruptionSourceMotion(currentNode);
@@ -1757,10 +1798,6 @@ class LayerEval {
         transition,
         requires: transitionRequires,
     }: InterruptingTransitionMatch) {
-        const {
-            _currentNode: currentState,
-        } = this;
-        this._accumulateCurrentStateDeltaTime(transitionRequires);
         return this._switchTo(transition);
     }
 
@@ -1770,7 +1807,6 @@ class LayerEval {
     private _interrupt ({
         from: transitionSource,
         transition,
-        requires: transitionRequires,
     }: InterruptingTransitionMatch) {
         // TODO:
         assertIsTrue(transitionSource.kind !== NodeKind.poseState);
@@ -1780,7 +1816,6 @@ class LayerEval {
         assertIsTrue(currentNode.kind === NodeKind.animation || currentNode.kind === NodeKind.transitionSnapshot);
         // If we're interrupting motion->*,
         // we update the motion then do the first enqueue to transition snapshot.
-        this._accumulateCurrentStateDeltaTime(transitionRequires);
         if (currentNode.kind === NodeKind.animation) {
             const { _transitionSnapshot: transitionSnapshot } = this;
             assertIsTrue(transitionSnapshot.empty);
@@ -1898,6 +1933,38 @@ class LayerEval {
 }
 
 type ConcreteState = MotionStateEval | PoseStateEval | EmptyStateEval;
+
+enum TickTransitionResultAction {
+    CONTINUE,
+    FORCE_CONTINUE,
+    BREAK,
+}
+
+interface TickTransitionResult {
+    action: TickTransitionResultAction;
+    consumed: number;
+}
+
+class TickTransitionResultCache {
+    public setBreak () {
+        const { _result: result } = this;
+        result.action = TickTransitionResultAction.BREAK;
+        result.consumed = Number.NaN;
+        return result;
+    }
+
+    public setContinue (consumed: number, force: boolean) {
+        const { _result: result } = this;
+        result.action = force ? TickTransitionResultAction.FORCE_CONTINUE : TickTransitionResultAction.CONTINUE;
+        result.consumed = consumed;
+        return result;
+    }
+
+    private _result: TickTransitionResult = {
+        action: TickTransitionResultAction.BREAK,
+        consumed: Number.NaN,
+    };
+}
 
 function isConcreteState (stateEval: NodeEval): stateEval is ConcreteState  {
     return stateEval.kind === NodeKind.animation

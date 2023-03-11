@@ -7,6 +7,7 @@ import { AnimationGraphEvalMock } from "./utils/eval-mock";
 import { ConstantRealValueAnimationFixture, LinearRealValueAnimationFixture } from "./utils/fixtures";
 import { SingleRealValueObserver } from "./utils/single-real-value-observer";
 import '../../utils/matchers/value-type-asymmetric-matchers';
+import { createAnimationGraph } from "./utils/factory";
 
 const DEFAULT_VALUE = 6.666;
 
@@ -719,6 +720,17 @@ describe(`Transition sequence`, () => {
         });
     });
 });
+
+function calculateExpectedTransitionSequenceResult(
+    headValue: number,
+    ...tail: Array<[value: number, transitionProgress: number]>
+): number {
+    let result = headValue;
+    for (const [value, transitionProgress] of tail) {
+        result = lerp(result, value, transitionProgress);
+    }
+    return result;
+}
 
 function generateTransitionSequence(
     sequenceString: SequenceString,
