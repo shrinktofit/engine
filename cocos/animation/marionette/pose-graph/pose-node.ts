@@ -53,14 +53,18 @@ export type { AnimationGraphUpdateContext as PoseNodeUpdateContext };
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseNode`)
 export abstract class PoseNode extends PoseGraphNodeBase {
+    // TODO: authors may forget to propagate this method to inputs...
     public abstract bind(context: PoseNodeBindingContext): void;
 
+    // TODO: authors may forget to propagate this method to inputs...
     public settle (context: PoseNodeSettleContext): void {
     }
 
+    // TODO: authors may forget to propagate this method to inputs...
     public reenter () {
     }
 
+    // TODO: authors may forget to propagate this method to inputs...
     public update (context: PoseNodeUpdateContext) {
         this._dependencyEvaluation?.evaluate();
         this.doUpdate(context);
