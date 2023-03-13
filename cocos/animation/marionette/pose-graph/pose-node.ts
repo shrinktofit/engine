@@ -1,7 +1,7 @@
 import { assertIsTrue, EditorExtendable } from '../../../core';
 import { ccclass } from '../../../core/data/decorators';
 import { Node } from '../../../scene-graph';
-import { Pose, TransformFilter } from '../../core/pose';
+import { Pose, PoseTransformSpace, TransformFilter } from '../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import type { AnimationController, ReadonlyClipOverrideMap } from '../animation-controller';
 import { AnimationGraphBindingContext, AnimationGraphEvaluationContext, AnimationGraphUpdateContext } from '../animation-graph-context';
@@ -51,6 +51,14 @@ type PoseNodeUpdateContext = AnimationGraphUpdateContext;
 
 export type { AnimationGraphUpdateContext as PoseNodeUpdateContext };
 
+export enum PoseTransformSpaceRequirement {
+    NO,
+
+    LOCAL,
+
+    SKELETAL,
+}
+
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseNode`)
 export abstract class PoseNode extends PoseGraphNodeBase {
     // TODO: authors may forget to propagate this method to inputs...
@@ -95,6 +103,19 @@ export abstract class PoseNode extends PoseGraphNodeBase {
         }
         }
         return pose;
+    }
+
+    public static evaluateDefaultPose (context: PoseNodeEvaluationContext, poseTransformSpaceRequirement: PoseTransformSpaceRequirement) {
+        switch (poseTransformSpaceRequirement) {
+        default:
+            assertIsTrue(false);
+            // fallthrough
+        case PoseTransformSpaceRequirement.NO:
+        case PoseTransformSpaceRequirement.LOCAL:
+            return context.pushDefaultedPose();
+        case PoseTransformSpaceRequirement.SKELETAL:
+            return context.pushDefaultedPoseInSkeletalSpace();
+        }
     }
 
     /** @internal */

@@ -3,7 +3,7 @@ import { applyDeltaPose } from '../../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
 import { poseGraphNodeMenu } from '../pose-graph-node-common';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
-import { PoseNode, PoseNodeBindingContext, PoseNodeEvaluationContext, PoseNodeSettleContext, PoseNodeUpdateContext } from '../pose-node';
+import { PoseNode, PoseNodeBindingContext, PoseNodeEvaluationContext, PoseNodeSettleContext, PoseNodeUpdateContext, PoseTransformSpaceRequirement } from '../pose-node';
 import { poseInput } from '../pose-node-binding';
 
 /**
@@ -45,11 +45,11 @@ export class AddPose extends PoseNode {
     }
 
     public selfEvaluate (context: PoseNodeEvaluationContext) {
-        const basePose = this.base?.evaluate(context) ?? context.pushDefaultedPose();
+        const basePose = this.base?.evaluate(context, PoseTransformSpaceRequirement.LOCAL) ?? context.pushDefaultedPose();
         if (!this.addition) {
             return basePose;
         }
-        const additionalPose = this.addition.evaluate(context);
+        const additionalPose = this.addition.evaluate(context, PoseTransformSpaceRequirement.LOCAL);
         applyDeltaPose(basePose, additionalPose, 1.0);
         context.popPose();
         return basePose;

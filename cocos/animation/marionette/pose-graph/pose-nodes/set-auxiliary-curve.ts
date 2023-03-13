@@ -8,7 +8,7 @@ import { xNodeInput } from '../x-node-binding';
 import { poseGraphNodeMenu } from '../pose-graph-node-common';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { Pose } from '../../../core/pose';
-import { SinglePoseModifier } from './single-pose-modifier';
+import { AnySpaceSinglePoseModifier } from './single-pose-modifier';
 
 enum SetAuxiliaryCurveFlag {
     LEAVE_UNCHANGED,
@@ -22,7 +22,7 @@ ccenum(SetAuxiliaryCurveFlag);
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}SetAuxiliaryCurve`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_POSE}设置辅助曲线`)
-export class SetAuxiliaryCurve extends SinglePoseModifier {
+export class SetAuxiliaryCurve extends AnySpaceSinglePoseModifier {
     @serializable
     @editable
     public curveName = '';

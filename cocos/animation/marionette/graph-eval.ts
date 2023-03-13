@@ -51,7 +51,7 @@ import {
 import { TransformArray } from '../core/transform-array';
 import { applyDeltaPose, blendPoseInto, Pose, TransformFilter } from '../core/pose';
 
-import { PoseNode, PoseNodeBindingContext, PoseNodeUpdateContext } from './pose-graph/pose-node';
+import { PoseNode, PoseNodeBindingContext, PoseNodeUpdateContext, PoseTransformSpaceRequirement } from './pose-graph/pose-node';
 import { DefaultTopLevelPose, LayerEvaluationRecord } from './pose-graph/pose-nodes/default-top-level-pose-node';
 import { instantiatePoseGraph } from './pose-graph/instantiation';
 import { RuntimeStashManager } from './pose-graph/stash/runtime-stash';
@@ -97,7 +97,7 @@ export class AnimationGraphEval {
             this.setValue(name, false);
         };
 
-        const poseLayoutMaintainer = new AnimationGraphPoseLayoutMaintainer(this._metaValueRegistry);
+        const poseLayoutMaintainer = new AnimationGraphPoseLayoutMaintainer(root, this._metaValueRegistry);
         this._poseLayoutMaintainer = poseLayoutMaintainer;
 
         const bindingContext = new AnimationGraphBindingContext(root, poseLayoutMaintainer, this._varInstances, eventTarget);
@@ -177,7 +177,7 @@ export class AnimationGraphEval {
             1.0,
         );
         this._rootPoseNode.update(updateContext);
-        const finalPose = this._rootPoseNode.evaluate(evaluationContext);
+        const finalPose = this._rootPoseNode.evaluate(evaluationContext, PoseTransformSpaceRequirement.LOCAL);
 
         if (this._hasAutoTrigger) {
             const { _varInstances: varInstances } = this;
@@ -305,18 +305,13 @@ export class AnimationGraphEval {
 
         this._createOrUpdateTransformFilters();
 
-        const poseLayout = {
-            transformCount: poseLayoutMaintainer.transformCount,
-            metaValueCount: poseLayoutMaintainer.metaValueCount,
-        };
-
-        const evaluationContext = new AnimationGraphEvaluationContext(poseLayout);
+        const evaluationContext = poseLayoutMaintainer.createEvaluationContext();
         this._evaluationContext = evaluationContext;
 
         // Capture the default transforms.
         poseLayoutMaintainer.fetchDefaultTransforms(evaluationContext[defaultTransformsTag]);
 
-        this._poseStashAllocator.reset(poseLayout);
+        poseLayoutMaintainer.resetPoseStashAllocator(this._poseStashAllocator);
     }
 
     private _updateAfterPossiblePoseLayoutChange () {
@@ -341,15 +336,11 @@ export class AnimationGraphEval {
         let evaluationContextRecreated = false;
         if ((layoutChangeFlags & LayoutChangeFlag.TRANSFORM_COUNT)
         || (layoutChangeFlags & LayoutChangeFlag.META_VALUE_COUNT)) {
-            const layout = {
-                transformCount: poseLayoutMaintainer.transformCount,
-                metaValueCount: poseLayoutMaintainer.metaValueCount,
-            };
-            const evaluationContext = new AnimationGraphEvaluationContext(layout);
+            const evaluationContext = poseLayoutMaintainer.createEvaluationContext();
             this._evaluationContext.destroy();
             this._evaluationContext = evaluationContext;
             evaluationContextRecreated = true;
-            this._poseStashAllocator.reset(layout);
+            poseLayoutMaintainer.resetPoseStashAllocator(this._poseStashAllocator);
         }
 
         // If the eval context was recreated or the layout has changed, we should update the default transforms.
@@ -2400,7 +2391,7 @@ class PoseStateEval extends StateEval {
     }
 
     public evaluate (context: AnimationGraphEvaluationContext) {
-        return this._poseNodeEval?.evaluate(context) ?? null;
+        return this._poseNodeEval?.evaluate(context, PoseTransformSpaceRequirement.LOCAL) ?? null;
     }
 
     private _poseNodeEval: PoseNode | undefined = undefined;

@@ -3,7 +3,7 @@ import { Pose } from '../../../core/pose';
 import { PoseGraphStash } from '../../animation-graph';
 import { AnimationGraphEvaluationContext, AnimationGraphUpdateContext, AnimationGraphUpdateContextGenerator } from '../../animation-graph-context';
 import { instantiatePoseGraph } from '../instantiation';
-import { PoseNode, PoseNodeBindingContext, PoseNodeUpdateContext } from '../pose-node';
+import { PoseNode, PoseNodeBindingContext, PoseNodeUpdateContext, PoseTransformSpaceRequirement } from '../pose-node';
 
 interface RuntimeStash {
     reenter(): void;
@@ -182,7 +182,7 @@ class RuntimeStashRecord implements RuntimeStash {
         } else if (this._state === StashRecordState.UPDATED) {
             assertIsTrue(!this._evaluationCache);
             this._state = StashRecordState.EVALUATING;
-            const pose = this._poseNodeEval?.evaluate(context);
+            const pose = this._poseNodeEval?.evaluate(context, PoseTransformSpaceRequirement.NO);
             this._state = StashRecordState.EVALUATED;
             if (pose) {
                 const heapPose = this._allocator.allocatePose();

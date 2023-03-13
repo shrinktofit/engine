@@ -70,7 +70,7 @@ class AnimationGraphPartialPreviewer {
     private _motionRecords: MotionEvalRecord[] = [];
 
     private _updateAllRecords() {
-        const poseLayoutMaintainer = new AnimationGraphPoseLayoutMaintainer(new MetaValueRegistry());
+        const poseLayoutMaintainer = new AnimationGraphPoseLayoutMaintainer(this._root, new MetaValueRegistry());
         this._poseLayoutMaintainer = poseLayoutMaintainer;
 
         const bindingContext = new AnimationGraphBindingContext(
@@ -84,10 +84,7 @@ class AnimationGraphPartialPreviewer {
 
         poseLayoutMaintainer.endBind();
 
-        const evaluationContext = new AnimationGraphEvaluationContext({
-            transformCount: poseLayoutMaintainer.transformCount,
-            metaValueCount: poseLayoutMaintainer.metaValueCount,
-        });
+        const evaluationContext = poseLayoutMaintainer.createEvaluationContext();
 
         poseLayoutMaintainer.fetchDefaultTransforms(evaluationContext[defaultTransformsTag]);
 

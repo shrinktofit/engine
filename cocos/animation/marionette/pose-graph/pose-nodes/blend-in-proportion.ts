@@ -2,7 +2,7 @@ import { EDITOR } from 'internal:constants';
 import { ccclass, serializable } from '../../../../core/data/decorators';
 import { blendPoseInto, Pose } from '../../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
-import { PoseNode, PoseNodeBindingContext, PoseNodeEvaluationContext, PoseNodeSettleContext, PoseNodeUpdateContext } from '../pose-node';
+import { PoseNode, PoseNodeBindingContext, PoseNodeEvaluationContext, PoseNodeSettleContext, PoseNodeUpdateContext, PoseTransformSpaceRequirement } from '../pose-node';
 import { poseInput } from '../pose-node-binding';
 import { xNodeInput } from '../x-node-binding';
 import { AnimationGraphUpdateContextGenerator } from '../../animation-graph-context';
@@ -87,7 +87,7 @@ export class BlendInProportion extends PoseNode {
             if (!inputPoseWeight) {
                 continue;
             }
-            const inputPose = this.poses[iInputPose]?.evaluate(context);
+            const inputPose = this.poses[iInputPose]?.evaluate(context, PoseTransformSpaceRequirement.LOCAL);
             if (!inputPose) {
                 continue;
             }

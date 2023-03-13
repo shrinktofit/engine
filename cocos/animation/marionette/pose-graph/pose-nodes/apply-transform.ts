@@ -1,6 +1,6 @@
 import { ccclass, editable, serializable, type } from '../../../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
-import { PoseNode, PoseNodeBindingContext, PoseNodeEvaluationContext, PoseNodeSettleContext, PoseNodeUpdateContext } from '../pose-node';
+import { PoseNode, PoseNodeBindingContext, PoseNodeEvaluationContext, PoseNodeSettleContext, PoseNodeUpdateContext, PoseTransformSpaceRequirement } from '../pose-node';
 import { poseInput } from '../pose-node-binding';
 import { ccenum, error, Quat, Vec3 } from '../../../../core';
 import { TransformHandle } from '../../../core/animation-handle';
@@ -90,7 +90,7 @@ export class ApplyTransform extends PoseNode {
             rotation,
         } = this;
 
-        const inputPose = this.input?.evaluate(context) ?? context.pushDefaultedPose();
+        const inputPose = this.input?.evaluate(context, PoseTransformSpaceRequirement.LOCAL) ?? context.pushDefaultedPose();
 
         if (!transformHandle) {
             return inputPose;
