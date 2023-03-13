@@ -22,13 +22,18 @@
  THE SOFTWARE.
 */
 
+import { assertIsTrue, Vec3 } from '../../core';
+import { VariableDescription } from './animation-graph';
+
+export type PrimitiveValue = number | string | boolean;
+
 /**
  * @en
  * Represents variable's value.
  * @zh
  * 表示变量的值。
  */
-export type Value = number | string | boolean;
+export type Value = PrimitiveValue | Readonly<Vec3>;
 
 /**
  * @en
@@ -68,6 +73,8 @@ export enum VariableType {
      * 整数。
      */
     INTEGER,
+
+    VEC3_experimental,
 }
 
 /**
@@ -88,27 +95,7 @@ export enum TriggerResetMode {
     NEXT_FRAME_OR_AFTER_CONSUMED,
 }
 
-export class VarInstance {
-    public type: VariableType;
-
-    public resetMode: TriggerResetMode = TriggerResetMode.AFTER_CONSUMED;
-
-    constructor (type: VariableType, value: Value) {
-        this.type = type;
-        this._value = value;
-    }
-
-    get value () {
-        return this._value;
-    }
-
-    set value (value) {
-        this._value = value;
-        for (const { fn, thisArg, args } of this._refs) {
-            fn.call(thisArg, value, ...args);
-        }
-    }
-
+abstract class VarInstanceBase {
     public bind <T, TThis, ExtraArgs extends any[]> (
         fn: (this: TThis, value: T, ...args: ExtraArgs) => void,
         thisArg: TThis,
@@ -119,11 +106,69 @@ export class VarInstance {
             thisArg,
             args,
         });
+        return this.getValue();
+    }
+
+    get value () {
+        return this.getValue();
+    }
+
+    set value (value) {
+        this.setValue(value);
+        for (const { fn, thisArg, args } of this._refs) {
+            fn.call(thisArg, value, ...args);
+        }
+    }
+
+    protected abstract getValue(): Value;
+
+    protected abstract setValue(value: Value): void;
+
+    private _refs: VarRef[] = [];
+}
+
+class VarInstancePrimitive extends VarInstanceBase {
+    public type: VariableType;
+
+    public resetMode: TriggerResetMode = TriggerResetMode.AFTER_CONSUMED;
+
+    constructor (type: VariableType, value: Value) {
+        super();
+        this.type = type;
+        this._value = value;
+    }
+
+    protected getValue (): Value {
         return this._value;
     }
 
+    protected setValue (value: Value): void {
+        this._value = value;
+    }
+
     private _value: Value;
-    private _refs: VarRef[] = [];
+}
+
+class VarInstanceVec3 extends VarInstanceBase {
+    constructor (value: Readonly<Vec3>) {
+        super();
+        Vec3.copy(this._value, value);
+    }
+
+    get type () {
+        return VariableType.VEC3_experimental as const;
+    }
+
+    protected getValue (): Value {
+        return this._value;
+    }
+
+    protected setValue (value: Value): void {
+        assertIsTrue(value instanceof Vec3);
+        Vec3.copy(this._value, value);
+    }
+
+    private readonly _value = new Vec3();
 }
 
 interface VarRef {
@@ -140,4 +185,21 @@ interface VarRefs {
     value: Value;
 
     refs: VarRef[];
+}
+
+export type VarInstance = VarInstancePrimitive | VarInstanceVec3 | {
+    type: VariableType.TRIGGER;
+    resetMode: TriggerResetMode;
+} & VarInstanceBase;
+
+export function createVarInstance (description: VariableDescription): VarInstance {
+    if (description.type === VariableType.VEC3_experimental) {
+        return new VarInstanceVec3(description.value);
+    } else {
+        const varInstance = new VarInstancePrimitive(description.type, description.value);
+        if (description.type === VariableType.TRIGGER) {
+            varInstance.resetMode = description.resetMode;
+        }
+        return varInstance;
+    }
 }

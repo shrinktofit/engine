@@ -70,9 +70,9 @@ export class XNodeGetVariableBoolean extends XNodeGetVariable<boolean> {
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODES}XNodeGetVariableVec3`)
 @poseGraphNodeHide()
-export class XNodeGetVariableVec3 extends XNodeGetVariable<Vec3> {
+export class XNodeGetVariableVec3 extends XNodeGetVariable<Readonly<Vec3>> {
     public selfEvaluateDefaultOutput (): Readonly<Vec3> {
-        return this._varInstance?.value as unknown as Vec3; // TODO
+        return this._varInstance?.value as unknown as Readonly<Vec3>; // TODO
     }
 }
 

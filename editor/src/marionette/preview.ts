@@ -1,7 +1,7 @@
 import { Node } from '../../../cocos/scene-graph';
 import { Motion, MotionEval, MotionPort } from '../../../cocos/animation/marionette/motion';
 import { createEval } from '../../../cocos/animation/marionette/create-eval';
-import { VarInstance, Value, VariableType } from '../../../cocos/animation/marionette/variable';
+import { VarInstance, Value, VariableType, createVarInstance } from '../../../cocos/animation/marionette/variable';
 import { assertIsNonNullable } from '../../../cocos/core/data/utils/asserts';
 import {
     AnimationBlendEval,
@@ -12,6 +12,7 @@ import {
 } from '../../../cocos/animation/marionette/animation-graph-context';
 import { blendPoseInto, Pose } from '../../../cocos/animation/core/pose';
 import { createGraphEventTarget, GraphEventTarget } from '../../../cocos/animation/marionette/event';
+import { VariableDescription } from '../../../cocos/animation/marionette/animation-graph';
 
 class AnimationGraphPartialPreviewer {
     constructor(root: Node) {
@@ -28,12 +29,12 @@ class AnimationGraphPartialPreviewer {
         evaluationContext.popPose();
     }
 
-    public addVariable(id: string, type: VariableType, value: Value) {
+    public addVariable(id: string, description: VariableDescription) {
         const { _varInstances: varInstances } = this;
         if (id in varInstances) {
             return;
         }
-        varInstances[id] = new VarInstance(type, value);
+        varInstances[id] = createVarInstance(description);
     }
 
     public removeVariable(id: string) {
