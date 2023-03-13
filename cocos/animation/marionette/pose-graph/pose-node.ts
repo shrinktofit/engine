@@ -66,8 +66,31 @@ export abstract class PoseNode extends PoseGraphNodeBase {
         this.doUpdate(context);
     }
 
-    public evaluate (context: PoseNodeEvaluationContext) {
-        return this.selfEvaluate(context);
+    public evaluate (context: PoseNodeEvaluationContext, poseTransformSpaceRequirement: PoseTransformSpaceRequirement) {
+        const pose = this.selfEvaluate(context);
+        const currentSpace = pose._poseTransformSpace;
+        switch (poseTransformSpaceRequirement) {
+        default:
+            assertIsTrue(false);
+            // fallthrough
+        case PoseTransformSpaceRequirement.NO:
+            break;
+        case PoseTransformSpaceRequirement.LOCAL: {
+            if (currentSpace === PoseTransformSpace.SKELETAL) {
+                context._poseTransformsSpaceSkeletalToLocal(pose);
+            }
+            assertIsTrue(pose._poseTransformSpace === PoseTransformSpace.LOCAL);
+            break;
+        }
+        case PoseTransformSpaceRequirement.SKELETAL: {
+            if (currentSpace === PoseTransformSpace.LOCAL) {
+                context._poseTransformsSpaceLocalToSkeletal(pose);
+            }
+            assertIsTrue(pose._poseTransformSpace === PoseTransformSpace.SKELETAL);
+            break;
+        }
+        }
+        return pose;
     }
 
     /** @internal */
