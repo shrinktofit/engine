@@ -24,7 +24,7 @@
 
 import { ccclass, editable, serializable } from 'cc.decorator';
 import { BUILD, DEBUG } from 'internal:constants';
-import { js, clamp, assertIsNonNullable, assertIsTrue, EditorExtendable, shift, ccenum } from '../../core';
+import { js, clamp, assertIsNonNullable, assertIsTrue, EditorExtendable, shift, ccenum, Vec3 } from '../../core';
 import { MotionEval, MotionEvalContext } from './motion';
 import type { Condition } from './condition';
 import { OwnedBy, assertsOwnedBy, own, markAsDangling, ownerSymbol } from './ownership';
@@ -995,6 +995,24 @@ class TriggerVariable implements BasicVariableDescription<VariableType.TRIGGER> 
     private _flags = TRIGGER_VARIABLE_DEFAULT_FLAGS;
 }
 
+@ccclass('cc.animation.Vec3Variable')
+class Vec3Variable implements BasicVariableDescription<VariableType.VEC3_experimental> {
+    get type () {
+        return VariableType.VEC3_experimental as const;
+    }
+
+    get value () {
+        return this._value as Readonly<Vec3>;
+    }
+
+    set value (value) {
+        Vec3.copy(this._value, value);
+    }
+
+    @serializable
+    private _value = new Vec3();
+}
+
 /**
  * @en
  * An opacity type which denotes what the animation graph seems like outside the engine.
@@ -1015,13 +1033,15 @@ interface BasicVariableDescription<TType> {
         TType extends VariableType.INTEGER ? number :
             TType extends VariableType.BOOLEAN ? boolean :
                 TType extends VariableType.TRIGGER ? boolean :
-                    never;
+                    TType extends VariableType.VEC3_experimental ? Readonly<Vec3> :
+                        never;
 }
 
 export type VariableDescription =
     | BasicVariableDescription<VariableType.FLOAT>
     | BasicVariableDescription<VariableType.INTEGER>
     | BasicVariableDescription<VariableType.BOOLEAN>
+    | BasicVariableDescription<VariableType.VEC3_experimental>
     | TriggerVariable;
 
 @ccclass('cc.animation.AnimationGraph')
@@ -1130,6 +1150,12 @@ export class AnimationGraph extends AnimationGraphLike implements AnimationGraph
     public addTrigger (name: string, value = false, resetMode = TriggerResetMode.AFTER_CONSUMED) {
         const variable = new TriggerVariable();
         variable.resetMode = resetMode;
+        variable.value = value;
+        this._variables[name] = variable;
+    }
+
+    public addVec3 (name: string, value = Vec3.ZERO) {
+        const variable = new Vec3Variable();
         variable.value = value;
         this._variables[name] = variable;
     }

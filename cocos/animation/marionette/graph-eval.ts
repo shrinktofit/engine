@@ -30,7 +30,7 @@ import {
 import { MotionEval, MotionEvalContext, MotionPort } from './motion';
 import type { Node } from '../../scene-graph/node';
 import { createEval } from './create-eval';
-import { Value, VarInstance, TriggerResetMode } from './variable';
+import { Value, VarInstance, TriggerResetMode, createVarInstance } from './variable';
 import { BindContext, validateVariableExistence, validateVariableType, VariableType } from './parametric';
 import { ConditionEval, TriggerCondition } from './condition';
 import { MotionState } from './motion-state';
@@ -83,11 +83,10 @@ export class AnimationGraphEval {
         }
 
         for (const [name, variable] of graph.variables) {
-            const varInstance = this._varInstances[name] = new VarInstance(variable.type, variable.value);
-            if (variable.type === VariableType.TRIGGER) {
-                const { resetMode } = variable;
-                varInstance.resetMode = resetMode;
-                if (resetMode === TriggerResetMode.NEXT_FRAME_OR_AFTER_CONSUMED) {
+            const varInstance = createVarInstance(variable);
+            this._varInstances[name] = varInstance;
+            if (varInstance.type === VariableType.TRIGGER) {
+                if (varInstance.resetMode === TriggerResetMode.NEXT_FRAME_OR_AFTER_CONSUMED) {
                     this._hasAutoTrigger = true;
                 }
             }
