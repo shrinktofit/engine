@@ -51,8 +51,8 @@ import {
 import { TransformArray } from '../core/transform-array';
 import { applyDeltaPose, blendPoseInto, Pose, TransformFilter } from '../core/pose';
 
-import { PoseNode, PoseNodeBindingContext, PoseNodeUpdateContext, PoseTransformSpaceRequirement } from './pose-graph/pose-node';
-import { DefaultTopLevelPose, LayerEvaluationRecord } from './pose-graph/pose-nodes/default-top-level-pose-node';
+import { PoseNode, PoseNodeBindingContext, PoseNodeEvaluationContext, PoseNodeUpdateContext, PoseTransformSpaceRequirement, AllPreviousLayersResultManager } from './pose-graph/pose-node';
+import { DefaultTopLevelPose, LayerEvaluationRecord, AllPreviousLayersResultManagerImpl } from './pose-graph/pose-nodes/default-top-level-pose-node';
 import { instantiatePoseGraph } from './pose-graph/instantiation';
 import { RuntimeStashManager } from './pose-graph/stash/runtime-stash';
 import { RuntimeCoordinator } from './pose-graph/coordination/runtime-coordinator';
@@ -118,6 +118,7 @@ export class AnimationGraphEval {
                 triggerResetFn,
                 stashManager,
                 coordinator,
+                this._allPreviousLayersResultManager,
             );
             for (const [stashId, _] of layer.stashes()) {
                 stashManager.addStash(stashId);
@@ -149,7 +150,7 @@ export class AnimationGraphEval {
             return record;
         });
 
-        this._rootPoseNode = new DefaultTopLevelPose(this._layerEvaluations);
+        this._rootPoseNode = new DefaultTopLevelPose(this._layerEvaluations, this._allPreviousLayersResultManager);
 
         this._root = root;
         this._initializeContexts();
@@ -292,6 +293,7 @@ export class AnimationGraphEval {
     private declare _evaluationContext: AnimationGraphEvaluationContext;
     private declare _poseStashAllocator: DeferredPoseStashAllocator;
     private _rootUpdateContextGenerator = new AnimationGraphUpdateContextGenerator();
+    private _allPreviousLayersResultManager = new AllPreviousLayersResultManagerImpl();
 
     private _initializeContexts () {
         const {

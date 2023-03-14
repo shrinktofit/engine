@@ -12,6 +12,10 @@ import { RuntimeCoordinator } from './coordination/runtime-coordinator';
 import { poseGraphNodeHide } from './pose-graph-node-common';
 import { PoseNodeDependencyEvaluation } from './instantiation';
 
+export interface AllPreviousLayersResultManager {
+    retrieve(context: PoseNodeEvaluationContext): Pose;
+}
+
 export class PoseNodeBindingContext {
     constructor (
         public readonly outerContext: AnimationGraphBindingContext,
@@ -21,6 +25,7 @@ export class PoseNodeBindingContext {
         public readonly triggerResetFn: (name: string) => void,
         public readonly stashView: RuntimeStashView,
         public readonly coordinator: RuntimeCoordinator,
+        public readonly allPreviousLayersResultManager: AllPreviousLayersResultManager,
     ) {
         this._additiveFlagStack.push(additive);
     }
