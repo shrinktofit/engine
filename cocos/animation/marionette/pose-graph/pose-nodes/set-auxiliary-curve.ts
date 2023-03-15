@@ -9,6 +9,7 @@ import { poseGraphNodeMenu } from '../pose-graph-node-common';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { Pose } from '../../../core/pose';
 import { AnySpaceSinglePoseModifier } from './single-pose-modifier';
+import { AnimationGraphEvaluationContext } from '../../animation-graph-context';
 
 enum SetAuxiliaryCurveFlag {
     LEAVE_UNCHANGED,
@@ -44,7 +45,7 @@ export class SetAuxiliaryCurve extends AnySpaceSinglePoseModifier {
         }
     }
 
-    protected modifyPose (inputPose: Pose) {
+    protected modifyPose (context: AnimationGraphEvaluationContext, inputPose: Pose) {
         const {
             _handle: handle,
         } = this;

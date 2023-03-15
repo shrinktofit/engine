@@ -34,13 +34,13 @@ export abstract class SinglePoseModifier extends PoseNode {
         const poseTransformSpaceRequirement = this.getPoseTransformSpaceRequirement();
         const inputPose = this.input?.evaluate(context, poseTransformSpaceRequirement)
             ?? PoseNode.evaluateDefaultPose(context, poseTransformSpaceRequirement);
-        this.modifyPose(inputPose);
+        this.modifyPose(context, inputPose);
         return inputPose;
     }
 
     protected abstract getPoseTransformSpaceRequirement(): PoseTransformSpaceRequirement;
 
-    protected abstract modifyPose(pose: Pose): void;
+    protected abstract modifyPose(context: AnimationGraphEvaluationContext, pose: Pose): void;
 }
 
 export abstract class AnySpaceSinglePoseModifier extends SinglePoseModifier {
