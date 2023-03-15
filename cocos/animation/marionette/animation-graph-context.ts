@@ -108,6 +108,14 @@ export class AnimationGraphBindingContext implements AnimationClipGraphBindingCo
         return boneNode.children.map((childNode) => childNode.name);
     }
 
+    public getParentBoneNameByName (bone: string) {
+        const boneNode = findBoneByNameRecursively(this._origin, bone);
+        if (!boneNode) {
+            return null;
+        }
+        return boneNode === this._origin ? '' : boneNode.parent?.name;
+    }
+
     public bindAuxiliaryCurve (name: string): AuxiliaryCurveHandle {
         return this._layoutMaintainer.getOrCreateMetaValueBinding(name);
     }
