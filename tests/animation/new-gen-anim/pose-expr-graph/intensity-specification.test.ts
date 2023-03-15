@@ -5,4 +5,4 @@ describe(`Type: auxiliary curve`, () => {
     test.todo(`Curve name is invalid`);
 });
 
-test(`Type: value`);
+test.todo(`Type: value`);
