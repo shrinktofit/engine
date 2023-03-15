@@ -1,12 +1,15 @@
 import { ccclass, editable, serializable, type } from '../../../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
-import { PoseNode, PoseNodeBindingContext, PoseNodeEvaluationContext, PoseNodeSettleContext, PoseNodeUpdateContext, PoseTransformSpaceRequirement } from '../pose-node';
+import { PoseNode, PoseNodeBindingContext, PoseNodeEvaluationContext,
+    PoseNodeSettleContext, PoseNodeUpdateContext, PoseTransformSpaceRequirement } from '../pose-node';
 import { poseInput } from '../pose-node-binding';
-import { ccenum, error, Quat, Vec3 } from '../../../../core';
+import { approx, ccenum, error, Quat, Vec3 } from '../../../../core';
 import { TransformHandle } from '../../../core/animation-handle';
 import { xNodeInput } from '../x-node-binding';
 import { poseGraphNodeMenu } from '../pose-graph-node-common';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
+import { IntensityEvaluation, IntensitySpecification } from './intensity-specification';
+import { Pose } from '../../../core/pose';
 
 enum TransformApplyFlag {
     LEAVE_UNCHANGED,
@@ -17,6 +20,8 @@ enum TransformApplyFlag {
 }
 
 ccenum(TransformApplyFlag);
+
+const APPLY_INTENSITY_EPSILON = 1e-5;
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}ApplyTransform`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_POSE}变换`)
@@ -49,6 +54,10 @@ export class ApplyTransform extends PoseNode {
     @xNodeInput({ displayName: '旋转' })
     public rotation = new Quat();
 
+    @serializable
+    @editable
+    public intensity = new IntensitySpecification();
+
     public bind (context: PoseNodeBindingContext) {
         const {
             transformName,
@@ -67,6 +76,8 @@ export class ApplyTransform extends PoseNode {
         }
 
         this._transformHandle = transformHandle;
+
+        this._intensityEvaluation = this.intensity.bind(context.outerContext);
     }
 
     public settle (context: PoseNodeSettleContext): void {
@@ -96,6 +107,15 @@ export class ApplyTransform extends PoseNode {
             return inputPose;
         }
 
+        const intensity = this._intensityEvaluation?.evaluate(inputPose) ?? 0.0;
+
+        // If intensity is too small. Takes no effect.
+        if (intensity < APPLY_INTENSITY_EPSILON) {
+            return inputPose;
+        }
+
+        const fullIntensity = approx(intensity, 1.0, APPLY_INTENSITY_EPSILON);
+
         const { index: transformIndex } = transformHandle;
 
         switch (positionApplyFlag) {
@@ -103,12 +123,10 @@ export class ApplyTransform extends PoseNode {
         case TransformApplyFlag.LEAVE_UNCHANGED:
             break;
         case TransformApplyFlag.REPLACE:
-            inputPose.transforms.setPosition(transformIndex, position);
+            replacePosition(inputPose, transformIndex, position, intensity, fullIntensity);
             break;
         case TransformApplyFlag.ADD: {
-            const inputPosition = inputPose.transforms.getPosition(transformIndex, POSITION_CACHE);
-            Vec3.add(inputPosition, inputPosition, position);
-            inputPose.transforms.setPosition(transformIndex, inputPosition);
+            addPosition(inputPose, transformIndex, position, intensity, fullIntensity);
             break;
         }
         }
@@ -118,12 +136,10 @@ export class ApplyTransform extends PoseNode {
         case TransformApplyFlag.LEAVE_UNCHANGED:
             break;
         case TransformApplyFlag.REPLACE:
-            inputPose.transforms.setRotation(transformIndex, rotation);
+            replaceRotation(inputPose, transformIndex, rotation, intensity, fullIntensity);
             break;
         case TransformApplyFlag.ADD: {
-            const inputRotation = inputPose.transforms.getRotation(transformIndex, ROTATION_CACHE);
-            Quat.multiply(inputRotation, rotation, inputRotation);
-            inputPose.transforms.setRotation(transformIndex, inputRotation);
+            addRotation(inputPose, transformIndex, rotation, intensity, fullIntensity);
             break;
         }
         }
@@ -132,8 +148,75 @@ export class ApplyTransform extends PoseNode {
     }
 
     private _transformHandle: TransformHandle | null = null;
+    private _intensityEvaluation: IntensityEvaluation | undefined = undefined;
 }
 
-const POSITION_CACHE = new Vec3();
+const {
+    replace: replacePosition,
+    add: addPosition,
+} = (() => {
+    const cacheInput = new Vec3();
+    const cacheResult = new Vec3();
 
-const ROTATION_CACHE = new Quat();
+    return {
+        replace,
+        add,
+    };
+
+    function replace (pose: Pose, transformIndex: number, value: Readonly<Vec3>, intensity: number, fullIntensity: boolean) {
+        if (fullIntensity) {
+            pose.transforms.setPosition(transformIndex, value);
+        } else {
+            const inputPosition = pose.transforms.getPosition(transformIndex, cacheInput);
+            Vec3.lerp(inputPosition, inputPosition, value, intensity);
+            pose.transforms.setPosition(transformIndex, inputPosition);
+        }
+    }
+
+    function add (pose: Pose, transformIndex: number, value: Readonly<Vec3>, intensity: number, fullIntensity: boolean) {
+        const input = pose.transforms.getPosition(transformIndex, cacheInput);
+        const result = cacheResult;
+        if (fullIntensity) {
+            Vec3.copy(result, value);
+        } else {
+            Vec3.slerp(result, Vec3.ZERO, value, intensity);
+        }
+        Vec3.add(result, result, input);
+        pose.transforms.setPosition(transformIndex, result);
+    }
+})();
+
+const {
+    replace: replaceRotation,
+    add: addRotation,
+} = (() => {
+    const cacheInput = new Quat();
+    const cacheResult = new Quat();
+
+    return {
+        replace,
+        add,
+    };
+
+    function replace (pose: Pose, transformIndex: number, value: Readonly<Quat>, intensity: number, fullIntensity: boolean) {
+        if (fullIntensity) {
+            pose.transforms.setRotation(transformIndex, value);
+        } else {
+            const inputRotation = pose.transforms.getRotation(transformIndex, cacheInput);
+            Quat.slerp(inputRotation, inputRotation, value, intensity);
+            pose.transforms.setRotation(transformIndex, inputRotation);
+        }
+    }
+
+    function add (pose: Pose, transformIndex: number, value: Readonly<Quat>, intensity: number, fullIntensity: boolean) {
+        const inputRotation = pose.transforms.getRotation(transformIndex, cacheInput);
+        const resultRotation = cacheResult;
+        if (fullIntensity) {
+            Quat.copy(resultRotation, value);
+        } else {
+            Quat.slerp(resultRotation, Quat.IDENTITY, value, intensity);
+        }
+        Quat.multiply(resultRotation, resultRotation, inputRotation);
+        pose.transforms.setRotation(transformIndex, resultRotation);
+    }
+})();
