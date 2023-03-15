@@ -1,14 +1,11 @@
 import { PoseNode } from './pose-node';
 import { PoseGraphNode } from './node';
 import { deletePoseGraphNodeArrayElement, insertPoseGraphNodeArrayElement } from './protected';
-import { js } from '../../../core';
+import { assertIsTrue, js } from '../../../core';
 import { PoseGraphNodeBase } from './pose-graph-node-base';
+import { PropertyPath } from './node-shell';
 
-export interface PoseGraphInputKey {
-    readonly propertyKey: string;
-
-    readonly elementIndex: number;
-}
+export type PoseGraphInputKey = PropertyPath;
 
 export interface PoseGraphNodeInputArrayLikeOptions {
     insert(hint: number): void;
@@ -36,7 +33,12 @@ export interface PoseGraphNodeInputMetadata {
 // eslint-disable-next-line @typescript-eslint/ban-types
 type Constructor = Function;
 
-type PropertyNodeInputRecord = PropertyNodeInputMetadata & PropertyNodeInputPrivateMetadata;
+const propertyNodeInputRecordTag = Symbol('');
+
+type PropertyNodeInputRecord = PropertyNodeInputMetadata & PropertyNodeInputPrivateMetadata & {
+    // eslint-disable-next-line @typescript-eslint/ban-types
+    next?: Function;
+};
 
 export type PoseGraphNodeInputInsertId = string;
 
@@ -45,6 +47,8 @@ class NodeInputManager {
     public setPropertyNodeInputRecord (
         constructor: Constructor,
         propertyKey: string,
+        // eslint-disable-next-line @typescript-eslint/ban-types
+        next: Function | undefined,
         metadata: PropertyNodeInputMetadata & PropertyNodeInputPrivateMetadata,
     ) {
         let classInputRecord = this._classInputMap.get(constructor);
@@ -53,12 +57,14 @@ class NodeInputManager {
             this._classInputMap.set(constructor, classInputRecord);
         }
         classInputRecord[propertyKey] = Object.freeze({
+            next,
             ...metadata,
         });
     }
 
     public getInputKeys (object: PoseGraphNode): readonly PoseGraphInputKey[] {
         const result: PoseGraphInputKey[] = [];
+        // eslint-disable-next-line @typescript-eslint/ban-types
         const getInputKeysRecurse = (constructor: null | Function) => {
             if (!constructor) {
                 return;
@@ -72,10 +78,10 @@ class NodeInputManager {
                 const field = object[propertyKey];
                 if (Array.isArray(field)) {
                     for (let iElement = 0; iElement < field.length; ++iElement) {
-                        result.push({ propertyKey, elementIndex: iElement });
+                        result.push({ path: [propertyKey, iElement] });
                     }
                 } else {
-                    result.push({ propertyKey, elementIndex: -1 });
+                    result.push({ path: [propertyKey, -1] });
                 }
             }
         };
@@ -84,19 +90,32 @@ class NodeInputManager {
     }
 
     public isPoseInput (object: PoseGraphNode, key: PoseGraphInputKey) {
-        const { propertyKey } = key;
-        const propertyInputRecord = this._getPropertyNodeInputRecord(object.constructor, propertyKey);
-        if (!propertyInputRecord) {
+        const resolved = this._resolveInputKey(object, key);
+        if (!resolved) {
             return false;
         }
-        return propertyInputRecord.isPose;
+        return resolved.record.isPose;
     }
 
     public getInputMetadata (object: PoseGraphNode, key: PoseGraphInputKey): Readonly<PoseGraphNodeInputMetadata> | undefined {
-        const { propertyKey, elementIndex } = key;
-        const propertyInputRecord = this._getPropertyNodeInputRecord(object.constructor, propertyKey);
+        const propertyInputRecord = this._getInputRecordOfPath(object.constructor, key);
         if (!propertyInputRecord) {
             return undefined;
+        }
+        const { path: propertyPath } = key;
+        const nProperties = propertyPath.length;
+        if (nProperties === 0) {
+            return undefined;
+        }
+        const lastProperty = propertyPath[nProperties - 1];
+        if (typeof lastProperty !== 'number') {
+            const resolved = this._get(object, key);
+            if (!resolved) {
+                return undefined;
+            }
+            return {
+                displayName: resolved,
+            };
         }
         const field = object[propertyKey];
         if (Array.isArray(field)) {
@@ -116,18 +135,8 @@ class NodeInputManager {
     }
 
     public hasInput (object: PoseGraphNode, key: PoseGraphInputKey) {
-        const { propertyKey, elementIndex } = key;
-        const record = this._getPropertyNodeInputRecord(object.constructor, propertyKey);
-        if (!record) {
-            return false;
-        }
-        const field = object[propertyKey];
-        if (Array.isArray(field)) {
-            if (elementIndex < 0 || elementIndex >= field.length) {
-                return false;
-            }
-        }
-        return true;
+        const resolved = this._resolveInputKey(object, key);
+        return !!resolved;
     }
 
     public getInputInsertInfos (object: PoseGraphNode): Readonly<Record<PoseGraphNodeInputInsertId, { displayName: string; }>> {
@@ -145,23 +154,21 @@ class NodeInputManager {
     }
 
     public deleteInput (object: PoseGraphNode, key: PoseGraphInputKey) {
+        const lastPropertyKey = key[key.length - 1];
+        assertIsTrue(typeof lastPropertyKey === 'number');
+
+        const resolved = this._resolveInputKey(object, key);
+        if (!resolved) {
+            return;
+        }
+
         const {
-            propertyKey,
-            elementIndex,
-        } = key;
-        const propertyInputRecord = this._getPropertyNodeInputRecord(object.constructor, propertyKey);
-        if (!propertyInputRecord) {
-            return;
-        }
-        const property = object[propertyKey];
-        if (!Array.isArray(property)) {
-            return;
-        }
-        if (elementIndex < 0 || elementIndex >= property.length) {
-            return;
-        }
-        if (propertyInputRecord.arrayLike) {
-            propertyInputRecord.arrayLike.delete.call(object, elementIndex);
+            object: finalObject,
+            record,
+            nonArrayParent,
+        } = resolved;
+        if (record.arrayLike) {
+            record.arrayLike.delete.call(object, lastPropertyKey);
         } else {
             deletePoseGraphNodeArrayElement(object, key);
         }
@@ -169,7 +176,7 @@ class NodeInputManager {
 
     public insertInput (object: PoseGraphNode, insertId: PoseGraphNodeInputInsertId) {
         const propertyKey = insertId;
-        const propertyInputRecord = this._getPropertyNodeInputRecord(object.constructor, propertyKey);
+        const propertyInputRecord = this._getInputRecordOfPath(object.constructor, propertyKey);
         if (!propertyInputRecord) {
             return;
         }
@@ -190,19 +197,97 @@ class NodeInputManager {
 
     private _classInputMap = new WeakMap<Constructor, Record<PropertyKey, PropertyNodeInputRecord>>();
 
-    private _getPropertyNodeInputRecord(constructor: null | Function, propertyKey: string) {
-        if (!constructor) {
-            return;
+    // eslint-disable-next-line @typescript-eslint/ban-types
+    private _resolveInputKey (object: PoseGraphNode, key: PoseGraphInputKey): InputKeyResolveResult | undefined {
+        if (key.path.length === 0) {
+            return undefined;
         }
-        let classInputRecord = this._classInputMap.get(constructor);
+        if (typeof key.path[0] === 'number') {
+            return undefined;
+        }
+        return this._resolveInputKeyFromN(object, key, 0);
+    }
+
+    private _resolveInputKeyFromN (
+        // eslint-disable-next-line @typescript-eslint/ban-types
+        object: object,
+        key: PoseGraphInputKey,
+        propertyKeyIndex: number,
+    ): InputKeyResolveResult | undefined {
+        const constructor = object.constructor;
+        if (!constructor) {
+            return undefined;
+        }
+
+        const { path: propertyPath } = key;
+        const nProperties = propertyPath.length;
+        const propertyKey = propertyPath[propertyKeyIndex];
+        assertIsTrue(typeof propertyKey !== 'number');
+        const record = this._getInputRecordOfConstructor(constructor, propertyKey);
+        if (!record) {
+            return undefined;
+        }
+
+        let currentObject = object[propertyKey];
+        let iNextNonArrayProperty = propertyKeyIndex + 1;
+        for (; iNextNonArrayProperty < nProperties; ++iNextNonArrayProperty) {
+            const propertyKey = propertyPath[iNextNonArrayProperty];
+            if (typeof propertyKey !== 'number') {
+                break;
+            }
+            if (!Array.isArray(currentObject)) {
+                return undefined;
+            }
+            currentObject = currentObject[propertyKey];
+        }
+
+        if (iNextNonArrayProperty >= nProperties) {
+            return {
+                object: currentObject,
+                record,
+            };
+        } else if (record.next) {
+            return this._resolveInputKeyFromN(constructor, key, iNextNonArrayProperty);
+        } else {
+            return undefined;
+        }
+    }
+
+    private _getInputRecordOfConstructor (
+        // eslint-disable-next-line @typescript-eslint/ban-types
+        constructor: Function, propertyKey: PropertyKey,
+    ): PropertyNodeInputRecord | undefined {
+        // Search in the class itself.
+        const classInputRecord = this._classInputMap.get(constructor);
         if (classInputRecord) {
             const record = classInputRecord[propertyKey];
             if (record) {
                 return record;
             }
         }
-        return this._getPropertyNodeInputRecord(js.getSuper(constructor), propertyKey);
+        // Search in base classes.
+        const base = js.getSuper(constructor);
+        if (!base) {
+            return undefined;
+        }
+        return this._getInputRecordOfConstructor(base, propertyKey);
     }
 }
 
 export const globalNodeInputManager = new NodeInputManager();
+
+interface PropertyRecordMap {
+    [x: PropertyKey]: PropertyNodeInputRecord | PropertyRecordMap;
+}
+
+type propertyRecordMapKey = PropertyNodeInputRecord | PropertyRecordMap;
+
+function isTerminalRecord (record: propertyRecordMapKey): record is PropertyNodeInputRecord {
+    return propertyNodeInputRecordTag in record;
+}
+
+interface InputKeyResolveResult {
+    nonArrayParent: any;
+    object: any;
+    record: PropertyNodeInputRecord;
+}

@@ -1,8 +1,10 @@
-import { EditorExtendable, js, warn } from '../../../core';
+import { assertIsTrue, EditorExtendable, js, warn } from '../../../core';
 import { ccclass, serializable } from '../../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import { PoseNode } from './pose-node';
 import { PoseGraphNode } from './node';
+
+export type PropertyPath = Array<string | number>;
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseGraphNodeShell`)
 export class PoseGraphNodeShell<TNode extends PoseGraphNode = PoseGraphNode> extends EditorExtendable {
@@ -38,34 +40,26 @@ export class PoseGraphNodeShell<TNode extends PoseGraphNode = PoseGraphNode> ext
     /**
      * @internal
      */
-    public _addBinding (propertyKey: string, source: PoseGraphNodeShell<TNode>, outputIndex: number) {
-        this._emplaceBinding(new PoseGraphNodePropertyBinding(
-            propertyKey,
-            -1,
+    public _addBinding (propertyPath: PropertyPath, source: PoseGraphNodeShell<TNode>, outputIndex: number) {
+        assertIsTrue(propertyPath.length > 0);
+        const index = this._findBindingIndex(propertyPath);
+        const binding = new PoseGraphNodePropertyBinding(
+            propertyPath,
             source,
             outputIndex,
-        ));
+        );
+        if (index >= 0) {
+            this._bindings[index] = binding;
+        } else {
+            this._bindings.push(binding);
+        }
     }
 
     /**
      * @internal
      */
-    public _addArrayElementBinding<TSourceNode extends PoseGraphNode> (
-        propertyKey: string, elementIndex: number, source: PoseGraphNodeShell<TSourceNode>, outputIndex: number,
-    ) {
-        this._emplaceBinding(new PoseGraphNodePropertyBinding(
-            propertyKey,
-            elementIndex,
-            source,
-            outputIndex,
-        ));
-    }
-
-    /**
-     * @internal
-     */
-    public _deleteBinding (propertyKey: string) {
-        const index = this._findBindingIndex(propertyKey, -1);
+    public _deleteBinding (propertyPath: PropertyPath) {
+        const index = this._findBindingIndex(propertyPath);
         if (index >= 0) {
             this._bindings.splice(index);
         }
@@ -74,19 +68,15 @@ export class PoseGraphNodeShell<TNode extends PoseGraphNode = PoseGraphNode> ext
     /**
      * @internal
      */
-    public _deleteArrayElementBinding (propertyKey: string, elementIndex: number) {
-        const index = this._findBindingIndex(propertyKey, elementIndex);
-        if (index >= 0) {
-            this._bindings.splice(index);
-        }
-    }
-
-    /**
-     * @internal
-     */
-    public _moveArrayElementBindingForward (propertyKey: string, firstIndex: number, forward: boolean) {
+    public _moveArrayElementBindingForward (originalPropertyPath: PropertyPath, firstIndex: number, forward: boolean) {
         // TODO: this method has worse performance!
         const { _bindings: bindings } = this;
+        assertIsTrue(originalPropertyPath.length > 0);
+
+        const originalLastPropertyKey = originalPropertyPath[originalPropertyPath.length - 1];
+        if (typeof originalLastPropertyKey !== 'number') {
+            return;
+        }
 
         const oldBindings: PoseGraphNodePropertyBinding[] = [];
         for (let iBinding = 0;
@@ -94,16 +84,32 @@ export class PoseGraphNodeShell<TNode extends PoseGraphNode = PoseGraphNode> ext
             ++iBinding
         ) {
             const binding = bindings[iBinding];
-            if (binding.consumerPropertyKey === propertyKey && binding.consumerElementIndex >= firstIndex) {
-                oldBindings.push(binding);
-                bindings.splice(iBinding, 1);
+            const { consumerPropertyPath: bindingPropertyPath } = binding;
+            assertIsTrue(bindingPropertyPath.length > 0);
+            if (bindingPropertyPath.length !== originalPropertyPath.length) {
+                continue;
             }
+            const comparingLastPropertyKey = bindingPropertyPath[bindingPropertyPath.length - 1];
+            if (typeof comparingLastPropertyKey !== 'number') {
+                continue;
+            }
+            if (comparingLastPropertyKey < firstIndex) {
+                continue;
+            }
+            if (!isEqualPrefix(bindingPropertyPath, originalPropertyPath, originalPropertyPath.length - 1)) {
+                continue;
+            }
+            oldBindings.push(binding);
+            bindings.splice(iBinding, 1);
         }
 
         for (const oldBinding of oldBindings) {
-            this._addArrayElementBinding(
-                oldBinding.consumerPropertyKey,
-                oldBinding.consumerElementIndex + (forward ? -1 : 1),
+            const { consumerPropertyPath: oldPropertyPath } = oldBinding;
+            const prefix = oldPropertyPath.slice(0, oldPropertyPath.length - 1);
+            const elementIndex = oldPropertyPath[oldPropertyPath.length - 1];
+            assertIsTrue(typeof elementIndex === 'number');
+            this._addBinding(
+                [...prefix, elementIndex + (forward ? -1 : 1)],
                 oldBinding.target,
                 oldBinding.outputIndex,
             );
@@ -129,18 +135,9 @@ export class PoseGraphNodeShell<TNode extends PoseGraphNode = PoseGraphNode> ext
     /**
      * @internal
      */
-    public _findBinding (propertyKey: string): PoseGraphNodePropertyBinding | undefined {
+    public _findBinding (propertyPath: PropertyPath): PoseGraphNodePropertyBinding | undefined {
         return this._bindings.find(
-            (binding) => binding.consumerPropertyKey === propertyKey,
-        );
-    }
-
-    /**
-     * @internal
-     */
-    public _findArrayElementBinding (propertyKey: string, elementIndex: number): PoseGraphNodePropertyBinding | undefined {
-        return this._bindings.find(
-            (binding) => binding.consumerPropertyKey === propertyKey && binding.consumerElementIndex === elementIndex,
+            (searchElement) => isEqualPropertyPath(searchElement.consumerPropertyPath, propertyPath),
         );
     }
 
@@ -150,46 +147,27 @@ export class PoseGraphNodeShell<TNode extends PoseGraphNode = PoseGraphNode> ext
     @serializable
     private _bindings: PoseGraphNodePropertyBinding[] = [];
 
-    private _findBindingIndex (propertyKey: string, elementIndex: number) {
+    private _findBindingIndex (propertyPath: PropertyPath) {
         return this._bindings.findIndex(
-            (searchElement) => searchElement.consumerPropertyKey === propertyKey
-                && searchElement.consumerElementIndex === elementIndex,
+            (searchElement) => isEqualPropertyPath(searchElement.consumerPropertyPath, propertyPath),
         );
-    }
-
-    private _emplaceBinding (binding: PoseGraphNodePropertyBinding) {
-        const index = this._bindings.findIndex(
-            (searchElement) => searchElement.consumerPropertyKey === binding.consumerPropertyKey
-                && searchElement.consumerElementIndex === binding.consumerElementIndex,
-        );
-        if (index >= 0) {
-            this._bindings[index] = binding;
-        } else {
-            this._bindings.push(binding);
-        }
     }
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseGraphNodePropertyBinding`)
 class PoseGraphNodePropertyBinding {
     constructor (
-        consumerPropertyKey: string,
-        consumerElementIndex: number,
+        consumerPropertyPath: readonly (string | number)[],
         target: PoseGraphNodeShell,
         outputIndex: number,
     ) {
-        this._consumerPropertyKey = consumerPropertyKey;
-        this._consumerElementIndex = consumerElementIndex;
+        this._consumerPropertyPath = consumerPropertyPath.slice();
         this._target = target;
         this._outputIndex = outputIndex;
     }
 
-    get consumerPropertyKey () {
-        return this._consumerPropertyKey;
-    }
-
-    get consumerElementIndex () {
-        return this._consumerElementIndex;
+    get consumerPropertyPath () {
+        return this._consumerPropertyPath;
     }
 
     get target () {
@@ -201,10 +179,7 @@ class PoseGraphNodePropertyBinding {
     }
 
     @serializable
-    private _consumerPropertyKey = '';
-
-    @serializable
-    private _consumerElementIndex = -1;
+    private _consumerPropertyPath: PropertyPath = [];
 
     @serializable
     private _target: PoseGraphNodeShell;
@@ -214,3 +189,17 @@ class PoseGraphNodePropertyBinding {
 }
 
 export type { PoseGraphNodePropertyBinding };
+
+function isEqualPropertyPath (a: PropertyPath, b: PropertyPath) {
+    return a.length === b.length && a.every((p, i) => p === b[i]);
+}
+
+function isEqualPrefix (a: PropertyPath, b: PropertyPath, length: number) {
+    assertIsTrue(length <= a.length && length <= b.length);
+    for (let i = 0; i < length; ++i) {
+        if (a[i] !== b[i]) {
+            return false;
+        }
+    }
+    return true;
+}
