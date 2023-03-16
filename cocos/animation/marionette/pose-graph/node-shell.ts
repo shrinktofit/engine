@@ -40,29 +40,26 @@ export class PoseGraphNodeShell<TNode extends PoseGraphNode = PoseGraphNode> ext
     /**
      * @internal
      */
-    public _addBinding (propertyPath: PropertyPath, source: PoseGraphNodeShell<TNode>, outputIndex: number) {
+    public _addBinding (propertyPath: PropertyPath, provider: PoseGraphNodeShell<PoseGraphNode>, providerOutputIndex: number) {
         assertIsTrue(propertyPath.length > 0);
-        const index = this._findBindingIndex(propertyPath);
-        const binding = new PoseGraphNodePropertyBinding(
+        this._addBindingInternal(
+            this._rootBinding,
             propertyPath,
-            source,
-            outputIndex,
+            0,
+            provider,
+            providerOutputIndex,
         );
-        if (index >= 0) {
-            this._bindings[index] = binding;
-        } else {
-            this._bindings.push(binding);
-        }
     }
 
     /**
      * @internal
      */
     public _deleteBinding (propertyPath: PropertyPath) {
-        const index = this._findBindingIndex(propertyPath);
-        if (index >= 0) {
-            this._bindings.splice(index);
-        }
+        assertIsTrue(propertyPath.length > 0);
+        // eslint-disable-next-line no-void
+        void this._deleteBindingInternal(
+            this._rootBinding, propertyPath, 0,
+        );
     }
 
     /**
@@ -145,50 +142,207 @@ export class PoseGraphNodeShell<TNode extends PoseGraphNode = PoseGraphNode> ext
     private _node: TNode;
 
     @serializable
-    private _bindings: PoseGraphNodePropertyBinding[] = [];
+    private _rootBinding = new PoseGraphBindingTreeObject();
 
-    private _findBindingIndex (propertyPath: PropertyPath) {
-        return this._bindings.findIndex(
-            (searchElement) => isEqualPropertyPath(searchElement.consumerPropertyPath, propertyPath),
-        );
+    private _addBindingInternal (
+        binding: PoseGraphBindingTreeObject | PoseGraphBindingTreeArray,
+        propertyPath: PropertyPath, propertyKeyIndex: number,
+        provider: PoseGraphNodeShell<PoseGraphNode>, providerOutputIndex: number,
+    ): PoseGraphBindingTree | undefined {
+        const pathLength = propertyPath.length;
+        assertIsTrue(propertyKeyIndex < pathLength);
+
+        const propertyKey = propertyPath[propertyKeyIndex];
+        let nextBinding: PoseGraphBindingTree;
+        const nextPropertyKeyIndex = propertyKeyIndex + 1;
+        if (binding instanceof PoseGraphBindingTreeObject) {
+            if (typeof propertyKey !== 'string') {
+                return undefined;
+            }
+            const { properties } = binding;
+            if (propertyKey in properties) {
+                nextBinding = properties[propertyKey];
+            } else {
+                nextBinding = this._createBindingAccordingNext(
+                    propertyPath, nextPropertyKeyIndex,
+                    provider, providerOutputIndex,
+                );
+                properties[propertyKey] = nextBinding;
+                if (nextPropertyKeyIndex >= propertyPath.length) {
+                    return nextBinding;
+                }
+            }
+        } else if (binding instanceof PoseGraphBindingTreeArray) {
+            if (typeof propertyKey !== 'number') {
+                return undefined;
+            }
+            const { elements } = binding;
+            const iExistingElement = elements.findIndex((e) => e.index === propertyKey);
+            if (iExistingElement >= 0) {
+                nextBinding = elements[iExistingElement].value;
+            } else {
+                nextBinding = this._createBindingAccordingNext(propertyPath, nextPropertyKeyIndex, provider, providerOutputIndex);
+                const newElement = new PoseGraphBindingTreeArrayElement(propertyKey, nextBinding);
+                elements.push(newElement);
+                if (nextPropertyKeyIndex >= propertyPath.length) {
+                    return nextBinding;
+                }
+            }
+        } else {
+            return undefined;
+        }
+
+        if (nextPropertyKeyIndex >= pathLength) {
+            if (!(nextBinding instanceof PoseGraphBindingTreeTerminator)) {
+                return undefined;
+            } else {
+                nextBinding.provider = provider;
+                nextBinding.providerOutputIndex = providerOutputIndex;
+                return binding;
+            }
+        } else if (!(nextBinding instanceof PoseGraphBindingTreeObject || nextBinding instanceof PoseGraphBindingTreeArray)) {
+            return undefined;
+        } else {
+            return this._addBindingInternal(
+                nextBinding,
+                propertyPath,
+                nextPropertyKeyIndex,
+                provider,
+                providerOutputIndex,
+            );
+        }
     }
-}
 
-@ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseGraphNodePropertyBinding`)
-class PoseGraphNodePropertyBinding {
-    constructor (
-        consumerPropertyPath: readonly (string | number)[],
-        target: PoseGraphNodeShell,
-        outputIndex: number,
+    private _createBindingAccordingNext (
+        propertyPath: PropertyPath, nextPropertyKeyIndex: number,
+        provider: PoseGraphNodeShell<PoseGraphNode>, providerOutputIndex: number,
     ) {
-        this._consumerPropertyPath = consumerPropertyPath.slice();
-        this._target = target;
-        this._outputIndex = outputIndex;
+        const pathLength = propertyPath.length;
+        if (nextPropertyKeyIndex >= pathLength) {
+            return new PoseGraphBindingTreeTerminator(provider, providerOutputIndex);
+        } else {
+            const propertyKey = propertyPath[nextPropertyKeyIndex];
+            return typeof propertyKey === 'string'
+                ? new PoseGraphBindingTreeObject()
+                : new PoseGraphBindingTreeArray();
+        }
     }
 
-    get consumerPropertyPath () {
-        return this._consumerPropertyPath;
+    private _deleteBindingInternal (
+        binding: PoseGraphBindingTree,
+        propertyPath: PropertyPath, propertyKeyIndex: number,
+    ): boolean {
+        const pathLength = propertyPath.length;
+        assertIsTrue(propertyKeyIndex < pathLength);
+
+        const propertyKey = propertyPath[propertyKeyIndex];
+        const nextPropertyKeyIndex = propertyKeyIndex + 1;
+        if (binding instanceof PoseGraphBindingTreeObject) {
+            if (typeof propertyKey !== 'string') {
+                return false;
+            }
+            const { properties } = binding;
+            if (!(propertyKey in properties)) {
+                return false;
+            }
+            const deleteChild = this._deleteBindingInternal(
+                properties[propertyKey], propertyPath, nextPropertyKeyIndex,
+            );
+            if (deleteChild) {
+                delete properties[propertyKey];
+            }
+            return Object.keys(properties).length === 0;
+        } else if (binding instanceof PoseGraphBindingTreeArray) {
+            if (typeof propertyKey !== 'number') {
+                return false;
+            }
+            const { elements } = binding;
+            const iExistingElement = elements.findIndex((e) => e.index === propertyKey);
+            if (iExistingElement < 0) {
+                return false;
+            }
+            const deleteChild = this._deleteBindingInternal(
+                elements[iExistingElement].value, propertyPath, nextPropertyKeyIndex,
+            );
+            if (deleteChild) {
+                elements.splice(iExistingElement, 1);
+            }
+            return elements.length === 0;
+        } else {
+            return propertyKeyIndex === propertyPath.length - 1;
+        }
     }
 
-    get target () {
-        return this._target;
+    private _deleteBindingToRecursively (tree: PoseGraphBindingTree, provider: PoseGraphNodeShell<PoseGraphNode>) {
+        if (tree instanceof PoseGraphBindingTreeTerminator) {
+            return tree.provider === provider;
+        } else if (tree instanceof PoseGraphBindingTreeObject) {
+            for (const [propertyKey, propertyBinding] of Object.entries(tree.properties)) {
+                const propertyKey 
+            }
+        } else {
+
+        }
     }
-
-    get outputIndex () {
-        return this._outputIndex;
-    }
-
-    @serializable
-    private _consumerPropertyPath: PropertyPath = [];
-
-    @serializable
-    private _target: PoseGraphNodeShell;
-
-    @serializable
-    private _outputIndex = 0;
 }
 
-export type { PoseGraphNodePropertyBinding };
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseGraphBindingTreeNodeBase`)
+class PoseGraphBindingTreeNodeBase {
+    public get parent () {
+        return this._parent;
+    }
+
+    protected setRelation (parent: PoseGraphBindingTreeObject | PoseGraphBindingTreeArray | null) {
+        this._parent = parent;
+    }
+
+    private _parent: PoseGraphBindingTreeObject | PoseGraphBindingTreeArray | null = null;
+}
+
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseGraphBindingTreeTerminator`)
+class PoseGraphBindingTreeTerminator {
+    constructor (
+        provider: PoseGraphNodeShell,
+        providerOutputIndex: number,
+    ) {
+        this.provider = provider;
+        this.providerOutputIndex = providerOutputIndex;
+    }
+
+    @serializable
+    public provider: PoseGraphNodeShell;
+
+    @serializable
+    public providerOutputIndex = 0;
+}
+
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseGraphBindingTreeObject`)
+class PoseGraphBindingTreeObject {
+    @serializable
+    public properties: Record<string, PoseGraphBindingTree> = {};
+}
+
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseGraphBindingTreeArrayElement`)
+class PoseGraphBindingTreeArrayElement {
+    constructor (index: number, value: PoseGraphBindingTree) {
+        this.index = index;
+        this.value = value;
+    }
+
+    @serializable
+    public index = 0;
+
+    @serializable
+    public value: PoseGraphBindingTree = null!;
+}
+
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseGraphBindingTreeArray`)
+class PoseGraphBindingTreeArray {
+    @serializable
+    public elements: PoseGraphBindingTreeArrayElement[] = [];
+}
+
+type PoseGraphBindingTree = PoseGraphBindingTreeTerminator | PoseGraphBindingTreeObject | PoseGraphBindingTreeArray;
 
 function isEqualPropertyPath (a: PropertyPath, b: PropertyPath) {
     return a.length === b.length && a.every((p, i) => p === b[i]);
