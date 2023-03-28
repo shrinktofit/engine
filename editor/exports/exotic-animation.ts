@@ -15,3 +15,11 @@ export {
     additiveSettingsTag,
     AnimationClipAdditiveSettings,
 } from '../../cocos/animation/animation-clip';
+
+export {
+    TransformFlag,
+} from '../../cocos/animation/animation-clip-manipulation';
+
+export {
+    removeNodeTransformAnimation,
+} from '../src/marionette/exotic-animation-operation';
