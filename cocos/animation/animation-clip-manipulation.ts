@@ -1,0 +1,12 @@
+export enum TransformFlag {
+    POSITION = 0b111,
+
+    ROTATION_X = 0b001_000,
+    ROTATION_Y = 0b010_000,
+    ROTATION_Z = 0b100_000,
+    ROTATION = ROTATION_X | ROTATION_Y | ROTATION_Z,
+
+    SCALE = 0b111_000_000,
+
+    ALL = POSITION | ROTATION | SCALE,
+}
