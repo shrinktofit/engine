@@ -8,6 +8,7 @@ import './pose-nodes/set-auxiliary-curve';
 import './pose-nodes/sample-motion';
 import './pose-nodes/state-machine';
 import './pose-nodes/blend-in-proportion';
+import './pose-nodes/blend-with-transform-filter';
 import './pose-nodes/ik/two-bone-ik-solver';
 
 import './x-nodes/get-variable';
