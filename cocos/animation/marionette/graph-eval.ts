@@ -25,7 +25,8 @@
 import { DEBUG, TEST } from 'internal:constants';
 import {
     AnimationGraph, Layer, StateMachine, State, isAnimationTransition,
-    SubStateMachine, EmptyState, EmptyStateTransition, TransitionInterruptionSource, PoseState, PoseTransition, InterruptionBehavior, DurationalTransition,
+    SubStateMachine, EmptyState, EmptyStateTransition, TransitionInterruptionSource,
+    PoseState, PoseTransition, InterruptionBehavior, DurationalTransition,
 } from './animation-graph';
 import { MotionEval, MotionEvalContext, MotionPort } from './motion';
 import type { Node } from '../../scene-graph/node';
@@ -35,7 +36,7 @@ import { BindContext, validateVariableExistence, validateVariableType, VariableT
 import { ConditionEval, TriggerCondition } from './condition';
 import { MotionState } from './motion-state';
 import { AnimationMask } from './animation-mask';
-import { warnID, assertIsTrue, assertIsNonNullable, approx, clamp01 } from '../../core';
+import { warnID, assertIsTrue, assertIsNonNullable, approx, clamp01, Pool } from '../../core';
 import { MAX_ANIMATION_LAYER } from '../../3d/skeletal-animation/limits';
 import { AnimationClip } from '../animation-clip';
 import type { AnimationController } from './animation-controller';
@@ -51,7 +52,9 @@ import {
 import { TransformArray } from '../core/transform-array';
 import { applyDeltaPose, blendPoseInto, Pose, TransformFilter } from '../core/pose';
 
-import { PoseNode, PoseNodeBindingContext, PoseNodeEvaluationContext, PoseNodeUpdateContext, PoseTransformSpaceRequirement, AllPreviousLayersResultManager, PoseNodeSettleContext } from './pose-graph/pose-node';
+import { PoseNode, PoseNodeBindingContext, PoseNodeEvaluationContext,
+    PoseNodeUpdateContext, PoseTransformSpaceRequirement, AllPreviousLayersResultManager, PoseNodeSettleContext,
+} from './pose-graph/pose-node';
 import { DefaultTopLevelPose, LayerEvaluationRecord, AllPreviousLayersResultManagerImpl } from './pose-graph/pose-nodes/default-top-level-pose-node';
 import { instantiatePoseGraph } from './pose-graph/instantiation';
 import { RuntimeStashManager } from './pose-graph/stash/runtime-stash';
@@ -511,8 +514,8 @@ class LayerEval {
         );
         this._topLevelEntry = entry;
         this._topLevelExit = exit;
-        this._currentNode = entry;
         entry.increaseRunningReference();
+        this._currentNode = entry;
         this._resetTrigger = triggerResetFn;
 
         this._mask = mask;
@@ -535,24 +538,16 @@ class LayerEval {
 
     public reenter () {
         // Known problem: no callbacks are triggered.
-        if (this._currentNode.kind === NodeKind.animation) {
-            this._currentNode.debugResetFromPort();
-        }
+
         this._topLevelEntry.increaseRunningReference();
-        this._alterCurrentStateViolently(this._topLevelEntry);
-        this._currentStateWeight = 0.0;
+        this._alterCurrentState(this._topLevelEntry);
+
         for (const transition of this._currentTransitionPath) {
-            transition.activated = false;
-            transition.to.decreaseRunningReference();
-            if (DEBUG) {
-                if (transition.to.kind === NodeKind.animation) {
-                    transition.to.debugResetFromPort();
-                }
-            }
+            transition.destination.decreaseRunningReference();
+            this._transitionInstancePool.free(transition);
         }
         this._currentTransitionPath.length = 0;
         this._currentTransitionToNode = null;
-        this._fromUpdated = false;
         this._transitionSnapshot.clear();
     }
 
@@ -570,10 +565,10 @@ class LayerEval {
 
     public getCurrentStateStatus (): Readonly<MotionStateStatus> | null {
         const { _currentNode: currentNode } = this;
-        if (currentNode.kind === NodeKind.animation) {
-            return currentNode.getFromPortStatus();
+        if (currentNode.kind === NodeKind.port) {
+            return currentNode.getStatus();
         } else if (currentNode.kind === NodeKind.transitionSnapshot) {
-            return currentNode.first.getFromPortStatus();
+            return currentNode.first.getStatus();
         } else {
             return null;
         }
@@ -581,10 +576,10 @@ class LayerEval {
 
     public getCurrentClipStatuses (): Iterable<ClipStatus> {
         const { _currentNode: currentNode } = this;
-        if (currentNode.kind === NodeKind.animation) {
-            return currentNode.getClipStatuses(this._currentStateWeight);
+        if (currentNode.kind === NodeKind.port) {
+            return currentNode.host.getClipStatuses(currentNode.weight);
         } else if (currentNode.kind === NodeKind.transitionSnapshot) {
-            return currentNode.first.getClipStatuses(this._currentStateWeight);
+            return currentNode.first.host.getClipStatuses(currentNode.weight);
         } else {
             return emptyClipStatusesIterable;
         }
@@ -594,17 +589,17 @@ class LayerEval {
         const { _currentTransitionPath: currentTransitionPath } = this;
         if (currentTransitionPath.length !== 0) {
             const lastTransition = currentTransitionPath[currentTransitionPath.length - 1];
-            if (lastTransition.to.kind !== NodeKind.animation && lastTransition.to.kind !== NodeKind.empty) {
+            if (lastTransition.destination.kind !== NodeKind.port && lastTransition.destination.kind !== NodeKind.empty) {
                 return false;
             }
             let fromState: ConcreteState | TransitionSnapshotEval | undefined;
-            let valuableTransition: TransitionEval | undefined;
+            let valuableTransition: TransitionInstance | undefined;
             for (let iTransition = currentTransitionPath.length - 1; iTransition >= 0; --iTransition) {
                 let prevState: NodeEval;
                 if (iTransition === 0) {
                     prevState = this._currentNode;
                 } else {
-                    prevState = currentTransitionPath[iTransition - 1].to;
+                    prevState = currentTransitionPath[iTransition - 1].destination;
                 }
                 if (isConcreteState(prevState) || prevState.kind === NodeKind.transitionSnapshot) {
                     fromState = prevState;
@@ -618,9 +613,9 @@ class LayerEval {
             const {
                 duration,
                 normalizedDuration,
-            } = currentTransitionPath[0];
+            } = currentTransitionPath[0].stub;
             const durationInSeconds = transitionStatus.duration = normalizedDuration
-                ? duration * (fromState.kind === NodeKind.animation
+                ? duration * (fromState.kind === NodeKind.port
                     ? fromState.duration
                     : fromState.kind === NodeKind.transitionSnapshot
                         ? fromState.first.duration
@@ -643,7 +638,7 @@ class LayerEval {
             || currentTransitionToNode.kind === NodeKind.poseState) {
             return null;
         }
-        return currentTransitionToNode.getToPortStatus();
+        return currentTransitionToNode.getStatus();
     }
 
     public getNextClipStatuses (): Iterable<ClipStatus> {
@@ -653,11 +648,11 @@ class LayerEval {
             return emptyClipStatusesIterable;
         }
         const lastTransition = currentTransitionPath[nCurrentTransitionPath - 1];
-        const to = lastTransition.to;
-        if (to.kind !== NodeKind.animation) {
+        const to = lastTransition.destination;
+        if (to.kind !== NodeKind.port) {
             return emptyClipStatusesIterable;
         }
-        return to.getClipStatuses(lastTransition.destinationWeight) ?? emptyClipStatusesIterable;
+        return to.host.getClipStatuses(lastTransition.destinationWeight) ?? emptyClipStatusesIterable;
     }
 
     public overrideClips (overrides: ReadonlyClipOverrideMap, context: AnimationGraphBindingContext) {
@@ -669,9 +664,7 @@ class LayerEval {
         };
         for (let iMotionState = 0; iMotionState < nMotionStates; ++iMotionState) {
             const node = motionStates[iMotionState];
-            if (node.kind === NodeKind.animation) {
-                node.overrideClips(overrides, myContext);
-            }
+            node.overrideClips(overrides, myContext);
         }
     }
 
@@ -685,23 +678,21 @@ class LayerEval {
      * Preserved here for settle stage.
      */
     private readonly _poseStates: PoseStateEval[] = [];
-    private readonly _topLevelEntry: NodeEval;
-    private readonly _topLevelExit: NodeEval;
-    private _currentNode: NodeEval;
-    private _currentStateWeight = Number.NaN;
+    private readonly _topLevelEntry: SpecialStateEval;
+    private readonly _topLevelExit: SpecialStateEval;
+    private _currentNode: VeryFirstState;
+    private _currentNodeUpdateDeltaTime = 0.0;
+    private _currentNodeWeight = 0.0;
     private _currentTransitionToNode: ConcreteState | null = null;
-    private _currentTransitionPath: TransitionEval[] = [];
+    private _currentTransitionPath: TransitionInstance[] = [];
+    private _transitionInstancePool = TransitionInstance.createPool(4);
     private declare _triggerReset: TriggerResetFn;
-    private _updateContextGenerator = new AnimationGraphUpdateContextGenerator();
-    private _fromUpdated = false;
-    /** Accumulated delta time of start state(or port). */
-    private _fromUpdateDeltaTime = 0.0;
-    /** Accumulated delta time of destination state(or port). */
-    private _toUpdateDeltaTime = 0.0;
+    private _stateUpdateContextCache = new StateUpdateContextGenerator();
     /**
      * A virtual state which represents the transition snapshot captured when a transition is interrupted.
      */
     private _transitionSnapshot = new TransitionSnapshotEval();
+    private _stateActivationTracking = new StateActivationTracker();
     /**
      * Preserved here for clip overriding.
      */
@@ -726,7 +717,7 @@ class LayerEval {
         let anyNode: SpecialStateEval | undefined;
         let exitEval: SpecialStateEval | undefined;
 
-        const nodeEvaluations = nodes.map((node): NodeEval | null => {
+        const nodeEvaluations = nodes.map((node): TransitionEval['to'] | null => {
             if (node instanceof MotionState) {
                 const motionStateEval = new MotionStateEval(node, context, clipOverrides);
                 this._motionStates.push(motionStateEval);
@@ -765,6 +756,10 @@ class LayerEval {
             const nodeEval = nodeEvaluations[iNode];
             if (nodeEval) {
                 nodeEval.stateMachine = stateMachineInfo;
+                if (nodeEval.kind === NodeKind.motion) {
+                    nodeEval.fromPort.stateMachine = stateMachineInfo;
+                    nodeEval.toPort.stateMachine = stateMachineInfo;
+                }
             }
         }
 
@@ -817,7 +812,7 @@ class LayerEval {
                     assertIsTrue(false, 'Bad animation data');
                 }
 
-                let toNode: NodeEval;
+                let toNode: TransitionEval['to'];
                 if (outgoingNode instanceof SubStateMachine) {
                     const subStateMachineInfo = subStateMachineInfos[iOutgoingNode];
                     assertIsNonNullable(subStateMachineInfo);
@@ -830,7 +825,9 @@ class LayerEval {
 
                 const conditions = outgoing.conditions.map((condition) => condition[createEval](
                     context.outerContext,
-                    transitionContextGenerator.generate(fromNode),
+                    transitionContextGenerator.generate(
+                        fromNode.kind === NodeKind.motion ? fromNode.toPort : fromNode,
+                    ),
                 ));
 
                 const transitionEval: TransitionEval = {
@@ -844,10 +841,6 @@ class LayerEval {
                     exitCondition: 0.0,
                     exitConditionEnabled: false,
                     interruption: TransitionInterruptionSource.NONE,
-                    activated: false,
-                    normalizedElapsedTime: Number.NaN,
-                    destinationWeight: Number.NaN,
-                    updateDeltaTime: Number.NaN,
                     startEvent: undefined,
                     endEvent: undefined,
                 };
@@ -882,7 +875,12 @@ class LayerEval {
                 outgoingTransitions.push(transitionEval);
             }
 
-            fromNode.outgoingTransitions = outgoingTransitions;
+            if (fromNode.kind === NodeKind.motion) {
+                fromNode.fromPort.outgoingTransitions = outgoingTransitions;
+                fromNode.toPort.outgoingTransitions = outgoingTransitions;
+            } else {
+                fromNode.outgoingTransitions = outgoingTransitions;
+            }
         }
 
         return stateMachineInfo;
@@ -897,177 +895,112 @@ class LayerEval {
         const { deltaTime } = context;
         assertIsTrue(!this.exited);
 
-        const haltOnNonMotionState = this._continueDanglingTransition();
-        if (haltOnNonMotionState) {
-            return 0.0;
-        }
-
         const MAX_ITERATIONS = 100;
 
+        // Match new transitions, util:
+        // - max iterations arrived,
+        // - no transition can be further matched.
         let remainTimePiece = deltaTime;
-        for (let continueNextIterationForce = true, // Force next iteration even remain time piece is zero
-            iterations = 0;
-            continueNextIterationForce || remainTimePiece > 0.0;
-        ) {
-            continueNextIterationForce = false;
-
-            if (iterations === MAX_ITERATIONS) {
+        const zeroCostTransitioned = new Set<NodeEval>();
+        for (let iterations = 0; ; ++iterations) {
+            if (iterations >= MAX_ITERATIONS) {
                 warnID(14000, MAX_ITERATIONS);
                 break;
             }
 
-            ++iterations;
+            const startState = this._currentTransitionPath.length === 0
+                ? this._currentNode
+                : this._currentTransitionPath[this._currentTransitionPath.length - 1].destination;
+            const transitionMatch = this._matchTransitionIncludingAny(startState, remainTimePiece);
 
-            // Update current transition if we're in transition.
-            // If currently no transition, we simple fallthrough.
-            if (this._currentTransitionPath.length > 0) {
-                const {
-                    action,
-                    consumed: tickTransitionsConsumed,
-                } = this._tickTransitions(remainTimePiece, this._tickTransitionsResultCache);
-                if (action === TickTransitionResultAction.BREAK) {
-                    break;
+            if (!transitionMatch) {
+                break;
+            }
+
+            const { transition, requires } = transitionMatch;
+
+            remainTimePiece -= requires;
+
+            const shouldUpdateBeforeConsume = requires !== 0;
+            if (shouldUpdateBeforeConsume) {
+                this._updateCurrentTransition(requires);
+            }
+
+            this._consumeTransition(transition);
+
+            if (shouldUpdateBeforeConsume) {
+                zeroCostTransitioned.clear();
+            } else {
+                if (zeroCostTransitioned.size === 0) {
+                    zeroCostTransitioned.add(startState);
+                }
+                const destinationState = getAutoForwardStateOfTransitionDestination(transition.to);
+                // eslint-disable-next-line no-lonely-if
+                if (zeroCostTransitioned.has(destinationState)) {
+                    warnID(14000, MAX_ITERATIONS);
+                    break; // No further match.
                 } else {
-                    remainTimePiece -= tickTransitionsConsumed;
-                    if (action === TickTransitionResultAction.FORCE_CONTINUE) {
-                        continueNextIterationForce = true;
+                    zeroCostTransitioned.add(destinationState);
+                    if (startState === destinationState) {
+                        break; // No further match.
                     }
-                    continue;
                 }
             }
 
-            const { _currentNode: currentNode } = this;
-
-            this._currentStateWeight = 1.0;
-            this._currentNode.resetWeightUsedInCondition(1.0);
-            const transitionMatch = this._matchCurrentNodeTransition(remainTimePiece);
-
-            if (transitionMatch) {
-                const {
-                    transition,
-                    requires: updateRequires,
-                } = transitionMatch;
-
-                remainTimePiece -= updateRequires;
-
-                this._accumulateCurrentStateDeltaTime(updateRequires);
-
-                const ranIntoNonMotionState = this._switchTo(transition);
-                if (ranIntoNonMotionState) {
-                    break;
-                }
-
-                currentNode.transitionOutEvent?.emit(this._eventTarget);
-
-                continueNextIterationForce = true;
-            } else { // If no transition matched, we update current node.
-                this._accumulateCurrentStateDeltaTime(remainTimePiece);
-                // Current state eats all times.
-                remainTimePiece = 0.0;
-                continue;
-            }
+            // Since we want the newest weight of all states.
+            // The newest weights are used by weight condition
+            // and is set by `this._updateCurrentTransition()`.
+            this._updateCurrentTransition(0.0);
         }
+
+        this._updateCurrentTransition(remainTimePiece);
 
         this._commitStateUpdates(context);
 
         return remainTimePiece;
     }
 
-    private _tickTransitions (deltaTime: number, result: TickTransitionResultCache): TickTransitionResult {
-        assertIsTrue(this._currentTransitionPath.length !== 0);
-
-        const interruptionMatch = this._detectInterruption(deltaTime, interruptingTransitionMatchCache);
-
-        // Once we found a interruption match. It can race with transition updating.
-        if (interruptionMatch) {
-            const { requires: interruptionRequires } = interruptionMatch;
-            let consumed = 0.0;
-            // If the interruption requires 0 time. It always win.
-            if (interruptionRequires !== 0) {
-                // Otherwise we need firstly do a trial update.
-                const trialDeltaTime = interruptionRequires;
-                const trialUpdateConsumed = this._updateCurrentTransition(trialDeltaTime);
-                if (this._currentTransitionPath.length === 0) {
-                    // The transitions finished after the trail update, this is not a interruption.
-                    return result.setContinue(trialUpdateConsumed, true);
-                } else {
-                    // Otherwise, the transitions can not be finished before interruption.
-                    // The interruption is able to occur.
-                    consumed = trialUpdateConsumed;
-                }
-            }
-            // The real interruption occurs.
-            const ranIntoNonMotionState = this._interruptionBehavior === InterruptionBehavior.SNAPSHOT
-                ? this._interrupt(interruptionMatch)
-                : this._interruptConcurrently(interruptionMatch);
-            if (ranIntoNonMotionState) {
-                return result.setBreak();
-            } else {
-                return result.setContinue(consumed, true);
-            }
-        }
-
-        const currentUpdatingConsume = this._updateCurrentTransition(deltaTime);
-
-        // Break if we ran into non concrete state.
-        if (this._currentNode.kind === NodeKind.exit) {
-            return result.setBreak();
-        }
-
-        // If the update invocation finished the transition,
-        // Force restart the iteration even we consumed all the delta time.
-        if (this._currentTransitionPath.length === 0) {
-            return result.setContinue(currentUpdatingConsume, true);
-        }
-
-        return result.setContinue(currentUpdatingConsume, false);
-    }
-
     private _sample (context: AnimationGraphEvaluationContext): Pose | null {
         const {
-            _currentNode: currentState,
-            _currentTransitionPath: currentTransitions,
+            _stateActivationTracking: { activatedStates, activatedStateCount },
         } = this;
-        const nCurrentTransitions = currentTransitions.length;
 
         let finalPose: Pose | null = null;
-        let sumActualBlendedWeight = this._currentStateWeight;
-        if (currentState.kind === NodeKind.animation) {
-            finalPose = currentState.sampleFromPort(context);
-        } else if (currentState.kind === NodeKind.poseState) {
-            finalPose = currentState.evaluate(context);
-        } else if (currentState.kind === NodeKind.transitionSnapshot) {
-            finalPose = currentState.sample(context);
-        } else {
-            sumActualBlendedWeight = 0.0;
-        }
-
-        // Iterate from end to begin.
-        for (let iTransition = 0; iTransition < nCurrentTransitions; ++iTransition) {
-            const transition = currentTransitions[iTransition];
-            const toState = transition.to;
-            const toStateWeight = transition.destinationWeight;
-
-            let toPose: Pose | null;
-            if (toState.kind === NodeKind.animation) {
-                toPose = toState.sampleToPort(context);
-            } else if (toState.kind === NodeKind.poseState) {
-                toPose = toState.evaluate(context);
+        let sumActualBlendedWeight = 0.0;
+        let sumNullishPoseWeight = 0.0;
+        for (let iState = 0; iState < activatedStateCount; ++iState) {
+            const state = activatedStates[iState];
+            const weight = state.weight;
+            let pose: Pose | null;
+            if (state.kind === NodeKind.port) {
+                pose = state.evaluate(context);
+            } else if (state.kind === NodeKind.poseState) {
+                pose = state.evaluate(context);
             } else {
                 continue;
             }
-
-            sumActualBlendedWeight += toStateWeight;
+            if (!pose) {
+                sumNullishPoseWeight += weight;
+                continue;
+            }
+            sumActualBlendedWeight += weight;
             if (!finalPose) {
-                finalPose = toPose;
+                finalPose = pose;
             } else {
-                if (!toPose) {
-                    toPose = this._pushNullishPose(context);
-                }
                 if (sumActualBlendedWeight) {
-                    const t = toStateWeight / sumActualBlendedWeight;
-                    blendPoseInto(finalPose, toPose, t);
+                    const t = weight / sumActualBlendedWeight;
+                    blendPoseInto(finalPose, pose, t);
                 }
+                context.popPose();
+            }
+        }
+
+        if (finalPose && sumNullishPoseWeight !== 0.0) {
+            sumActualBlendedWeight += sumNullishPoseWeight;
+            if (sumActualBlendedWeight) {
+                const t = sumNullishPoseWeight / sumActualBlendedWeight;
+                const nullishPose = this._pushNullishPose(context);
+                blendPoseInto(finalPose, nullishPose, t);
                 context.popPose();
             }
         }
@@ -1087,15 +1020,13 @@ class LayerEval {
      * @param deltaTime
      * @returns
      */
-    private _matchCurrentNodeTransition (deltaTime: Readonly<number>): TransitionMatch | null {
-        const currentNode = this._currentNode;
-
+    private _matchTransitionIncludingAny (startState: VeryFirstState, deltaTime: Readonly<number>): TransitionMatch | null {
         const transitionMatch = transitionMatchCache.reset();
 
         this._matchTransition(
-            currentNode,
+            startState,
             true,
-            currentNode,
+            startState,
             deltaTime,
             transitionMatch,
         );
@@ -1103,9 +1034,9 @@ class LayerEval {
             return transitionMatch;
         }
 
-        if (currentNode.kind === NodeKind.animation) {
+        if (startState.kind === NodeKind.port) {
             this._matchAnyScoped(
-                currentNode,
+                startState,
                 true,
                 deltaTime,
                 transitionMatch,
@@ -1128,7 +1059,7 @@ class LayerEval {
      * - so we can solve transitions' relative durations.
      * @param isCurrentState See `_matchTransition`.
      */
-    private _matchAnyScoped (realNode: MotionStateEval | PoseStateEval, isCurrentState: boolean, deltaTime: number, result: TransitionMatchCache) {
+    private _matchAnyScoped (realNode: AnimationPortEval | PoseStateEval, isCurrentState: boolean, deltaTime: number, result: TransitionMatchCache) {
         let transitionMatchUpdated = false;
         for (let ancestor: StateMachineInfo | null = realNode.stateMachine;
             ancestor !== null;
@@ -1173,9 +1104,6 @@ class LayerEval {
         let resultUpdated = false;
         for (let iTransition = 0; iTransition < nTransitions; ++iTransition) {
             const transition = outgoingTransitions[iTransition];
-            if (transition.activated) {
-                continue;
-            }
 
             const { conditions } = transition;
             const nConditions = conditions.length;
@@ -1196,9 +1124,9 @@ class LayerEval {
 
             let deltaTimeRequired = 0.0;
 
-            if (realNode.kind === NodeKind.animation && transition.exitConditionEnabled) {
+            if (realNode.kind === NodeKind.port && transition.exitConditionEnabled) {
                 const exitTime = realNode.duration * transition.exitCondition;
-                const currentStateTime = isCurrentState ? realNode.fromPortTime : realNode.toPortTime;
+                const currentStateTime = realNode.time;
                 deltaTimeRequired = Math.max(exitTime - currentStateTime, 0.0);
                 // Note: the >= is reasonable in compare to >: we select the first-minimal requires.
                 if (deltaTimeRequired > deltaTime || deltaTimeRequired >= result.requires) {
@@ -1232,86 +1160,6 @@ class LayerEval {
         return resultUpdated;
     }
 
-    /**
-     * Try switch current node or transition snapshot using specified transition.
-     * @param transition The transition.
-     * @returns If the transition finally ran into entry/exit state.
-     */
-    private _switchTo (transition: TransitionEval) {
-        this._consumeTransition(transition);
-
-        const motionNode = this._matchTransitionPathUntilMotion();
-        if (motionNode) {
-            // Apply transitions
-            this._doTransitionToMotion(motionNode);
-            return false;
-        } else {
-            return true;
-        }
-    }
-
-    /**
-     * Called every frame(not every iteration).
-     * Returns if we ran into an entry/exit node and still no satisfied transition matched this frame.
-     */
-    private _continueDanglingTransition () {
-        const {
-            _currentTransitionPath: currentTransitionPath,
-        } = this;
-
-        const lenCurrentTransitionPath = currentTransitionPath.length;
-
-        if (lenCurrentTransitionPath === 0) {
-            return false;
-        }
-
-        const lastTransition = currentTransitionPath[lenCurrentTransitionPath - 1];
-        const tailNode = lastTransition.to;
-
-        if (!isConcreteState(tailNode)) {
-            const motionNode = this._matchTransitionPathUntilMotion();
-            if (motionNode) {
-                // Apply transitions
-                this._doTransitionToMotion(motionNode);
-                return false;
-            } else {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private _matchTransitionPathUntilMotion () {
-        const {
-            _currentTransitionPath: currentTransitionPath,
-        } = this;
-
-        const lenCurrentTransitionPath = currentTransitionPath.length;
-        assertIsTrue(lenCurrentTransitionPath !== 0);
-
-        const lastTransition = currentTransitionPath[lenCurrentTransitionPath - 1];
-        let tailNode = lastTransition.to;
-        for (; !isConcreteState(tailNode);) {
-            const transitionMatch = transitionMatchCache.reset();
-            this._matchTransition(
-                tailNode,
-                false,
-                tailNode,
-                0.0,
-                transitionMatch,
-            );
-            if (!transitionMatch.transition) {
-                break;
-            }
-            const transition = transitionMatch.transition;
-            this._consumeTransition(transition);
-            tailNode = transition.to;
-        }
-
-        return isConcreteState(tailNode) ? tailNode : null;
-    }
-
     private _consumeTransition (transition: TransitionEval) {
         const { to } = transition;
 
@@ -1320,19 +1168,23 @@ class LayerEval {
             this._callEnterMethods(to);
         }
 
-        transition.activated = true;
+        const realDestination = getAutoForwardStateOfTransitionDestination(to);
 
-        transition.normalizedElapsedTime = 0.0;
-
-        transition.updateDeltaTime = 0.0;
+        const transitionInstance = this._transitionInstancePool.alloc();
+        transitionInstance.reset(transition, realDestination);
+        this._currentTransitionPath.push(transitionInstance);
 
         if (transition.startEvent) {
             transition.startEvent.emit(this._eventTarget);
         }
 
-        transition.to.increaseRunningReference();
+        if (isConcreteState(realDestination)) {
+            this._doTransitionToMotion(realDestination, transition);
+        }
 
-        this._currentTransitionPath.push(transition);
+        realDestination.increaseRunningReference();
+
+        return transitionInstance.destination;
     }
 
     private _resetTriggersAlongThePath () {
@@ -1341,62 +1193,64 @@ class LayerEval {
         const nTransitions = currentTransitionPath.length;
         for (let iTransition = 0; iTransition < nTransitions; ++iTransition) {
             const transition = currentTransitionPath[iTransition];
-            this._resetTriggersOnTransition(transition);
+            this._resetTriggersOnTransition(transition.stub);
         }
     }
 
-    private _doTransitionToMotion (targetNode: ConcreteState) {
-        const {
-            _currentTransitionPath: currentTransitionPath,
-        } = this;
-
-        assertIsTrue(currentTransitionPath.length !== 0);
-
+    private _doTransitionToMotion (targetNode: ConcreteState, transition: TransitionEval) {
         // Reset triggers
         this._resetTriggersAlongThePath();
 
         this._currentTransitionToNode = targetNode;
 
-        if (targetNode.kind === NodeKind.animation) {
-            const {
-                destinationStart,
-                relativeDestinationStart,
-            } = currentTransitionPath[0];
-            const destinationStartRatio = relativeDestinationStart
-                ? destinationStart
-                : targetNode.duration === 0
-                    ? 0.0
-                    : destinationStart / targetNode.duration;
-            targetNode.resetToPort(destinationStartRatio);
-        } else if (targetNode.kind === NodeKind.poseState) {
-            targetNode.reenter();
+        if (!targetNode.hasAnyRunningReference()) {
+            if (targetNode.kind === NodeKind.port) {
+                // FIXME: here should find the nearest motion.
+                const {
+                    destinationStart,
+                    relativeDestinationStart,
+                } = transition;
+                const destinationStartRatio = relativeDestinationStart
+                    ? destinationStart
+                    : targetNode.duration === 0
+                        ? 0.0
+                        : destinationStart / targetNode.duration;
+                targetNode.reset(destinationStartRatio);
+            } else if (targetNode.kind === NodeKind.poseState) {
+                targetNode.reenter();
+            }
         }
+
         this._callEnterMethods(targetNode);
 
-        targetNode.transitionInEvent?.emit(this._eventTarget);
+        if (targetNode.transitionInEvent?.eventName) {
+            targetNode.transitionInEvent.emit(this._eventTarget);
+        }
+    }
+
+    private _updateCurrentTransition (deltaTime: number) {
+        const { _stateActivationTracking: stateActivationTracking } = this;
+        const veryFirstStateWeight = this._updateTransitionTail(deltaTime);
+        stateActivationTracking.add(this._currentNode, veryFirstStateWeight);
+        stateActivationTracking.seal(deltaTime);
     }
 
     /**
      * Update current transition.
-     * Asserts: `!!this._currentTransition`.
      * @param deltaTime Time piece.
-     * @returns
+     * @returns The weight of very first state.
      */
-    private _updateCurrentTransition (deltaTime: number) {
+    private _updateTransitionTail (deltaTime: number): number {
         const {
             _currentTransitionPath: currentTransitions,
-            _currentTransitionToNode: currentTransitionToNode,
             _currentNode: veryFirstState,
+            _stateActivationTracking: stateActivationTracking,
         } = this;
 
-        assertIsNonNullable(currentTransitions.length > 0);
-        assertIsNonNullable(currentTransitionToNode);
+        stateActivationTracking.clear();
 
-        // Reset the "weight-used-in-condition" for all states in transition chain.
-        // This could be done for single state more than one times.
-        veryFirstState.resetWeightUsedInCondition(0.0);
-        for (let iTransition = 0; iTransition < currentTransitions.length; ++iTransition) {
-            currentTransitions[iTransition].to.resetWeightUsedInCondition(0.0);
+        if (currentTransitions.length === 0) {
+            return 1.0;
         }
 
         let iTransition = currentTransitions.length - 1;
@@ -1404,14 +1258,14 @@ class LayerEval {
         // Finds the first concrete state from last.
         for (; iTransition >= 0; --iTransition) {
             const transition = currentTransitions[iTransition];
-            if (isConcreteState(transition.to)) {
+            if (isConcreteState(transition.destination)) {
                 break;
             }
         }
 
-        // If all transitions are route. Consume nothing.
+        // If all transitions are route. Consume nothing. Update nothing.
         if (iTransition < 0) {
-            return 0.0;
+            return 1.0;
         }
 
         // Asserts: while updating transition sequences,
@@ -1426,8 +1280,6 @@ class LayerEval {
         let remainingWeight = 1.0;
 
         let lastTransitionIndex = iTransition;
-        let tailTransitionUpdateConsumedTime = 0.0;
-        let seenTailTransition = false;
         for (; iTransition >= 0; --iTransition) {
             // Find until we met the first concrete state or the very first state.
             /** Subsequence head or the very first state. */
@@ -1435,8 +1287,8 @@ class LayerEval {
             if (iTransition === 0) {
                 firstState = veryFirstState;
             } else {
-                firstState = currentTransitions[iTransition - 1].to;
-                if (!(isConcreteState(firstState) || firstState.kind === NodeKind.transitionSnapshot)) {
+                firstState = currentTransitions[iTransition - 1].destination;
+                if (!(isConcreteState(firstState))) {
                     continue;
                 }
             }
@@ -1445,103 +1297,78 @@ class LayerEval {
             const firstTransition = currentTransitions[firstTransitionIndex];
             const lastTransition = currentTransitions[lastTransitionIndex];
 
-            const { to: toState } = lastTransition;
-            assertIsTrue(isConcreteState(toState));
+            const destinationState = lastTransition.destination;
+            assertIsTrue(isConcreteState(destinationState));
 
             // Update the subpath.
-            const updateConsumed = this._updateTransition(
+            this._updateTransition(
                 firstState,
-                toState,
+                destinationState,
                 firstTransition,
                 deltaTime,
             );
-            if (!seenTailTransition) {
-                tailTransitionUpdateConsumedTime = updateConsumed;
-                seenTailTransition = true;
-            }
 
             // Once the transition is done, all previous transitions should be dropped.
             const done = approx(firstTransition.normalizedElapsedTime, 1.0, 1e-6);
             if (done) {
-                // Before we can drop the start state, we should update its time
-                // so that user know when it really exit.
-                // This fact can be reflected from unit test(label:exit-progress).
-                //
-                // However, we won't update states from previous transitions.
-                // The reason is intuitive -- the previous transition is dropped since later transition done instead of time updating.
-                if (firstState.kind === NodeKind.animation) {
-                    if (firstState === veryFirstState) {
-                        firstState.updateFromPort(updateConsumed);
-                    } else {
-                        firstState.updateToPort(updateConsumed);
-                    }
-                }
-
                 if (firstState.kind === NodeKind.transitionSnapshot) {
                     firstState.clear();
                 }
 
-                this._dropTransitions(
-                    firstState,
-                    lastTransitionIndex,
-                    true,
-                );
+                this._dropTransitions(lastTransitionIndex);
 
                 break;
-            }
-
-            // Accumulates the destination state's time.
-            // Note this step happens only if the transition was not done/dropped.
-            // Otherwise the process "destination state -> very first state"
-            // will cause the new very first state updated twice.
-            {
-                const shouldUpdatePorts = tailTransitionUpdateConsumedTime !== 0;
-                if (shouldUpdatePorts) {
-                    firstTransition.updateDeltaTime += tailTransitionUpdateConsumedTime;
-                }
-
-                if (toState.kind === NodeKind.animation) {
-                    toState.updateToPort(tailTransitionUpdateConsumedTime);
-                }
             }
 
             // Weight update.
             {
                 const destinationWeight = firstTransition.normalizedElapsedTime * remainingWeight;
                 lastTransition.destinationWeight = destinationWeight;
-                toState.addWeightUsedInCondition(destinationWeight);
+                stateActivationTracking.add(destinationState, destinationWeight);
                 remainingWeight *= (1.0 - firstTransition.normalizedElapsedTime);
             }
 
             lastTransitionIndex = iTransition - 1;
         }
 
-        // Update the very first state's time.
-        this._accumulateCurrentStateDeltaTime(tailTransitionUpdateConsumedTime);
-        this._currentStateWeight = remainingWeight;
-        this._currentNode.addWeightUsedInCondition(remainingWeight);
-
-        return tailTransitionUpdateConsumedTime;
+        return remainingWeight;
     }
 
     /**
-     * Normally, the alternation of "current node" can only be caused by transition update.
-     * But there are some exceptions:
-     * - In state machine's constructor, the "current node" is directly set as top level entry state.
-     * - When state machine reentered, the "current node" is forced set as top level entry state.
-     * - When a transition match, the "current node" is replaced as the transition snapshot pseudo state.
-     * This method handle the later 2 alternations.
+     * Alternation of "current node" can happen for following reasons:
+     *
+     * 1. In state machine's constructor, the "current state" is directly set as top level entry state.
+     * 2. Caused by transition update.
+     * 3. When state machine reentered, the "current state" is forced set as top level entry state.
+     * 4. When a transition match, the "current state" is replaced as the transition snapshot pseudo state.
+     *
+     * This method handle all later 3 alternations.
+     *
+     * @param newCurrentState The state to set as "current state". The state's ref should have been increased.
      */
-    private _alterCurrentStateViolently (state: NodeEval) {
-        state.increaseRunningReference();
-        this._currentNode.decreaseRunningReference();
-        this._currentNode = state;
+    private _alterCurrentState (newCurrentState: VeryFirstState) {
+        const { _currentNode: oldCurrentState } = this;
+
+        oldCurrentState.decreaseRunningReference();
+
+        if (newCurrentState.kind === NodeKind.port) {
+            // If the new current state is a port. It must be a to port.
+            assertIsTrue(!newCurrentState.isFromPort_debug);
+            newCurrentState = newCurrentState.switchPort();
+        } else if (newCurrentState.kind === NodeKind.transitionSnapshot) {
+            // Freeze transition snapshot states.
+            // Note this should be invoke after transitions are dropped.
+            newCurrentState.freeze();
+        }
+
+        assertIsTrue(newCurrentState.hasAnyRunningReference());
+        this._currentNode = newCurrentState;
     }
 
     private _updateTransition (
         fromState: NodeEval,
         toState: NodeEval,
-        transition: TransitionEval,
+        transition: TransitionInstance,
         deltaTime: number,
     ) {
         // If the transitions is not starting with a concrete state.
@@ -1554,13 +1381,13 @@ class LayerEval {
         const {
             duration: transitionDuration,
             normalizedDuration,
-        } = transition;
+        } = transition.stub;
 
         const transitionDurationAbsolute = fromState.kind === NodeKind.empty
             ? transitionDuration
             : normalizedDuration
                 ? transitionDuration * (
-                    fromState.kind === NodeKind.animation
+                    fromState.kind === NodeKind.port
                         ? fromState.duration
                         : fromState.kind === NodeKind.poseState ? 1.0 : fromState.first.duration
                 )
@@ -1587,50 +1414,35 @@ class LayerEval {
      * Drops the transitions from `0` to `lastTransitionIndex` in `this._currentTransitionPath`.
      * @note This methods may modifies the length of `this._currentTransitionPath`.
      */
-    private _dropTransitions (
-        firstState: NodeEval,
-        lastTransitionIndex: number,
-        inactivate: boolean,
-    ) {
-        const { _currentTransitionPath: currentTransitionPath } = this;
+    private _dropTransitions (lastTransitionIndex: number) {
+        const {
+            _currentTransitionPath: currentTransitionPath,
+            _transitionInstancePool: transitionInstancePool,
+        } = this;
 
         assertIsTrue(lastTransitionIndex >= 0 && lastTransitionIndex < currentTransitionPath.length);
 
         const lenSubpath = (lastTransitionIndex - 0) + 1;
-        const toState = currentTransitionPath[lastTransitionIndex].to;
 
-        // Call exist hooks on call states on the subpath.
-        this._callExitMethods(firstState, firstState === this._currentNode);
+        const newCurrentState = currentTransitionPath[lastTransitionIndex].destination;
+
+        // Call exist hooks on call states on the subpath, then destroy the transition instance.
+        this._callExitMethods(this._currentNode);
         for (let iTransition = 0; iTransition <= lastTransitionIndex; ++iTransition) {
             const transition = currentTransitionPath[iTransition];
-            const { to } = transition;
-            if (to.kind === NodeKind.exit) {
-                this._callExitMethods(to, false);
+            const destinationState = transition.destination;
+            if (destinationState.kind === NodeKind.exit) {
+                this._callExitMethods(destinationState);
             }
-            if (inactivate) {
-                transition.activated = false;
+            if (transition.stub.endEvent) {
+                transition.stub.endEvent.emit(this._eventTarget);
             }
-            if (transition.endEvent) {
-                transition.endEvent.emit(this._eventTarget);
-            }
+            // The last destination state is not really unreferenced.
+            // instead it will be referenced as "current state".
             if (iTransition !== lastTransitionIndex) {
-                transition.to.decreaseRunningReference();
+                destinationState.decreaseRunningReference();
             }
-        }
-
-        // Do some cleanup works.
-        // Overrides the update delta time.
-        this._fromUpdated = true;
-        this._fromUpdateDeltaTime = currentTransitionPath[lastTransitionIndex].updateDeltaTime;
-        if (toState.kind === NodeKind.animation) {
-            toState.finishTransition();
-        }
-        if (DEBUG) {
-            for (let iTransition = 0; iTransition <= lastTransitionIndex; ++iTransition) {
-                const transition = currentTransitionPath[iTransition];
-                transition.destinationWeight = Number.NaN;
-                transition.normalizedElapsedTime = Number.NaN;
-            }
+            transitionInstancePool.free(transition);
         }
 
         // Splice the subpath.
@@ -1646,15 +1458,7 @@ class LayerEval {
         }
 
         // Redefine the very first state.
-        if (DEBUG) {
-            // If we're doing real dropping, reset from port.
-            if (inactivate && this._currentNode.kind === NodeKind.animation) {
-                this._currentNode.debugResetFromPort();
-            }
-        }
-
-        this._currentNode.decreaseRunningReference();
-        this._currentNode = toState;
+        this._alterCurrentState(newCurrentState);
 
         // If there's no transition any more. Do some works.
         if (currentTransitionPath.length === 0) {
@@ -1662,270 +1466,26 @@ class LayerEval {
         }
     }
 
-    private _dropAllTransitions (inactivate: boolean) {
-        this._dropTransitions(
-            this._currentNode,
-            this._currentTransitionPath.length - 1,
-            inactivate,
-        );
-    }
-
     private _commitStateUpdates (parentContext: AnimationGraphUpdateContext) {
         const {
-            _currentNode: currentState,
-            _currentTransitionPath: currentTransitions,
-            _updateContextGenerator: updateContextGenerator,
+            _stateActivationTracking: { activatedStates, activatedStateCount },
         } = this;
 
-        let passthroughWeight = 1.0;
+        this.passthroughWeight = 1;
 
-        const nTransitions = currentTransitions.length;
-        if (this._fromUpdated) {
-            const { _fromUpdateDeltaTime: fromUpdateDeltaTime } = this;
-            this._fromUpdated = false;
-            this._fromUpdateDeltaTime = 0.0;
-            if (currentState.kind === NodeKind.animation) {
-                currentState.triggerFromPortUpdate(this._controller);
-            } else if (currentState.kind === NodeKind.poseState) {
-                const updateContext = updateContextGenerator.generate(
-                    fromUpdateDeltaTime,
-                    parentContext.directiveAbsoluteWeight * this._currentStateWeight,
-                );
-                currentState.update(updateContext);
-            } else if (currentState.kind === NodeKind.empty) {
-                passthroughWeight -= this._currentStateWeight;
-            }
-        }
-        for (let iTransition = 0; iTransition < nTransitions; ++iTransition) {
-            const transition = currentTransitions[iTransition];
-            const {
-                to: destinationState,
-                updateDeltaTime,
-                destinationWeight,
-            } = transition;
-            transition.updateDeltaTime = 0.0;
-            if (destinationState.kind === NodeKind.animation) {
-                destinationState.triggerToPortUpdate(this._controller);
-            } else if (destinationState.kind === NodeKind.poseState) {
-                assertIsTrue(!Number.isNaN(destinationWeight));
-                const updateContext = updateContextGenerator.generate(
-                    updateDeltaTime,
-                    parentContext.directiveAbsoluteWeight * destinationWeight,
-                );
-                destinationState.update(updateContext);
-            } else if (destinationState.kind === NodeKind.empty) {
-                assertIsTrue(!Number.isNaN(destinationWeight));
-                passthroughWeight -= destinationWeight;
-            }
+        if (activatedStateCount < 0) {
+            return;
         }
 
-        this.passthroughWeight = passthroughWeight;
-    }
-
-    private _detectInterruption (remainTimePiece: number, result: InterruptingTransitionMatchCache): InterruptingTransitionMatch | null {
-        const {
-            _currentTransitionPath: currentTransitionPath,
-            _currentNode: currentNode,
-            _currentTransitionToNode: currentTransitionToNode,
-        } = this;
-
-        if (currentNode.kind !== NodeKind.animation
-            && currentNode.kind !== NodeKind.transitionSnapshot
-            && currentNode.kind !== NodeKind.poseState) {
-            return null;
-        }
-
-        // TODO: pose node doesn't support snapshot.
-        if (currentNode.kind === NodeKind.poseState && this._interruptionBehavior === InterruptionBehavior.SNAPSHOT) {
-            return null;
-        }
-
-        if (!currentTransitionToNode
-            || (currentTransitionToNode.kind !== NodeKind.animation && currentTransitionToNode.kind !== NodeKind.poseState)) {
-            return null;
-        }
-
-        assertIsTrue(currentTransitionPath.length !== 0);
-        const currentTransition = currentTransitionPath[0];
-        const interruption = this._interruptionBehavior === InterruptionBehavior.CONCURRENT
-            ? TransitionInterruptionSource.NEXT_STATE
-            : currentTransition.interruption;
-        if (interruption === TransitionInterruptionSource.NONE) {
-            return null;
-        }
-
-        const transitionMatch = transitionMatchCache.reset();
-        let transitionMatchSource: MotionStateEval | PoseStateEval | null = null;
-
-        // We have to decide what to be used as unit 1
-        // to interpret the relative transition duration.
-        const anyTransitionMeasureBaseState = currentNode.kind === NodeKind.animation || currentNode.kind === NodeKind.poseState
-            ? currentNode
-            : currentNode.first;
-        let transitionMatchUpdated = this._matchAnyScoped(
-            anyTransitionMeasureBaseState,
-            true,
-            remainTimePiece,
-            transitionMatch,
+        const stateUpdateContext = this._stateUpdateContextCache.generate(
+            parentContext,
+            this._controller,
         );
-        if (transitionMatchUpdated) {
-            transitionMatchSource = anyTransitionMeasureBaseState; // TODO: shall be any?
-        }
-        if (transitionMatch.hasZeroCost()) {
-            // TODO
+        for (let iState = 0; iState < activatedStateCount; ++iState) {
+            activatedStates[iState].update(stateUpdateContext);
         }
 
-        let motion0: MotionStateEval | PoseStateEval;
-        let motion0IsCurrentState = false;
-        if (interruption === TransitionInterruptionSource.CURRENT_STATE
-            || interruption === TransitionInterruptionSource.CURRENT_STATE_THEN_NEXT_STATE) {
-            motion0 = getInterruptionSourceMotion(currentNode);
-            motion0IsCurrentState = true;
-        } else {
-            motion0 = currentTransitionToNode;
-            motion0IsCurrentState = false;
-        }
-        transitionMatchUpdated = this._matchTransition(
-            motion0,
-            motion0IsCurrentState,
-            motion0,
-            remainTimePiece,
-            transitionMatch,
-        );
-        if (transitionMatchUpdated) {
-            transitionMatchSource = motion0;
-        }
-        if (transitionMatch.hasZeroCost()) {
-            // TODO
-        }
-
-        let motion1: MotionStateEval | PoseStateEval | null = null;
-        let motion1IsCurrentState = false;
-        if (interruption === TransitionInterruptionSource.NEXT_STATE_THEN_CURRENT_STATE) {
-            motion1 = getInterruptionSourceMotion(currentNode);
-            motion1IsCurrentState = true;
-        } else if (interruption === TransitionInterruptionSource.CURRENT_STATE_THEN_NEXT_STATE) {
-            motion1 = currentTransitionToNode;
-            motion1IsCurrentState = false;
-        }
-        if (motion1) {
-            transitionMatchUpdated = this._matchTransition(
-                motion1,
-                motion1IsCurrentState,
-                motion1,
-                remainTimePiece,
-                transitionMatch,
-            );
-            if (transitionMatchUpdated) {
-                transitionMatchSource = motion1;
-            }
-            if (transitionMatch.hasZeroCost()) {
-                // TODO
-            }
-        }
-
-        if (transitionMatchCache.transition) {
-            assertIsNonNullable(transitionMatchSource);
-            return result.set(
-                transitionMatchSource,
-                transitionMatchCache.transition,
-                transitionMatchCache.requires,
-            );
-        }
-
-        return null;
-    }
-
-    private _interruptConcurrently ({
-        from: transitionSource,
-        transition,
-        requires: transitionRequires,
-    }: InterruptingTransitionMatch) {
-        return this._switchTo(transition);
-    }
-
-    /**
-     * Important: `transitionSource` may not be `this._currentNode`.
-     */
-    private _interrupt ({
-        from: transitionSource,
-        transition,
-    }: InterruptingTransitionMatch) {
-        // TODO:
-        assertIsTrue(transitionSource.kind !== NodeKind.poseState);
-        const {
-            _currentNode: currentNode,
-        } = this;
-        assertIsTrue(currentNode.kind === NodeKind.animation || currentNode.kind === NodeKind.transitionSnapshot);
-        // If we're interrupting motion->*,
-        // we update the motion then do the first enqueue to transition snapshot.
-        if (currentNode.kind === NodeKind.animation) {
-            const { _transitionSnapshot: transitionSnapshot } = this;
-            assertIsTrue(transitionSnapshot.empty);
-            transitionSnapshot.enqueue(currentNode, 1.0);
-        }
-        this._takeCurrentTransitionSnapshot(transitionSource);
-        // Drop transitions.
-        // Do not inactivate the transitions since in snapshot mode, transitions are treated as inactivated.
-        // They will be inactivated when the snapshot is cleared.
-        this._dropAllTransitions(false);
-        // Install the snapshot as "current"
-        this._alterCurrentStateViolently(this._transitionSnapshot);
-        const ranIntoNonMotionState = this._switchTo(transition);
-        return ranIntoNonMotionState;
-    }
-
-    /**
-     * A thing to note is `transitionSource` may not be `this._currentNode`.
-     */
-    private _takeCurrentTransitionSnapshot (transitionSource: MotionStateEval) {
-        const {
-            _currentTransitionPath: currentTransitionPath,
-            _currentTransitionToNode: currentTransitionToNode,
-            _transitionSnapshot: transitionSnapshot,
-        } = this;
-
-        assertIsTrue(currentTransitionPath.length !== 0);
-        assertIsTrue(currentTransitionToNode && currentTransitionToNode.kind === NodeKind.animation);
-
-        let fromState = transitionSource;
-        let fromTransitionIndex = 0;
-        for (let iTransition = 0; iTransition < currentTransitionPath.length; ++iTransition) {
-            const { to: toState } = currentTransitionPath[iTransition];
-            if (toState.kind !== NodeKind.animation) {
-                continue;
-            }
-            const {
-                duration: transitionDuration,
-                normalizedDuration,
-                normalizedElapsedTime,
-            } = currentTransitionPath[fromTransitionIndex];
-            let ratio = 0.0;
-            if (transitionDuration <= 0) {
-                ratio = 1.0;
-            } else {
-                const durationSeconds = normalizedDuration ? transitionDuration * fromState.duration : transitionDuration;
-                const progressSeconds = normalizedElapsedTime * durationSeconds;
-                const remain = durationSeconds - progressSeconds;
-                assertIsTrue(remain >= 0.0);
-                ratio = progressSeconds / durationSeconds;
-                assertIsTrue(ratio >= 0.0 && ratio <= 1.0);
-            }
-            transitionSnapshot.enqueue(currentTransitionToNode, ratio);
-            fromState = toState;
-            fromTransitionIndex = iTransition + 1;
-        }
-
-        transitionSnapshot.transferTransitions(currentTransitionPath);
-    }
-
-    private _accumulateCurrentStateDeltaTime (deltaTime: number) {
-        const { _currentNode: currentNode } = this;
-        this._fromUpdated = true;
-        this._fromUpdateDeltaTime += deltaTime;
-        if (currentNode.kind === NodeKind.animation) {
-            currentNode.updateFromPort(deltaTime);
-        }
+        this.passthroughWeight = stateUpdateContext.passthroughWeight;
     }
 
     private _resetTriggersOnTransition (transition: TransitionEval) {
@@ -1949,8 +1509,8 @@ class LayerEval {
         switch (node.kind) {
         default:
             break;
-        case NodeKind.animation: {
-            node.components.callMotionStateEnterMethods(controller, node.getToPortStatus());
+        case NodeKind.port: {
+            node.host.components.callMotionStateEnterMethods(controller, node.getStatus());
             break;
         }
         case NodeKind.entry:
@@ -1959,13 +1519,13 @@ class LayerEval {
         }
     }
 
-    private _callExitMethods (node: NodeEval, fromPort: boolean) {
+    private _callExitMethods (node: NodeEval) {
         const { _controller: controller } = this;
         switch (node.kind) {
         default:
             break;
-        case NodeKind.animation: {
-            node.components.callMotionStateExitMethods(controller, fromPort ? node.getFromPortStatus() : node.getToPortStatus());
+        case NodeKind.port: {
+            node.host.components.callMotionStateExitMethods(controller, node.getStatus());
             break;
         }
         case NodeKind.exit:
@@ -1975,7 +1535,7 @@ class LayerEval {
     }
 }
 
-type ConcreteState = MotionStateEval | PoseStateEval | EmptyStateEval;
+type ConcreteState = AnimationPortEval | PoseStateEval | EmptyStateEval;
 
 enum TickTransitionResultAction {
     CONTINUE,
@@ -2010,42 +1570,14 @@ class TickTransitionResultCache {
 }
 
 function isConcreteState (stateEval: NodeEval): stateEval is ConcreteState  {
-    return stateEval.kind === NodeKind.animation
+    return stateEval.kind === NodeKind.port
         || stateEval.kind === NodeKind.empty
-        || stateEval.kind === NodeKind.poseState
-        || stateEval.kind === NodeKind.transitionSnapshot;
+        || stateEval.kind === NodeKind.poseState;
 }
 
 export {
     LayerEval as TopLevelStateMachineEvaluation,
 };
-
-/**
- * Gets the motion of current motion state or transition snapshot
- * whose outgoing transitions, called "interruption source", will be inspected to
- * detect the interrupting transition.
- */
-function getInterruptionSourceMotion (state: MotionStateEval | TransitionSnapshotEval | PoseStateEval) {
-    // If current state is a motion state, then it's the result.
-    // Otherwise the current state is a transition snapshot --
-    // we support nested interruptions, eg,
-    // _A->B_ was interrupted by _B->C_,
-    // then _(A->B)->C_ can be interrupted further by _C->D_.
-    // In such cases, we need to decide which transition could interrupt _(A->B)->C_.
-    // Outgoing transitions from destination motion are always inspected.
-    // And as the code following suggested, we order that:
-    // outgoing transitions from **the first** motion of "current transition snapshot"
-    // are also inspected. No other transitions are considered.
-    // This means for instance, in above example,
-    // _(A->B)->C_ can and can only be further interrupted by:
-    // - _A->D_, since it's outgoing from _A_;
-    // - _C->D_, since it's outgoing from _D_.
-    // However it can not be interrupted by _B->C_.
-    //
-    // > Tip: The term "nested interruption" was taken from here:
-    // > https://stackoverflow.com/a/24128928
-    return state.kind === NodeKind.animation || state.kind === NodeKind.poseState ? state : state.first;
-}
 
 function createStateStatusCache (): MotionStateStatus {
     return {
@@ -2130,7 +1662,9 @@ class InterruptingTransitionMatchCache {
 const interruptingTransitionMatchCache = new InterruptingTransitionMatchCache();
 
 enum NodeKind {
-    entry, exit, any, animation,
+    entry, exit, any,
+    motion,
+    port,
     empty,
     transitionSnapshot,
     poseState,
@@ -2161,13 +1695,20 @@ export class StateEval {
     public transitionOutFinishedEvent: AnimationGraphEvent | undefined = undefined;
 
     /**
+     * Governed by `ActivatedStateTracking`.
+     */
+    public activationTrackingIndex = -1;
+
+    /**
+     * Governed by `ActivatedStateTracking`.
+     */
+    public weight = Number.NaN;
+
+    /**
      * Should be called once a state was queued into transition sequence
      * or is marked as current node.
      */
     public increaseRunningReference () {
-        if (this._runningReferences === 0) {
-            this._weightUsedInCondition = 0.0;
-        }
         ++this._runningReferences;
     }
 
@@ -2179,29 +1720,129 @@ export class StateEval {
         assertIsTrue(this._runningReferences > 0);
         --this._runningReferences;
         if (this._runningReferences === 0) {
-            this._weightUsedInCondition = Number.NaN;
+            this._accumulatedUpdateTime = 0.0;
         }
+    }
+
+    public hasAnyRunningReference () {
+        return this._runningReferences > 0;
     }
 
     public get weightUsedInCondition () {
-        assertIsTrue(!Number.isNaN(this._weightUsedInCondition));
-        return this._weightUsedInCondition;
+        assertIsTrue(!Number.isNaN(this.weight));
+        return this.weight;
     }
 
-    public resetWeightUsedInCondition (weight: 0.0 | 1.0) {
-        if (DEBUG) {
-            assertIsTrue(this._runningReferences > 0);
-        }
-        this._weightUsedInCondition = weight;
+    public accumulateUpdateTime (deltaTime: number) {
+        this._accumulatedUpdateTime += deltaTime;
     }
 
-    public addWeightUsedInCondition (value: number) {
-        assertIsTrue(!Number.isNaN(this._weightUsedInCondition));
-        this._weightUsedInCondition += value;
+    public update (context: StateUpdateContext) {
+        const {
+            _accumulatedUpdateTime: accumulatedUpdateTime,
+            weight,
+        } = this;
+        assertIsTrue(!Number.isNaN(weight));
+        this._accumulatedUpdateTime = 0.0;
+        this.doUpdate(context, accumulatedUpdateTime, weight);
     }
+
+    protected doUpdate (context: StateUpdateContext, deltaTime: number, stateWeight: number) { }
 
     private _runningReferences = 0;
-    private _weightUsedInCondition = Number.NaN;
+    private _accumulatedUpdateTime = 0.0;
+
+    protected _transferAccumulatedUpdateTime (target: StateEval) {
+        assertIsTrue(!target.hasAnyRunningReference());
+        target._accumulatedUpdateTime = this._accumulatedUpdateTime;
+    }
+}
+
+class StateActivationTracker {
+    constructor () {
+        if (DEBUG) {
+            this._isSealed_debug = true;
+        }
+    }
+
+    /**
+     * Gets the activated states count.
+     */
+    get activatedStateCount () {
+        return this._states.length;
+    }
+
+    /**
+     * Gets the activated states. Only elements at [0, this.stateCount) are valid.
+     */
+    get activatedStates () {
+        if (DEBUG) {
+            assertIsTrue(this._isSealed_debug, `The tracker has not been sealed.`);
+        }
+
+        return this._states as readonly NodeEval[];
+    }
+
+    /**
+     * Releases the tracked states, mark them as inactivated.
+     */
+    public clear () {
+        if (DEBUG) {
+            assertIsTrue(this._isSealed_debug, `The tracker has not been sealed.`);
+
+            const nStates = this._states.length;
+            for (let iState = 0; iState < nStates; ++iState) {
+                const state = this._states[iState];
+                state.weight = Number.NaN;
+            }
+
+            this._isSealed_debug = false;
+        }
+
+        this._states.length = 0;
+    }
+
+    /**
+     * Marks the specified state as activated.
+     * A state can be activated more times. Its weights will be added up.
+     * @param state The state.
+     * @param weight The weight to add.
+     */
+    public add (state: NodeEval, weight: number) {
+        if (DEBUG) {
+            assertIsTrue(!this._isSealed_debug, `The tracker has been sealed.`);
+        }
+
+        if (state.activationTrackingIndex < 0) {
+            state.activationTrackingIndex = this._states.length;
+            state.weight = weight;
+            this._states.push(state);
+        } else {
+            state.weight += weight;
+        }
+    }
+
+    /**
+     * Seals the tracker. No more states can be marked as activated until a `clear()` call.
+     * @param deltaTime Update time to accumulate to the states.
+     */
+    public seal (deltaTime: number) {
+        if (DEBUG) {
+            assertIsTrue(!this._isSealed_debug, `The tracker been sealed.`);
+            this._isSealed_debug = true;
+        }
+
+        const nStates = this._states.length;
+        for (let iState = 0; iState < nStates; ++iState) {
+            const state = this._states[iState];
+            state.accumulateUpdateTime(deltaTime);
+            state.activationTrackingIndex = -1;
+        }
+    }
+
+    private _states: NodeEval[] = [];
+
+    private declare _isSealed_debug: boolean;
 }
 
 type StateMachineComponentMotionStateCallbackName = keyof Pick<
@@ -2277,9 +1918,9 @@ class InstantiatedComponents {
 
 interface StateMachineInfo {
     parent: StateMachineInfo | null;
-    entry: NodeEval;
-    exit: NodeEval;
-    any: NodeEval;
+    entry: SpecialStateEval;
+    exit: SpecialStateEval;
+    any: SpecialStateEval;
     components: InstantiatedComponents | null;
 }
 
@@ -2311,15 +1952,138 @@ class PoseStateEval extends StateEval {
         this._poseNodeEval?.reenter();
     }
 
-    public update (context: PoseNodeUpdateContext) {
-        this._poseNodeEval?.update(context);
-    }
-
     public evaluate (context: AnimationGraphEvaluationContext) {
         return this._poseNodeEval?.evaluate(context, PoseTransformSpaceRequirement.LOCAL) ?? null;
     }
 
+    protected doUpdate (context: StateUpdateContext, deltaTime: number, stateWeight: number): void {
+        if (!this._poseNodeEval) {
+            return;
+        }
+        const updateContext = context.animationUpdateContextGenerator.generate(
+            deltaTime,
+            context.outerContext.directiveAbsoluteWeight * stateWeight,
+        );
+        this._poseNodeEval.update(updateContext);
+    }
+
     private _poseNodeEval: PoseNode | undefined = undefined;
+}
+
+class AnimationPortEval extends StateEval {
+    constructor (
+        public readonly host: MotionStateEval,
+        node: MotionState,
+        motionPort: MotionPort | null,
+    ) {
+        super(node);
+        this.motionPort = motionPort;
+    }
+
+    public readonly kind = NodeKind.port;
+
+    public get duration () {
+        return this.host.duration;
+    }
+
+    public get progress () {
+        if (DEBUG) {
+            assertIsTrue(!Number.isNaN(this._progress));
+        }
+        return this._progress;
+    }
+
+    public set progress (value) {
+        if (DEBUG) {
+            assertIsTrue(!Number.isNaN(value));
+        }
+        this._progress = value;
+    }
+
+    public get time () {
+        return this.duration * this.progress;
+    }
+
+    public get isFromPort_debug () {
+        return this === this.host.fromPort;
+    }
+
+    public get isBusy_debug () {
+        return !Number.isNaN(this._progress);
+    }
+
+    public reset (at: number) {
+        assertIsTrue(!this.isBusy_debug, `You can not directly set this port since it's being used.`);
+        this._progress = at;
+    }
+
+    public evaluate (context: AnimationGraphEvaluationContext): Pose | null {
+        return this.motionPort?.evaluate(this.progress, context) ?? null;
+    }
+
+    public triggerUpdate (controller: AnimationController) {
+        this.host.components.callMotionStateUpdateMethods(controller, this.getStatus());
+    }
+
+    public switchPort () {
+        // Can only switch to port to from port.
+        assertIsTrue(!this.isFromPort_debug);
+
+        // The from port must be free now.
+        const { host: { fromPort } } = this;
+        assertIsTrue(!fromPort.hasAnyRunningReference());
+
+        // Transfer motion progress.
+        fromPort.reset(this.progress);
+        // Transfer accumulated update time.
+        this._transferAccumulatedUpdateTime(fromPort);
+
+        fromPort.increaseRunningReference();
+        this.decreaseRunningReference();
+
+        return fromPort;
+    }
+
+    public weightUsedInStateWeightCondition = 0.0;
+
+    public readonly statusCache: MotionStateStatus = createStateStatusCache();
+
+    public getStatus (): Readonly<MotionStateStatus> {
+        const { statusCache: stateStatus } = this;
+        if (DEBUG) {
+            stateStatus.__DEBUG_ID__ = this.host.name;
+        }
+        stateStatus.progress = normalizeProgress(this.progress);
+        return stateStatus;
+    }
+
+    protected doUpdate (context: StateUpdateContext, deltaTime: number, stateWeight: number): void {
+        this.progress = calcProgressUpdate(
+            this.progress,
+            this.duration,
+            deltaTime * this.host.speed,
+        );
+
+        this.triggerUpdate(context.controller);
+    }
+
+    private readonly motionPort: MotionPort | null = null;
+
+    private _progress = Number.NaN;
+
+    /** @internal */
+    public _decreaseRunningReference_debug () {
+        super.decreaseRunningReference();
+        if (!this.hasAnyRunningReference()) {
+            this._progress = Number.NaN;
+        }
+    }
+}
+
+if (DEBUG) {
+    AnimationPortEval.prototype.decreaseRunningReference = function decreaseRunningReference (this: AnimationPortEval) {
+        this._decreaseRunningReference_debug();
+    };
 }
 
 export class MotionStateEval extends StateEval {
@@ -2347,15 +2111,16 @@ export class MotionStateEval extends StateEval {
 
         this._source = sourceEval;
 
-        this._fromPort = new MotionStateEvalPort(sourceEval?.createPort() ?? null);
-        this._toPort = new MotionStateEvalPort(sourceEval?.createPort() ?? null);
+        this._fromPort = new AnimationPortEval(this, node, sourceEval?.createPort() ?? null);
+        this._toPort = new AnimationPortEval(this, node, sourceEval?.createPort() ?? null);
 
         this.components = new InstantiatedComponents(node);
 
-        assignEvents(this, node);
+        assignEvents(this._fromPort, node);
+        assignEvents(this._toPort, node);
     }
 
-    public readonly kind = NodeKind.animation;
+    public readonly kind = NodeKind.motion;
 
     public declare components: InstantiatedComponents;
 
@@ -2363,86 +2128,16 @@ export class MotionStateEval extends StateEval {
         return this._source?.duration ?? 0.0;
     }
 
-    get fromPortTime () {
-        return this._fromPort.progress * this.duration;
+    get speed () {
+        return this._speed;
     }
 
-    get toPortTime () {
-        if (DEBUG) {
-            // See `this.finishTransition()`
-            assertIsTrue(!Number.isNaN(this._toPort.progress));
-        }
-        return this._toPort.progress * this.duration;
+    get fromPort () {
+        return this._fromPort;
     }
 
-    public updateFromPort (deltaTime: number) {
-        this._fromPort.progress = calcProgressUpdate(
-            this._fromPort.progress,
-            this.duration,
-            deltaTime * this._speed,
-        );
-    }
-
-    public updateToPort (deltaTime: number) {
-        if (DEBUG) {
-            // See `this.finishTransition()`
-            assertIsTrue(!Number.isNaN(this._toPort.progress));
-        }
-        this._toPort.progress = calcProgressUpdate(
-            this._toPort.progress,
-            this.duration,
-            deltaTime * this._speed,
-        );
-    }
-
-    public triggerFromPortUpdate (controller: AnimationController) {
-        this.components.callMotionStateUpdateMethods(controller, this.getFromPortStatus());
-    }
-
-    public triggerToPortUpdate (controller: AnimationController) {
-        this.components.callMotionStateUpdateMethods(controller, this.getToPortStatus());
-    }
-
-    public getFromPortStatus (): Readonly<MotionStateStatus> {
-        return this._fromPort.getStatus(this.name);
-    }
-
-    public getToPortStatus (): Readonly<MotionStateStatus> {
-        if (DEBUG) {
-            // See `this.finishTransition()`
-            assertIsTrue(!Number.isNaN(this._toPort.progress));
-        }
-        return this._toPort.getStatus(this.name);
-    }
-
-    public resetToPort (at: number) {
-        this._toPort.progress = at;
-    }
-
-    public debugResetFromPort () {
-        this._fromPort.progress = Number.NaN;
-    }
-
-    public finishTransition () {
-        this._fromPort.progress = this._toPort.progress;
-        if (DEBUG) {
-            // Well, this statement exists for debugging purpose.
-            // Once the transition was finished, this method is called to
-            // switch this motion from "target" to "source".
-            // After, this motion can no longer be used as "target"
-            // unless `this.resetToPort()` is called.
-            // Let's set progress of this motion's "to port" to NaN,
-            // to catch such a violation.
-            this._toPort.progress = Number.NaN;
-        }
-    }
-
-    public sampleFromPort (context: AnimationGraphEvaluationContext): Pose | null {
-        return this._fromPort.evaluate(context) ?? null;
-    }
-
-    public sampleToPort (context: AnimationGraphEvaluationContext): Pose | null {
-        return this._toPort.evaluate(context) ?? null;
+    get toPort () {
+        return this._toPort;
     }
 
     public getClipStatuses (baseWeight: number): Iterable<ClipStatus> {
@@ -2461,8 +2156,8 @@ export class MotionStateEval extends StateEval {
     }
 
     private _source: MotionEval | null = null;
-    private _fromPort: MotionStateEvalPort;
-    private _toPort: MotionStateEvalPort;
+    private _fromPort: AnimationPortEval;
+    private _toPort: AnimationPortEval;
     private _baseSpeed = 1.0;
     private _speed = 1.0;
 
@@ -2471,44 +2166,13 @@ export class MotionStateEval extends StateEval {
     }
 }
 
-class MotionStateEvalPort {
-    constructor (motionPort: MotionPort | null) {
-        this.motionPort = motionPort;
-    }
-
-    public readonly motionPort: MotionPort | null = null;
-
-    public get progress () {
-        if (DEBUG) {
-            // See `this.finishTransition()`
-            assertIsTrue(!Number.isNaN(this._progress));
-        }
-        return this._progress;
-    }
-
-    public set progress (value) {
-        this._progress = value;
-    }
-
-    public weightUsedInStateWeightCondition = 0.0;
-
-    public readonly statusCache: MotionStateStatus = createStateStatusCache();
-
-    public evaluate (context: AnimationGraphEvaluationContext) {
-        return this.motionPort?.evaluate(this.progress, context);
-    }
-
-    public getStatus (name: string): Readonly<MotionStateStatus> {
-        const { statusCache: stateStatus } = this;
-        if (DEBUG) {
-            stateStatus.__DEBUG_ID__ = name;
-        }
-        stateStatus.progress = normalizeProgress(this.progress);
-        return stateStatus;
-    }
-
-    private _progress = Number.NaN;
+function getAutoForwardStateOfTransitionDestination (state: TransitionEval['to']) {
+    return state.kind === NodeKind.motion ? state.toPort : state;
 }
+
+export type VeryFirstState = SpecialStateEval | AnimationPortEval | PoseStateEval | TransitionSnapshotEval | EmptyStateEval;
+
+export type TransitionDestinationState = | SpecialStateEval | AnimationPortEval | PoseStateEval | EmptyStateEval;
 
 function calcProgressUpdate (currentProgress: number, duration: number, deltaTime: number) {
     if (duration === 0.0) {
@@ -2541,10 +2205,14 @@ export class EmptyStateEval extends StateEval {
     constructor (node: State) {
         super(node);
     }
+
+    protected doUpdate (context: StateUpdateContext, deltaTime: number, stateWeight: number): void {
+        context.passthroughWeight -= stateWeight;
+    }
 }
 
 class QueuedMotion {
-    constructor (public motion: MotionStateEval, public weight: number) {
+    constructor (public motion: AnimationPortEval, public weight: number, public progress: number) {
     }
 }
 
@@ -2577,7 +2245,7 @@ class TransitionSnapshotEval extends StateEval {
                 weight: snapshotWeight,
             } = queue[iQueuedMotions];
             // Here implies: motions added to snapshot should have been switched from "target" to "source".
-            const queuedMotionPose = motion.sampleFromPort(context) ?? context.pushDefaultedPose();
+            const queuedMotionPose = motion.evaluate(context) ?? context.pushDefaultedPose();
             sumWeight += snapshotWeight;
             if (!finalPose) {
                 finalPose = queuedMotionPose;
@@ -2594,39 +2262,45 @@ class TransitionSnapshotEval extends StateEval {
 
     public clear () {
         this._queue.length = 0;
-
-        const { _heldTransitions: heldTransitions } = this;
-        const nTransitions = heldTransitions.length;
-        for (let iTransition = 0; iTransition < nTransitions; ++iTransition) {
-            heldTransitions[iTransition].activated = false;
-        }
+        this._lastItemToFreeze = -1;
     }
 
-    public enqueue (state: MotionStateEval, weight: number) {
+    public enqueue (state: AnimationPortEval, weight: number) {
         const { _queue: queue } = this;
         const nQueue = queue.length;
         const complementWeight = 1.0 - weight;
         for (let iQueuedMotions = 0; iQueuedMotions < nQueue; ++iQueuedMotions) {
             queue[iQueuedMotions].weight *= complementWeight;
         }
-        queue.push(new QueuedMotion(state, weight));
+        const motionProgress = state.progress;
+        queue.push(new QueuedMotion(
+            state.host.fromPort,
+            weight,
+            motionProgress,
+        ));
+        if (this._lastItemToFreeze < 0) {
+            this._lastItemToFreeze = nQueue;
+        }
     }
 
-    public transferTransitions (transitions: readonly TransitionEval[]) {
-        if (DEBUG) {
-            assertIsTrue(transitions.every((transition) => transition.activated));
+    public freeze () {
+        const { _queue: queue } = this;
+        const nQueue = queue.length;
+        for (let iQueuedMotions = this._lastItemToFreeze; iQueuedMotions < nQueue; ++iQueuedMotions) {
+            const item = queue[iQueuedMotions];
+            item.motion.reset(item.progress);
         }
-        this._heldTransitions.push(...transitions);
+        this._lastItemToFreeze = -1;
     }
 
     private _queue: QueuedMotion[] = [];
-    private _heldTransitions: TransitionEval[] = [];
+    private _lastItemToFreeze = -1;
 }
 
-export type NodeEval = MotionStateEval | SpecialStateEval | EmptyStateEval | TransitionSnapshotEval | PoseStateEval;
+export type NodeEval = MotionStateEval | SpecialStateEval | EmptyStateEval | TransitionSnapshotEval | PoseStateEval | AnimationPortEval;
 
 interface TransitionEval {
-    to: NodeEval;
+    to: MotionStateEval | SpecialStateEval | EmptyStateEval | PoseStateEval;
     duration: number;
     normalizedDuration: boolean;
     conditions: ConditionEval[];
@@ -2640,12 +2314,13 @@ interface TransitionEval {
     triggers: string[] | undefined;
     interruption: TransitionInterruptionSource;
 
-    /**
-     * Whether the transition is activated, if it has already been activated, it can not be activated(matched) again.
-     */
-    activated: boolean;
+    startEvent: AnimationGraphEvent | undefined;
 
-    normalizedElapsedTime: number;
+    endEvent: AnimationGraphEvent | undefined;
+}
+
+class TransitionInstance {
+    public normalizedElapsedTime = 0.0;
 
     /**
      * Weight of destination weight.
@@ -2653,17 +2328,63 @@ interface TransitionEval {
      * - Assigned in transition update.
      * - Invalidated once transition dropped.
      */
-    destinationWeight: number;
+    public destinationWeight = 0.0;
 
-    /**
-     * Accumulated update delta time of the transition in this tick.
-     * Reset as 0 on transition activated or at the end of the tick.
-     */
-    updateDeltaTime: number;
+    public declare stub: TransitionEval;
 
-    startEvent: AnimationGraphEvent | undefined;
+    public declare destination: TransitionDestinationState;
 
-    endEvent: AnimationGraphEvent | undefined;
+    public static createPool (initialCapacity: number) {
+        const destructor = !DEBUG
+            ? undefined
+            : (transitionInstance: TransitionInstance) => {
+                transitionInstance.destinationWeight = Number.NaN;
+                transitionInstance.normalizedElapsedTime = Number.NaN;
+            };
+
+        const pool = new Pool<TransitionInstance>(
+            () => new TransitionInstance(),
+            initialCapacity,
+            destructor,
+        );
+
+        return pool;
+    }
+
+    public reset (transition: TransitionEval, destination: TransitionDestinationState) {
+        this.normalizedElapsedTime = 0.0;
+        this.destinationWeight = 0.0;
+        this.stub = transition;
+        this.destination = destination;
+    }
+}
+
+interface StateUpdateContext {
+    readonly outerContext: AnimationGraphUpdateContext;
+    readonly controller: AnimationController;
+    readonly animationUpdateContextGenerator: AnimationGraphUpdateContextGenerator;
+
+    passthroughWeight: number;
+}
+
+class StateUpdateContextGenerator implements StateUpdateContext {
+    declare outerContext: AnimationGraphUpdateContext;
+
+    declare controller: AnimationController;
+
+    public animationUpdateContextGenerator = new AnimationGraphUpdateContextGenerator();
+
+    public passthroughWeight = 1.0;
+
+    public generate (
+        outerContext: AnimationGraphUpdateContext,
+        controller: AnimationController,
+    ) {
+        this.outerContext = outerContext;
+        this.controller = controller;
+        this.passthroughWeight = 1.0;
+        return this;
+    }
 }
 
 export type { VarInstance } from './variable';

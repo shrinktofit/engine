@@ -7,7 +7,8 @@ import { AnimationGraphEvalMock } from "./utils/eval-mock";
 import { ConstantRealValueAnimationFixture, LinearRealValueAnimationFixture } from "./utils/fixtures";
 import { SingleRealValueObserver } from "./utils/single-real-value-observer";
 import '../../utils/matchers/value-type-asymmetric-matchers';
-import { createAnimationGraph } from "./utils/factory";
+import { createAnimationGraph, StateParams, TransitionParams } from "./utils/factory";
+import './pose-expr-graph/utils/factories/all';
 
 const DEFAULT_VALUE = 6.666;
 
@@ -775,6 +776,94 @@ describe(`Transition sequence`, () => {
         evalMock.step(uniformTransitionDuration * 0.1);
         evalMock.controller.setValue('transitionId', TransitionId.C_B);
         evalMock.step(uniformTransitionDuration * 0.1);
+    });
+});
+
+describe(`Circular transitions`, () => {
+    test(`Rule: loop transition sequence having no required match time does form infinite loop`, () => {
+
+        const fixtures = {
+            first_state_animation: new LinearRealValueAnimationFixture(1, 2, 3),
+            verbose_loop_prefix_length: 3,
+        };
+
+        const verboseLoopPrefixPathConfig = Array.from({ length: fixtures.verbose_loop_prefix_length }, (_, verboseIndex) => {
+            const t = verboseIndex / fixtures.verbose_loop_prefix_length;
+            return {
+                stateName: `verbose-${verboseIndex}`,
+                transitionDuration: lerp(0.1, 0.9, t) * fixtures.first_state_animation.duration,
+                animation: new LinearRealValueAnimationFixture(
+                    0.1 * verboseIndex,
+                    0.2 * verboseIndex,
+                    fixtures.first_state_animation.duration * lerp(1.2, 2, t),
+                ),
+            };
+        });
+
+        const lastLoopPathDuration = 0.95 * fixtures.first_state_animation.duration;
+
+        const observer = new SingleRealValueObserver();
+
+        const animationGraph = createAnimationGraph({
+            layers: [{
+                stateMachine: {
+                    states: {
+                        'first': { type: 'pose', graph: { rootNode: { type: 'motion', motion: fixtures.first_state_animation.createMotion(observer.getCreateMotionContext()) } } },
+                        ...verboseLoopPrefixPathConfig.reduce((result, { stateName, animation }, verboseIndex) => {
+                            result[stateName] = { type: 'pose', graph: { rootNode: { type: 'motion', motion: animation.createMotion(observer.getCreateMotionContext()) } } };
+                            return result;
+                        }, {} as Record<string, StateParams>),
+                    },
+                    entryTransitions: [{ to: 'first' }],
+                    transitions: [
+                        ...verboseLoopPrefixPathConfig.map(({ stateName, transitionDuration }, verboseIndex): TransitionParams => {
+                            return {
+                                from: verboseIndex === 0 ? 'first' : verboseLoopPrefixPathConfig[verboseIndex - 1].stateName,
+                                to: stateName,
+                                duration: transitionDuration,
+                                conditions: [{ type: 'unary', operator: 'to-be-true', 'operand': { type: 'constant', value: true } }],
+                            };
+                        }),
+                        {
+                            from: verboseLoopPrefixPathConfig.length === 0 ? 'first' : verboseLoopPrefixPathConfig[verboseLoopPrefixPathConfig.length - 1].stateName,
+                            to: 'first',
+                            duration: lastLoopPathDuration,
+                            conditions: [{ type: 'unary', operator: 'to-be-true', 'operand': { type: 'constant', value: true } }],
+                        },
+                    ],
+                },
+            }],
+        });
+
+        animationGraph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
+
+        const evalMock = new AnimationGraphEvalMock(observer.root, animationGraph);
+
+        const loopFormTime: number[] = [];
+        [0.3, 0.5, 0.9].forEach((t, tickIndex) => {
+            loopFormTime.push(evalMock.current);
+
+            evalMock.goto(verboseLoopPrefixPathConfig[0].transitionDuration * t);
+
+            const tail: [number, number][] = [];
+            for (let iTick = 0; iTick <= tickIndex; ++iTick) {
+                const circularElapsedTime = evalMock.current - loopFormTime[iTick];
+                tail.push(
+                    ...verboseLoopPrefixPathConfig.map(({ animation, transitionDuration }) => {
+                        return [
+                            animation.getExpected(evalMock.current),
+                            circularElapsedTime / transitionDuration,
+                        ] as [number, number];
+                    }),
+                    [fixtures.first_state_animation.getExpected(evalMock.current), circularElapsedTime / lastLoopPathDuration],
+                );
+            }
+
+            expect(observer.value).toBeCloseTo(calculateExpectedTransitionSequenceResult(
+                fixtures.first_state_animation.getExpected(evalMock.current),
+                ...tail,
+            ), 5);
+        });
     });
 });
 

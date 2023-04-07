@@ -265,7 +265,7 @@ export type StateParams = ({
     name?: string;
 };
 
-type TransitionParams = {
+export type TransitionParams = {
     from: string;
     to: string;
 } & TransitionAttributes;
