@@ -250,17 +250,20 @@ export class AnimationGraphPoseLayoutMaintainer {
         // In other words, origin is not bound by default
         // except that you explicitly bind to it.
         if (node !== origin) {
-            for (let parent: Node | null = node.parent; ; parent = parent.parent) {
-                if (DEBUG) {
-                    --debugIntegrityCheckLengthOfPathToOrigin;
-                    assertIsTrue(debugIntegrityCheckLengthOfPathToOrigin >= 0);
-                }
+            if (DEBUG) {
+                --debugIntegrityCheckLengthOfPathToOrigin;
+                assertIsTrue(debugIntegrityCheckLengthOfPathToOrigin >= 0);
+            }
+
+            for (let parent: Node | null = node.parent; parent !== origin; parent = parent.parent) {
                 assertIsTrue(parent);
                 // But discard the result.
                 // eslint-disable-next-line no-void
                 void this._getOrCreateTransformBinding(parent);
-                if (parent === origin) {
-                    break;
+
+                if (DEBUG) {
+                    --debugIntegrityCheckLengthOfPathToOrigin;
+                    assertIsTrue(debugIntegrityCheckLengthOfPathToOrigin >= 0);
                 }
             }
         }
