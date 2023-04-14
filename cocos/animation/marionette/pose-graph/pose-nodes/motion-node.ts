@@ -7,7 +7,7 @@ import { Motion, MotionEval, MotionPort } from '../../motion';
 import { PoseNode, PoseNodeBindingContext, PoseNodeEvaluationContext, PoseNodeUpdateContext } from '../pose-node';
 import { MotionCoordination } from '../coordination/motion-coordination';
 import { RuntimeCoordinationRecord } from '../coordination/runtime-coordinator';
-import { poseGraphCreateNodeFactory } from '../pose-graph-node-common';
+import { poseGraphCreateNodeFactory, poseGraphNodeAppearance } from '../pose-graph-node-common';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { getEnterInfo, makeCreateNodeFactory } from './play-or-sample-motion-pose-node-shared';
 
@@ -20,6 +20,9 @@ import { getEnterInfo, makeCreateNodeFactory } from './play-or-sample-motion-pos
         return node;
     },
 ))
+@poseGraphNodeAppearance({
+    themeColor: '#FFFFFF',
+})
 export class MotionNode extends PoseNode {
     @serializable
     @editable
