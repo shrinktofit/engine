@@ -43,6 +43,7 @@ import './exotic-animation/exotic-animation';
 import type { AnimationMask } from './marionette/animation-mask';
 import { getGlobalAnimationManager } from './global-animation-manager';
 import { EmbeddedPlayableState, EmbeddedPlayer } from './embedded-player/embedded-player';
+import { AuxiliaryCurve } from './auxiliary-curve';
 
 export declare namespace AnimationClip {
     export interface IEvent {
@@ -242,6 +243,24 @@ export class AnimationClip extends Asset {
     get [additiveSettingsTag] () {
         return this._additiveSettings;
     }
+
+    /**
+     * @zh 获取或设置该剪辑中存储的辅助曲线数组。
+     * @experimental
+     */
+    get auxiliaryCurves_experimental () {
+        return this.auxiliaryCurves as ReadonlyArray<AuxiliaryCurve>;
+    }
+
+    set auxiliaryCurves_experimental (value) {
+        this.auxiliaryCurves = value.slice();
+    }
+
+    /**
+     * @internal
+     */
+    @serializable
+    public auxiliaryCurves: AuxiliaryCurve[] = [];
 
     public onLoaded () {
         this.frameRate = this.sample;
@@ -693,6 +712,9 @@ export class AnimationClip extends Asset {
 
     @serializable
     private _additiveSettings = new AdditiveSettings();
+
+    @serializable
+    private _auxiliaryCurves: AuxiliaryCurve[] = [];
 
     private _runtimeEvents: {
         ratios: number[];

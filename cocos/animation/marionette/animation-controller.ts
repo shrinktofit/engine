@@ -28,9 +28,10 @@ import type { AnimationGraphRunTime } from './animation-graph';
 import { _decorator, assertIsNonNullable, assertIsTrue } from '../../core';
 import { AnimationGraphEval } from './graph-eval';
 import type { MotionStateStatus, TransitionStatus, ClipStatus, ReadonlyClipOverrideMap } from './graph-eval';
-import { Value } from './variable';
+import { PrimitiveValue, Value } from './variable';
 import { AnimationGraphVariant, AnimationGraphVariantRunTime } from './animation-graph-variant';
 import { AnimationGraphLike } from './animation-graph-like';
+import { createGraphEventTarget, GraphEventReceiver, GraphEventTarget } from './event';
 
 const { ccclass, menu, type, serializable, editable, formerlySerializedAs } = _decorator;
 
@@ -76,6 +77,12 @@ export class AnimationController extends Component {
 
     private _graphEval: AnimationGraphEval | null = null;
 
+    private _graphEventTarget = createGraphEventTarget();
+
+    public get graphEventReceiver () {
+        return this._graphEventTarget as GraphEventReceiver;
+    }
+
     /**
      * @zh 获取动画图的层级数量。如果控制器没有指定动画图，则返回 0。
      * @en Gets the count of layers in the animation graph.
@@ -100,7 +107,7 @@ export class AnimationController extends Component {
                 assertIsTrue(graph instanceof AnimationGraph);
                 originalGraph = graph;
             }
-            const graphEval = new AnimationGraphEval(originalGraph, this.node, this, clipOverrides);
+            const graphEval = new AnimationGraphEval(originalGraph, this.node, this, clipOverrides, this._graphEventTarget);
             this._graphEval = graphEval;
         }
     }
@@ -142,7 +149,24 @@ export class AnimationController extends Component {
      * animationController.setValue('attack', true);
      * ```
      */
-    public setValue (name: string, value: Value) {
+    public setValue (name: string, value: PrimitiveValue) {
+        return this.setValue_experimental(name, value);
+    }
+
+    /**
+     * @zh 设置动画图实例中变量的值。
+     * @en Sets the value of the variable in the animation graph instance.
+     * @param name @en Variable's name. @zh 变量的名称。
+     * @param value @en Variable's value. @zh 变量的值。
+     * @example
+     * ```ts
+     * animationController.setValue('speed', 3.14);
+     * animationController.setValue('crouching', true);
+     * animationController.setValue('attack', true);
+     * ```
+     * @experimental
+     */
+    public setValue_experimental (name: string, value: Value) {
         const { _graphEval: graphEval } = this;
         assertIsNonNullable(graphEval);
         graphEval.setValue(name, value);
@@ -275,5 +299,22 @@ export class AnimationController extends Component {
         const { _graphEval: graphEval } = this;
         assertIsNonNullable(graphEval);
         graphEval.overrideClips(overrides);
+    }
+
+    /**
+     * @zh 获取指定辅助曲线的当前值。
+     * @en Gets the current value of specified auxiliary curve.
+     * @param curveName @en Name of the auxiliary curve. @zh 辅助曲线的名字。
+     * @returns @zh 指定辅助曲线的当前值，如果指定辅助曲线不存在或动画图为空则返回 0。
+     * @en The current value of specified auxiliary curve,
+     * or 0 if specified adjoint curve does not exist or if the animation graph is null.
+     * @experimental
+     */
+    public getAuxiliaryCurveValue_experimental (curveName: string) {
+        const { _graphEval: graphEval } = this;
+        if (!graphEval) {
+            return 0.0;
+        }
+        return graphEval.getAuxiliaryCurveValue(curveName);
     }
 }

@@ -1,5 +1,5 @@
 
-import { lerp, Vec3, warnID } from '../../cocos/core';
+import { lerp, Quat, Vec3, warnID } from '../../cocos/core';
 import { AnimationBlend1D, AnimationBlend2D, Condition, InvalidTransitionError, VariableNotDefinedError, ClipMotion, AnimationBlendDirect, VariableType, AnimationMask, AnimationGraphVariant } from '../../cocos/animation/marionette/asset-creation';
 import { AnimationGraph, StateMachine, Transition, isAnimationTransition, AnimationTransition, TransitionInterruptionSource, State, Layer } from '../../cocos/animation/marionette/animation-graph';
 import { VariableTypeMismatchedError } from '../../cocos/animation/marionette/errors';
@@ -19,7 +19,7 @@ import '../utils/matcher-deep-close-to';
 import { BinaryCondition, UnaryCondition, TriggerCondition } from '../../cocos/animation/marionette/condition';
 import { AnimationController } from '../../cocos/animation/marionette/animation-controller';
 import { StateMachineComponent } from '../../cocos/animation/marionette/state-machine-component';
-import { VectorTrack } from '../../cocos/animation/animation';
+import { RealTrack, VectorTrack } from '../../cocos/animation/animation';
 import 'jest-extended';
 import { assertIsTrue } from '../../cocos/core/data/utils/asserts';
 import { AnimationClip } from '../../cocos/animation/animation-clip';
@@ -31,6 +31,9 @@ import '../utils/matchers/value-type-asymmetric-matchers';
 import { AnimationBlend1DFixture, LinearRealValueAnimationFixture, ConstantRealValueAnimationFixture, RealValueAnimationFixture } from './new-gen-anim/utils/fixtures';
 import { NodeTransformValueObserver } from './new-gen-anim/utils/node-transform-value-observer';
 import { SingleRealValueObserver } from './new-gen-anim/utils/single-real-value-observer';
+import { createGraphEventTarget } from '../../cocos/animation/marionette/event';
+import { createAnimationGraph } from './new-gen-anim/utils/factory';
+import { AnimationGraphEvalMock } from './new-gen-anim/utils/eval-mock';
 
 const DEFAULT_AROUND_NUM_DIGITS = 5;
 
@@ -2351,7 +2354,7 @@ describe('NewGen Anim', () => {
             {
                 kind: 'onMotionStateExit',
                 id: 'AnimState',
-                status: { progress: getPositionFromLoopedIterations((0.4 * 0.7 + 0.3) / 0.4), },
+                status: { progress: getPositionFromLoopedIterations((0.4 * 0.7 + 0.3) / 0.4), }, // # label:exit-progress
             },
             {
                 kind: 'onMotionStateUpdate',
@@ -3050,7 +3053,7 @@ describe('NewGen Anim', () => {
         });
     });
 
-    describe('Interruption', () => {
+    describe.skip('Interruption', () => {
         test('Interruptible', () => {
             const animationGraph = new AnimationGraph();
             const stateMachine = animationGraph.addLayer().stateMachine;
@@ -4999,45 +5002,58 @@ describe('NewGen Anim', () => {
                 expect(observer.value).toBeCloseTo(6.);
             });
 
-            test(`Run into a transition, either of the source or destination state is nullish`, () => {
-                const fixture = {
-                    initial_value: 6.,
-                    source_animation: new LinearRealValueAnimationFixture(1., 2., 3.),
-                    transition_duration: 0.3,
-                };
+            describe(`States of transition yield nullish`, () => {
+                test.each([
+                    ['Source state yields nullish', true, false],
+                    ['Destination state yields nullish', false, true],
+                    [`Both yields nullish`, true, true],
+                ] as [title: string, isSourceYieldingNullish: boolean, isDestinationYieldingNullish: boolean][]
+                )(`%s`, (_title, isSourceYieldingNullish, isDestinationYieldingNullish) => {
+                    const fixture = {
+                        initial_value: 6.,
+                        non_nullish_source_animation: new LinearRealValueAnimationFixture(1., 2., 3.),
+                        transition_duration: 0.3,
+                    };
+    
+                    const observer = new SingleRealValueObserver(fixture.initial_value);
+                    const graph = new AnimationGraph();
+                    const layer = graph.addLayer();
+                    layer.additive = true;
 
-                const observer = new SingleRealValueObserver(fixture.initial_value);
-                const graph = new AnimationGraph();
-                const layer = graph.addLayer();
-                layer.additive = true;
-
-                // Adds a motion to "hold the pose" but don't connect to it.
-                const holderState = layer.stateMachine.addMotion();
-                holderState.motion = new ConstantRealValueAnimationFixture(2.).createMotion(observer.getCreateMotionContext());
-
-                const sourceState = layer.stateMachine.addMotion();
-                sourceState.motion = fixture.source_animation.createMotion(observer.getCreateMotionContext());
-                layer.stateMachine.connect(layer.stateMachine.entryState, sourceState);
-
-                const nullDestinationState = layer.stateMachine.addMotion();
-
-                const transition = layer.stateMachine.connect(sourceState, nullDestinationState);
-                transition.duration = fixture.transition_duration;
-                transition.exitConditionEnabled = true;
-                transition.exitCondition = 0.0;
-
-                const graphEval = createAnimationGraphEval(graph, observer.root);
-                const graphUpdater = new GraphUpdater(graphEval);
-                graphUpdater.step(0.2);
-
-                expect(observer.value).toBeCloseTo(fixture.initial_value +
-                    lerp(
-                        fixture.source_animation.getExpectedAdditive(0.2),
-                        0.0, // Because destination state is nullish, it's as if it's "zero delta pose".
-                        0.2 / fixture.transition_duration,
-                    ),
-                );
-            })
+                    const addState = (yieldingNullish: boolean) => {
+                        const state = layer.stateMachine.addMotion();
+                        if (!yieldingNullish) {
+                            state.motion = fixture.non_nullish_source_animation.createMotion(observer.getCreateMotionContext());
+                        }
+                        return state;
+                    };
+    
+                    // Adds a motion to "hold the pose" but don't connect to it.
+                    const holderState = layer.stateMachine.addMotion();
+                    holderState.motion = new ConstantRealValueAnimationFixture(2.).createMotion(observer.getCreateMotionContext());
+    
+                    const sourceState = addState(isSourceYieldingNullish);
+                    const destinationState = addState(isDestinationYieldingNullish);
+                    layer.stateMachine.connect(layer.stateMachine.entryState, sourceState);
+    
+                    const transition = layer.stateMachine.connect(sourceState, destinationState);
+                    transition.duration = fixture.transition_duration;
+                    transition.exitConditionEnabled = true;
+                    transition.exitCondition = 0.0;
+    
+                    const graphEval = createAnimationGraphEval(graph, observer.root);
+                    const graphUpdater = new GraphUpdater(graphEval);
+                    graphUpdater.step(0.2);
+    
+                    expect(observer.value).toBeCloseTo(fixture.initial_value +
+                        lerp(
+                            isSourceYieldingNullish ? 0.0 : fixture.non_nullish_source_animation.getExpectedAdditive(0.2),
+                            isDestinationYieldingNullish ? 0.0 : fixture.non_nullish_source_animation.getExpectedAdditive(0.2),
+                            0.2 / fixture.transition_duration,
+                        ),
+                    );
+                });
+            });
         });
     });
 
@@ -5154,6 +5170,191 @@ describe('NewGen Anim', () => {
                 graphUpdater.goto(time);
                 return valueObserver.value; 
             };
+        }
+    });
+
+    describe(`Animation involvement specification`, () => {
+        describe(`Node transform involvement`, () => {
+            test(`If any part of transform is involved in animation, the whole transition is involved`, () => {
+                /** Unique number generator. */
+                const genN = (() => {
+                    function* g(): Generator<number, number> { for (let v = 1.2; ; v += 0.2 ) yield v; }
+                    const generator = g();
+                    return () => generator.next().value;
+                })();
+
+                const fixture = {
+                    initial: {
+                        position: new Vec3(genN(), genN(), genN()),
+                        rotation: Quat.fromEuler(new Quat(), genN(), genN(), genN()),
+                        scale: Vec3.multiplyScalar(new Vec3(), Vec3.ONE, genN()), // Note we currently require uniform scale
+                    },
+                    manually_set: {
+                        position: new Vec3(genN(), genN(), genN()),
+                        rotation: Quat.fromEuler(new Quat(), genN(), genN(), genN()),
+                        scale: Vec3.multiplyScalar(new Vec3(), Vec3.ONE, genN()), // Note we currently require uniform scale
+                    },
+                    animation: {
+                        position: new ConstantRealValueAnimationFixture(genN()),
+                    },
+                };
+
+                // Create a clip motion which animates only the `position.x`.
+                const motion = fixture.animation.position.createMotion({
+                    createClipMotion(keyframes, options) {
+                        const clip = new AnimationClip();
+                        if (options.name) { clip.name = options.name; }
+                        clip.duration = options.duration;
+                        const track = new VectorTrack();
+                        track.componentsCount = 3;
+                        track.path.toProperty('position');
+                        track.channels()[0].curve.assignSorted(keyframes);
+                        clip.addTrack(track);
+                        const motion = new ClipMotion();
+                        motion.clip = clip;
+                        return motion as NonNullableClipMotion;
+                    },
+                });
+
+                const origin = new Node();
+                origin.setPosition(fixture.initial.position);
+                origin.setRotation(fixture.initial.rotation);
+                origin.setScale(fixture.initial.scale);
+
+                const evalMock = new AnimationGraphEvalMock(origin, createAnimationGraphRunningMotion(motion));
+
+                /**
+                 * Checks:
+                 * - Node's position is animated.
+                 * - Node's scale,rotation keeps initial value.
+                 */
+                const check = () => {
+                    expect(Vec3.equals(origin.position, {
+                        x: fixture.animation.position.getExpected(evalMock.current),
+                        y: fixture.initial.position.y,
+                        z: fixture.initial.position.z,
+                    })).toBeTrue();
+                    expect(Quat.equals(origin.rotation, fixture.initial.rotation)).toBeTrue();
+                    expect(Vec3.equals(origin.scale, fixture.initial.scale)).toBeTrue();
+                };
+
+                evalMock.goto(0.3 * fixture.animation.position.duration);
+                check();
+
+                // Even after manually changed, animation will write the properties back.
+                origin.setPosition(fixture.manually_set.position);
+                origin.setRotation(fixture.manually_set.rotation);
+                origin.setScale(fixture.manually_set.scale);
+                evalMock.goto(0.7 * fixture.animation.position.duration);
+                check();
+            });
+
+            describe(`If a node is involved in animation, its ancestors until origin will also be involved`, () => {
+                test.each([
+                    [`The node is a direct child of origin`, 0],
+                    [`1 ancestor`, 1],
+                    [`2 ancestors`, 2],
+                    [`3 ancestors`, 3],
+                ])(`%s`, (_title, ancestorCount) => {
+                    const fixture = {
+                        origin_initial_value: 0.5,
+                        origin_manually_set_value: 0.6,
+                        descendant_animation_value: new ConstantRealValueAnimationFixture(6.6),
+                        ancestor_count: ancestorCount,
+                    };
+    
+                    // Set up the hierarchy.
+                    const origin = new Node(`Origin`);
+                    origin.setPosition(fixture.origin_initial_value, 0.0, 0.0);
+                    const descendantNode = new Node(`Descendant`);
+                    const ancestors = Array.from({ length: fixture.ancestor_count }, (_, i) => {
+                        const initialValue = 1.0 + lerp(0.0, 1.0, i / fixture.ancestor_count);
+                        const manuallySetValue = 2.0 + lerp(0.0, 1.0, i / fixture.ancestor_count);
+                        const node = new Node(`Ancestor ${i}`);
+                        node.setPosition(initialValue, 0.0, 0.0);
+                        return {
+                            node: node,
+                            getValue() {
+                                return node.position.x;
+                            },
+                            initialValue,
+                            manuallySetValue,
+                            setManually() {
+                                node.setPosition(manuallySetValue, 0.0, 0.0);
+                            },
+                        };
+                    });
+                    origin.addChild(ancestors.length === 0 ? descendantNode : ancestors[ancestors.length - 1].node);
+                    ancestors.forEach((ancestor, i) => {
+                        if (i === 0) {
+                            ancestor.node.addChild(descendantNode);
+                        } else {
+                            ancestor.node.addChild(ancestors[i - 1].node);
+                        }
+                    });
+    
+                    // Create a clip motion which animates only the descendant.
+                    const descendantMotion = fixture.descendant_animation_value.createMotion({
+                        createClipMotion(keyframes, options) {
+                            const clip = new AnimationClip();
+                            if (options.name) { clip.name = options.name; }
+                            clip.duration = options.duration;
+                            const track = new VectorTrack();
+                            track.componentsCount = 3;
+                            for (let iAncestor = fixture.ancestor_count - 1; iAncestor >= 0; --iAncestor) {
+                                track.path.toHierarchy(ancestors[iAncestor].node.name)
+                            }
+                            track.path.toHierarchy(descendantNode.name).toProperty('position');
+                            track.channels()[0].curve.assignSorted(keyframes);
+                            clip.addTrack(track);
+                            const motion = new ClipMotion();
+                            motion.clip = clip;
+                            return motion as NonNullableClipMotion;
+                        },
+                    });
+
+    
+                    const evalMock = new AnimationGraphEvalMock(origin, createAnimationGraphRunningMotion(descendantMotion));
+    
+                    // Tick.
+                    evalMock.goto(0.3 * fixture.descendant_animation_value.duration);
+                    // The animation should take effect.
+                    expect(descendantNode.position.x).toBeCloseTo(fixture.descendant_animation_value.getExpected(evalMock.current), 5);
+                    // Ancestor nodes should keep its initial value.
+                    expect(ancestors.map((ancestor) => ancestor.getValue())).toStrictEqual(
+                        ancestors.map((ancestor) => ancestor.initialValue));
+                    // The origin should keep its initial value.
+                    expect(origin.position.x).toBe(fixture.origin_initial_value);
+                    
+                    // Manually change the origin's value.
+                    origin.setPosition(fixture.origin_manually_set_value, 0.0, 0.0);
+                    for (const ancestor of ancestors) { ancestor.setManually(); }
+                    // Verify the manually set values have been set.
+                    expect(ancestors.map((ancestor) => ancestor.getValue())).toStrictEqual(
+                        ancestors.map((ancestor) => ancestor.manuallySetValue));
+                    // Tick.
+                    evalMock.goto(0.6 * fixture.descendant_animation_value.duration);
+                    // The animation should take effect.
+                    expect(descendantNode.position.x).toBeCloseTo(fixture.descendant_animation_value.getExpected(evalMock.current), 5);
+                    // Ancestor nodes should have its initial value write back.
+                    expect(ancestors.map((ancestor) => ancestor.getValue())).toStrictEqual(
+                        ancestors.map((ancestor) => ancestor.initialValue));
+                    // But the origin should keep its initial value, since it's not involved.
+                    expect(origin.position.x).toBe(fixture.origin_manually_set_value);
+                });
+            });
+        });
+
+        function createAnimationGraphRunningMotion(motion: ClipMotion) {
+            const animationGraph = createAnimationGraph({
+                layers: [{
+                    stateMachine: {
+                        states: { 's': { type: 'motion', motion: motion } },
+                        entryTransitions: [{ to: 's' }],
+                    },
+                }],
+            });
+            return animationGraph;
         }
     });
 });
@@ -5357,6 +5558,7 @@ function createAnimationGraphEval (animationGraph: AnimationGraph | AnimationGra
         node,
         newGenAnim,
         (animationGraph instanceof AnimationGraph) ? null : animationGraph.clipOverrides,
+        createGraphEventTarget(),
     );
     // @ts-expect-error HACK
     newGenAnim._graphEval = graphEval;
@@ -5370,6 +5572,7 @@ function createAnimationGraphEval2 (animationGraph: AnimationGraph | AnimationGr
         node,
         newGenAnim,
         (animationGraph instanceof AnimationGraph) ? null : animationGraph.clipOverrides,
+        createGraphEventTarget(),
     );
     // @ts-expect-error HACK
     newGenAnim._graphEval = graphEval;

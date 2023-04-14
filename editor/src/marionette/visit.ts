@@ -8,10 +8,13 @@ import {
     StateMachine,
     SubStateMachine,
     AnimationGraph,
+    PoseState,
 } from "../../../cocos/animation/marionette/animation-graph";
 import { ClipMotion } from "../../../cocos/animation/marionette/clip-motion";
 import { Motion } from "../../../cocos/animation/marionette/motion";
 import { MotionState } from "../../../cocos/animation/marionette/motion-state";
+import { PoseGraphNodeShell } from "../../../cocos/animation/marionette/pose-graph/node-shell";
+import { PoseNode } from "../../../cocos/animation/marionette/pose-graph/pose-node";
 import { EditorExtendableObject } from "../../../cocos/core/data/editor-extras-tag";
 
 export function* visitAnimationGraphEditorExtras(animationGraph: AnimationGraph): Generator<EditorExtendableObject> {
@@ -64,6 +67,10 @@ export function* visitAnimationClips(animationGraph: AnimationGraph): Generator<
                 if (motion) {
                     yield* visitMotion(motion);
                 }
+            } else if (state instanceof PoseState) {
+                for (const shell of state.poseGraph.shells()) {
+                    yield* visitPoseNode(shell);
+                }
             } else if (state instanceof SubStateMachine) {
                 yield* visitStateMachine(state.stateMachine);
             }
@@ -80,6 +87,15 @@ export function* visitAnimationClips(animationGraph: AnimationGraph): Generator<
                 if (childMotion) {
                     yield* visitMotion(childMotion);
                 }
+            }
+        }
+    }
+
+    function* visitPoseNode(shell: PoseGraphNodeShell): Generator<AnimationClip> {
+        // FIXME: HACK HERE
+        for (const [_, v] of Object.entries(shell)) {
+            if (v instanceof Motion) {
+                yield* visitMotion(v);
             }
         }
     }

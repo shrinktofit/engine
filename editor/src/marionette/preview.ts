@@ -1,7 +1,7 @@
 import { Node } from '../../../cocos/scene-graph';
 import { Motion, MotionEval, MotionPort } from '../../../cocos/animation/marionette/motion';
 import { createEval } from '../../../cocos/animation/marionette/create-eval';
-import { VarInstance, Value, VariableType } from '../../../cocos/animation/marionette/variable';
+import { VarInstance, Value, VariableType, createVarInstance } from '../../../cocos/animation/marionette/variable';
 import { assertIsNonNullable } from '../../../cocos/core/data/utils/asserts';
 import {
     AnimationBlendEval,
@@ -11,6 +11,8 @@ import {
     AnimationGraphBindingContext, AnimationGraphEvaluationContext, AnimationGraphLayerWideBindingContext, AnimationGraphPoseLayoutMaintainer, defaultTransformsTag, MetaValueRegistry,
 } from '../../../cocos/animation/marionette/animation-graph-context';
 import { blendPoseInto, Pose } from '../../../cocos/animation/core/pose';
+import { createGraphEventTarget, GraphEventTarget } from '../../../cocos/animation/marionette/event';
+import { VariableDescription } from '../../../cocos/animation/marionette/animation-graph';
 
 class AnimationGraphPartialPreviewer {
     constructor(root: Node) {
@@ -27,12 +29,12 @@ class AnimationGraphPartialPreviewer {
         evaluationContext.popPose();
     }
 
-    public addVariable(id: string, type: VariableType, value: Value) {
+    public addVariable(id: string, description: VariableDescription) {
         const { _varInstances: varInstances } = this;
         if (id in varInstances) {
             return;
         }
-        varInstances[id] = new VarInstance(type, value);
+        varInstances[id] = createVarInstance(description);
     }
 
     public removeVariable(id: string) {
@@ -69,10 +71,11 @@ class AnimationGraphPartialPreviewer {
     private _motionRecords: MotionEvalRecord[] = [];
 
     private _updateAllRecords() {
-        const poseLayoutMaintainer = new AnimationGraphPoseLayoutMaintainer(new MetaValueRegistry());
+        const poseLayoutMaintainer = new AnimationGraphPoseLayoutMaintainer(this._root, new MetaValueRegistry());
         this._poseLayoutMaintainer = poseLayoutMaintainer;
 
-        const bindingContext = new AnimationGraphBindingContext(this._root, this._poseLayoutMaintainer, this._varInstances);
+        const bindingContext = new AnimationGraphBindingContext(
+            this._root, this._poseLayoutMaintainer, this._varInstances, createGraphEventTarget());
 
         poseLayoutMaintainer.startBind();
 
@@ -82,10 +85,7 @@ class AnimationGraphPartialPreviewer {
 
         poseLayoutMaintainer.endBind();
 
-        const evaluationContext = new AnimationGraphEvaluationContext({
-            transformCount: poseLayoutMaintainer.transformCount,
-            metaValueCount: poseLayoutMaintainer.metaValueCount,
-        });
+        const evaluationContext = poseLayoutMaintainer.createEvaluationContext();
 
         poseLayoutMaintainer.fetchDefaultTransforms(evaluationContext[defaultTransformsTag]);
 
@@ -423,7 +423,7 @@ class MotionEvalRecord {
         // Tracking issue: https://github.com/cocos/cocos-engine/issues/14640
         const motionEval = this._motion[createEval]({
             additive: false,
-            up: bindContext,
+            outerContext: bindContext,
         } as unknown as AnimationGraphLayerWideBindingContext, null);
 
         if (!motionEval) {

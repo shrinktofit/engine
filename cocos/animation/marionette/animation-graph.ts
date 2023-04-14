@@ -22,9 +22,9 @@
  THE SOFTWARE.
 */
 
-import { ccclass, serializable } from 'cc.decorator';
-import { DEBUG } from 'internal:constants';
-import { js, clamp, assertIsNonNullable, assertIsTrue, EditorExtendable, shift } from '../../core';
+import { ccclass, editable, serializable } from 'cc.decorator';
+import { BUILD, DEBUG } from 'internal:constants';
+import { js, clamp, assertIsNonNullable, assertIsTrue, EditorExtendable, shift, ccenum, Vec3 } from '../../core';
 import { MotionEval, MotionEvalContext } from './motion';
 import type { Condition } from './condition';
 import { OwnedBy, assertsOwnedBy, own, markAsDangling, ownerSymbol } from './ownership';
@@ -32,12 +32,14 @@ import { TriggerResetMode, Value, VariableType } from './variable';
 import { InvalidTransitionError } from './errors';
 import { createEval } from './create-eval';
 import { MotionState } from './motion-state';
-import { State, outgoingsSymbol, incomingsSymbol, InteractiveState } from './state';
+import { State, outgoingsSymbol, incomingsSymbol, InteractiveState, EventifiedState } from './state';
 import { AnimationMask } from './animation-mask';
 import { onAfterDeserializedTag } from '../../serialization/deserialize-symbols';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
 import { AnimationGraphLike } from './animation-graph-like';
 import { renameObjectProperty } from '../../core/utils/internal';
+import { PoseGraph } from './pose-graph/pose-graph';
+import { AnimationGraphEvent } from './event';
 
 export { State };
 
@@ -96,8 +98,67 @@ export enum TransitionInterruptionSource {
     NEXT_STATE_THEN_CURRENT_STATE,
 }
 
+/**
+ * Creates a proxy object `c` so that `o instanceof c`, where `o` is an instance of `constructor`.
+ * This function is used to hide the new of `constructor` in the same time keep `instanceof` usable.
+ * @param constructor The construct to proxy.
+ * @returns The proxy object.
+ */
+// eslint-disable-next-line @typescript-eslint/ban-types
+function createInstanceofProxy<TConstructor extends Function> (constructor: TConstructor): TConstructor {
+    const value = Object.create(null, {
+        [Symbol.hasInstance]: {
+            value (instance: unknown) {
+                return instance instanceof constructor;
+            },
+        },
+    });
+
+    return value as unknown as TConstructor;
+}
+
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}DurationalTransition`)
+class DurationalTransition extends Transition {
+    @serializable
+    @editable
+    public startEvent = new AnimationGraphEvent();
+
+    @serializable
+    @editable
+    public endEvent = new AnimationGraphEvent();
+
+    /**
+     * @en The start time of (final) destination motion state when this transition starts.
+     * Its unit is seconds if `relativeDestinationStart` is `false`,
+     * Otherwise, its unit is the duration of destination motion state.
+     * @zh 此过渡开始时，（最终）目标动作状态的起始时间。
+     * 如果 `relativeDestinationStart`为 `false`，其单位是秒，否则其单位是目标动作状态的周期。
+     */
+    @serializable
+    public destinationStart = 0.0;
+
+    /**
+      * @en Determines the unit of destination start time. See `destinationStart`.
+      * @zh 决定了目标起始时间的单位。见 `destinationStart`。
+      */
+    @serializable
+    public relativeDestinationStart = false;
+
+    public copyTo (that: DurationalTransition) {
+        super.copyTo(that);
+        that.destinationStart = this.destinationStart;
+        that.relativeDestinationStart = this.relativeDestinationStart;
+    }
+}
+
+type DurationalTransition_ = DurationalTransition;
+const DurationalTransition_ = createInstanceofProxy(DurationalTransition);
+export {
+    DurationalTransition_ as DurationalTransition,
+};
+
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}AnimationTransition`)
-class AnimationTransition extends Transition {
+class AnimationTransition extends DurationalTransition {
     /**
      * The transition duration.
      * The unit of the duration is the real duration of transition source
@@ -114,23 +175,6 @@ class AnimationTransition extends Transition {
 
     @serializable
     public exitConditionEnabled = true;
-
-    /**
-     * @en The start time of (final) destination motion state when this transition starts.
-     * Its unit is seconds if `relativeDestinationStart` is `false`,
-     * Otherwise, its unit is the duration of destination motion state.
-     * @zh 此过渡开始时，（最终）目标动作状态的起始时间。
-     * 如果 `relativeDestinationStart`为 `false`，其单位是秒，否则其单位是目标动作状态的周期。
-     */
-    @serializable
-    public destinationStart = 0.0;
-
-    /**
-     * @en Determines the unit of destination start time. See `destinationStart`.
-     * @zh 决定了目标起始时间的单位。见 `destinationStart`。
-     */
-    @serializable
-    public relativeDestinationStart = false;
 
     get exitCondition () {
         return this._exitCondition;
@@ -160,8 +204,6 @@ class AnimationTransition extends Transition {
         that.relativeDuration = this.relativeDuration;
         that.exitConditionEnabled = this.exitConditionEnabled;
         that.exitCondition = this.exitCondition;
-        that.destinationStart = this.destinationStart;
-        that.relativeDestinationStart = this.relativeDestinationStart;
         that.interruptible = this.interruptible;
     }
 
@@ -199,7 +241,35 @@ export class EmptyState extends State {
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}EmptyStateTransition`)
-export class EmptyStateTransition extends Transition {
+export class EmptyStateTransition extends DurationalTransition {
+    /**
+     * The transition duration, in seconds.
+     */
+    @serializable
+    public duration = 0.3;
+
+    public copyTo (that: EmptyStateTransition) {
+        super.copyTo(that);
+        that.duration = this.duration;
+    }
+}
+
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseState`)
+export class PoseState extends EventifiedState {
+    @serializable
+    public poseGraph = new PoseGraph();
+
+    /**
+     * // TODO: HACK
+     * @internal
+     */
+    public __callOnAfterDeserializeRecursive () {
+        this.poseGraph.__callOnAfterDeserializeRecursive();
+    }
+}
+
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseTransition`)
+class PoseTransition extends DurationalTransition {
     /**
      * The transition duration, in seconds.
      */
@@ -207,29 +277,44 @@ export class EmptyStateTransition extends Transition {
     public duration = 0.3;
 
     /**
-     * @en The start time of (final) destination motion state when this transition starts.
-     * Its unit is seconds if `relativeDestinationStart` is `false`,
-     * Otherwise, its unit is the duration of destination motion state.
-     * @zh 此过渡开始时，（最终）目标动作状态的起始时间。
-     * 如果 `relativeDestinationStart`为 `false`，其单位是秒，否则其单位是目标动作状态的周期。
+     * @internal This field is exposed for **experimental editor only** usage.
      */
-    @serializable
-    public destinationStart = 0.0;
+    get interruptible () {
+        return this.interruptionSource !== TransitionInterruptionSource.NONE;
+    }
+
+    set interruptible (value) {
+        this.interruptionSource = value
+            ? TransitionInterruptionSource.CURRENT_STATE_THEN_NEXT_STATE
+            : TransitionInterruptionSource.NONE;
+    }
 
     /**
-      * @en Determines the unit of destination start time. See `destinationStart`.
-      * @zh 决定了目标起始时间的单位。见 `destinationStart`。
-      */
+     * @internal This field is exposed for **internal** usage.
+     */
     @serializable
-    public relativeDestinationStart = false;
+    public interruptionSource = TransitionInterruptionSource.NONE;
 
-    public copyTo (that: EmptyStateTransition) {
+    public copyTo (that: PoseTransition) {
         super.copyTo(that);
         that.duration = this.duration;
-        that.destinationStart = this.destinationStart;
-        that.relativeDestinationStart = this.relativeDestinationStart;
+        that.interruptionSource = this.interruptionSource;
     }
 }
+
+type PoseTransition_ = PoseTransition;
+const PoseTransition_ = createInstanceofProxy(PoseTransition);
+export {
+    PoseTransition_ as PoseTransition,
+};
+
+export enum InterruptionBehavior {
+    SNAPSHOT,
+
+    CONCURRENT,
+}
+
+ccenum(InterruptionBehavior);
 
 @ccclass('cc.animation.StateMachine')
 export class StateMachine extends EditorExtendable {
@@ -259,6 +344,27 @@ export class StateMachine extends EditorExtendable {
             const state = this._states[iState];
             if (state instanceof SubStateMachine) {
                 state.stateMachine.__callOnAfterDeserializeRecursive();
+            } else if (state instanceof PoseState) {
+                state.__callOnAfterDeserializeRecursive();
+            }
+        }
+
+        // TODO: remove this
+        if (BUILD) {
+            assertIsTrue(`Please remove this code!`);
+        }
+        for (let iState = 0; iState < nStates; ++iState) {
+            const state = this._states[iState];
+            if (state instanceof PoseState) {
+                const transitions = this.getOutgoings(state);
+                for (const transition of transitions) {
+                    if (!(transition instanceof PoseTransition)) {
+                        const to = transition.to;
+                        const conditions = transition.conditions;
+                        this.removeTransition(transition);
+                        this.connect(state, to, conditions);
+                    }
+                }
             }
         }
     }
@@ -381,6 +487,10 @@ export class StateMachine extends EditorExtendable {
         return this._addState(new EmptyState());
     }
 
+    public addPoseState () {
+        return this._addState(new PoseState());
+    }
+
     /**
      * Removes specified state from this state machine.
      * @param state The state to remove.
@@ -421,6 +531,14 @@ export class StateMachine extends EditorExtendable {
      * @param from Source state.
      * @param to Target state.
      * @param condition The transition condition.
+     */
+    public connect (from: PoseState, to: State, conditions?: Condition[]): PoseTransition;
+
+    /**
+     * Connect two states.
+     * @param from Source state.
+     * @param to Target state.
+     * @param condition The transition condition.
      * @throws `InvalidTransitionError` if:
      * - the target state is entry or any, or
      * - the source state is exit.
@@ -443,9 +561,11 @@ export class StateMachine extends EditorExtendable {
 
         const transition = from instanceof MotionState || from === this._anyState
             ? new AnimationTransition(from, to, conditions)
-            : from instanceof EmptyState
-                ? new EmptyStateTransition(from, to, conditions)
-                : new Transition(from, to, conditions);
+            : from instanceof PoseState
+                ? new PoseTransition(from, to, conditions)
+                : from instanceof EmptyState
+                    ? new EmptyStateTransition(from, to, conditions)
+                    : new Transition(from, to, conditions);
 
         own(transition, this);
         this._transitions.push(transition);
@@ -697,6 +817,14 @@ export class SubStateMachine extends InteractiveState {
     private _stateMachine: StateMachine = new StateMachine();
 }
 
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseGraphStash`)
+class PoseGraphStash extends EditorExtendable {
+    @serializable
+    public poseGraph = new PoseGraph();
+}
+
+export { PoseGraphStash };
+
 @ccclass('cc.animation.Layer')
 export class Layer implements OwnedBy<AnimationGraph> {
     [ownerSymbol]: AnimationGraph | undefined;
@@ -716,6 +844,26 @@ export class Layer implements OwnedBy<AnimationGraph> {
     @serializable
     public additive = false;
 
+    public stashes (): Iterable<Readonly<[string, PoseGraphStash]>> {
+        return Object.entries(this._stashes);
+    }
+
+    public getStash (id: string): PoseGraphStash | undefined {
+        return this._stashes[id];
+    }
+
+    public addStash (id: string) {
+        return this._stashes[id] = new PoseGraphStash();
+    }
+
+    public removeStash (id: string) {
+        delete this._stashes[id];
+    }
+
+    public renameStash (id: string, newId: string) {
+        this._stashes = renameObjectProperty(this._stashes, id, newId);
+    }
+
     /**
      * @marked_as_engine_private
      */
@@ -726,6 +874,9 @@ export class Layer implements OwnedBy<AnimationGraph> {
     get stateMachine () {
         return this._stateMachine;
     }
+
+    @serializable
+    private _stashes: Record<string, PoseGraphStash> = {};
 }
 
 export enum LayerBlending {
@@ -844,6 +995,24 @@ class TriggerVariable implements BasicVariableDescription<VariableType.TRIGGER> 
     private _flags = TRIGGER_VARIABLE_DEFAULT_FLAGS;
 }
 
+@ccclass('cc.animation.Vec3Variable')
+class Vec3Variable implements BasicVariableDescription<VariableType.VEC3_experimental> {
+    get type () {
+        return VariableType.VEC3_experimental as const;
+    }
+
+    get value () {
+        return this._value as Readonly<Vec3>;
+    }
+
+    set value (value) {
+        Vec3.copy(this._value, value);
+    }
+
+    @serializable
+    private _value = new Vec3();
+}
+
 /**
  * @en
  * An opacity type which denotes what the animation graph seems like outside the engine.
@@ -864,18 +1033,23 @@ interface BasicVariableDescription<TType> {
         TType extends VariableType.INTEGER ? number :
             TType extends VariableType.BOOLEAN ? boolean :
                 TType extends VariableType.TRIGGER ? boolean :
-                    never;
+                    TType extends VariableType.VEC3_experimental ? Readonly<Vec3> :
+                        never;
 }
 
 export type VariableDescription =
     | BasicVariableDescription<VariableType.FLOAT>
     | BasicVariableDescription<VariableType.INTEGER>
     | BasicVariableDescription<VariableType.BOOLEAN>
+    | BasicVariableDescription<VariableType.VEC3_experimental>
     | TriggerVariable;
 
 @ccclass('cc.animation.AnimationGraph')
 export class AnimationGraph extends AnimationGraphLike implements AnimationGraphRunTime {
     public declare readonly __brand: 'AnimationGraph';
+
+    @serializable
+    public interruptionBehavior = InterruptionBehavior.SNAPSHOT;
 
     @serializable
     private _layers: Layer[] = [];
@@ -893,6 +1067,9 @@ export class AnimationGraph extends AnimationGraphLike implements AnimationGraph
         for (let iLayer = 0; iLayer < nLayers; ++iLayer) {
             const layer = layers[iLayer];
             layer.stateMachine.__callOnAfterDeserializeRecursive();
+            for (const [_, stash] of layer.stashes()) {
+                stash.poseGraph.__callOnAfterDeserializeRecursive();
+            }
         }
     }
 
@@ -973,6 +1150,12 @@ export class AnimationGraph extends AnimationGraphLike implements AnimationGraph
     public addTrigger (name: string, value = false, resetMode = TriggerResetMode.AFTER_CONSUMED) {
         const variable = new TriggerVariable();
         variable.resetMode = resetMode;
+        variable.value = value;
+        this._variables[name] = variable;
+    }
+
+    public addVec3 (name: string, value = Vec3.ZERO) {
+        const variable = new Vec3Variable();
         variable.value = value;
         this._variables[name] = variable;
     }

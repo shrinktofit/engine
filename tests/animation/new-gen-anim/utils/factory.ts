@@ -1,10 +1,13 @@
 import { AnimationClip } from "../../../../cocos/animation/animation-clip";
-import { AnimationGraph, AnimationTransition, EmptyStateTransition, isAnimationTransition, State, StateMachine, SubStateMachine, Transition } from "../../../../cocos/animation/marionette/animation-graph";
+import { AnimationGraph, AnimationTransition, EmptyStateTransition, isAnimationTransition, PoseState, PoseTransition, State, StateMachine, SubStateMachine, Transition } from "../../../../cocos/animation/marionette/animation-graph";
 import { ClipMotion } from "../../../../cocos/animation/marionette/clip-motion";
 import { BinaryCondition, TriggerCondition, UnaryCondition } from "../../../../cocos/animation/marionette/condition";
 import { Motion } from "../../../../cocos/animation/marionette/motion";
 import { MotionState } from "../../../../cocos/animation/marionette/motion-state";
 import { Bindable } from "../../../../cocos/animation/marionette/parametric";
+import { PoseNode } from "../../../../cocos/animation/marionette/pose-graph/pose-node";
+import { PoseGraph } from "../../../../cocos/animation/marionette/pose-graph/pose-graph";
+import { PoseGraphNodeShell } from "../../../../cocos/animation/marionette/pose-graph/node-shell";
 import { TriggerResetMode } from "../../../../cocos/animation/marionette/variable";
 
 export function createAnimationGraph(params: AnimationGraphParams): AnimationGraph {
@@ -30,6 +33,12 @@ export function createAnimationGraph(params: AnimationGraphParams): AnimationGra
     }
     for (const layerParams of params.layers) {
         const layer = animationGraph.addLayer();
+        if (layerParams.stashes) {
+            for (const [stashId, stashParams] of Object.entries(layerParams.stashes)) {
+                const stash = layer.addStash(stashId);
+                fillPoseGraph(stash.poseGraph, stashParams.graph);
+            }
+        }
         fillStateMachine(layer.stateMachine, layerParams.stateMachine);
         if (typeof layerParams.additive !== 'undefined') {
             layer.additive = layerParams.additive;
@@ -47,6 +56,10 @@ export function fillStateMachine(stateMachine: StateMachine, params: StateMachin
                 if (stateParams.motion) {
                     (state as MotionState).motion = stateParams.motion instanceof Motion ? stateParams.motion : createMotion(stateParams.motion);
                 }
+                break;
+            case 'pose':
+                state = stateMachine.addPoseState();
+                fillPoseGraph((state as PoseState).poseGraph, stateParams.graph);
                 break;
             case 'empty':
                 state = stateMachine.addEmpty();
@@ -112,6 +125,14 @@ function fillTransition(transition: Transition, params: TransitionAttributes) {
             }
             case 'binary': {
                 const condition = new BinaryCondition();
+                switch (conditionParams.operator) {
+                    case '==': condition.operator = BinaryCondition.Operator.EQUAL_TO; break;
+                    case '!=': condition.operator = BinaryCondition.Operator.NOT_EQUAL_TO; break;
+                    case '>': condition.operator = BinaryCondition.Operator.GREATER_THAN; break;
+                    case '>=': condition.operator = BinaryCondition.Operator.GREATER_THAN_OR_EQUAL_TO; break;
+                    case '<': condition.operator = BinaryCondition.Operator.LESS_THAN; break;
+                    case '<=': condition.operator = BinaryCondition.Operator.LESS_THAN_OR_EQUAL_TO; break;
+                }
                 fillBindable(condition.lhs, conditionParams.lhs);
                 fillBindable(condition.rhs, conditionParams.rhs);
                 return condition;
@@ -136,9 +157,9 @@ function fillTransition(transition: Transition, params: TransitionAttributes) {
         }
     }
 
-    function assertsIsDurableTransition(transition: Transition): asserts transition is (AnimationTransition | EmptyStateTransition) {
-        if (!isAnimationTransition(transition) && !(transition instanceof EmptyStateTransition)) {
-            throw new Error(`The transition should be animation/empty transition.`);
+    function assertsIsDurableTransition(transition: Transition): asserts transition is (AnimationTransition | EmptyStateTransition | PoseTransition) {
+        if (!isAnimationTransition(transition) && !(transition instanceof EmptyStateTransition) && !(transition instanceof PoseTransition)) {
+            throw new Error(`The transition should be animation/empty/pose transition.`);
         }
     }
 
@@ -218,6 +239,7 @@ export type VariableDeclarationParams = {
 interface LayerParams {
     stateMachine: StateMachineParams;
     additive?: boolean;
+    stashes?: Record<string, LayerStashParams>;
 }
 
 export interface StateMachineParams {
@@ -236,11 +258,14 @@ export type StateParams = ({
     stateMachine: StateMachineParams;
 } | {
     type: 'empty',
+} | {
+    type: 'pose';
+    graph: PoseGraphParams;
 }) & {
     name?: string;
 };
 
-type TransitionParams = {
+export type TransitionParams = {
     from: string;
     to: string;
 } & TransitionAttributes;
@@ -274,6 +299,7 @@ type TransitionConditionParams = {
     operand: BindableParams<boolean>;
 } | {
     type: 'binary';
+    operator: '==' | '!=' | '>' | '<' | '>=' | '<=';
     lhs: BindableParams<number>;
     rhs: BindableParams<number>;
 } | {
@@ -295,3 +321,48 @@ export type MotionParams = {
         duration: number;
     };
 };
+
+interface LayerStashParams {
+    graph: PoseGraphParams;
+}
+
+interface PoseGraphParams {
+    rootNode?: PoseNodeParams;
+}
+
+export type PoseNodeParams = PoseNode | Node_;
+
+function fillPoseGraph(poseGraph: PoseGraph, params: PoseGraphParams) {
+    if (params.rootNode) {
+        const root = createPoseNode(poseGraph, params.rootNode);
+        poseGraph.main = root;
+    }
+}
+
+declare global {
+    interface PoseNodeFactoryRegistry {
+    }
+}
+
+type Map_ = {
+    [k in keyof PoseNodeFactoryRegistry]: PoseNodeFactoryRegistry[k] & { type: k };
+}
+
+const poseNodeFactoryMap: Record<string, (poseGraph: PoseGraph, params: any) => PoseGraphNodeShell<PoseNode>> = {};
+
+export function addPoseNodeFactory<T extends keyof PoseNodeFactoryRegistry> (
+    type: T, factory: (poseGraph: PoseGraph, params: PoseNodeFactoryRegistry[T]) => PoseGraphNodeShell<PoseNode>) {
+    poseNodeFactoryMap[type] = factory;
+}
+
+export type Node_ = Map_[keyof Map_];
+
+export function createPoseNode(poseGraph: PoseGraph, params: PoseNodeParams): PoseGraphNodeShell<PoseNode> {
+    if (params instanceof PoseNode) {
+        return poseGraph.addNode(params);
+    } else if (!(params.type in poseNodeFactoryMap)) {
+        throw new Error(`${params.type} factory does not exist.`);
+    } else {
+        return poseNodeFactoryMap[params.type](poseGraph, params);
+    }
+}
