@@ -1,4 +1,5 @@
-import { getPoseGraphNodeEditorMetadata, PoseGraphCreateNodeContext } from "../../../cocos/animation/marionette/pose-graph/pose-graph-node-common";
+import { PoseGraphNode } from "../../../cocos/animation/marionette/pose-graph/node";
+import { getPoseGraphNodeEditorMetadata, PoseGraphCreateNodeContext, PoseGraphNodeAppearanceOptions } from "../../../cocos/animation/marionette/pose-graph/pose-graph-node-common";
 import { js } from "../../../cocos/core/utils";
 import { PoseNode, XNode } from "../../exports/new-gen-anim";
 
@@ -62,3 +63,10 @@ export function getNodeTitle(node: PoseNode | XNode) {
     return classConstructor.name;
 }
 
+export type { PoseGraphNodeAppearanceOptions };
+
+export function getNodeAppearanceOptions(node: PoseGraphNode) {
+    const classConstructor = node.constructor as Constructor<PoseGraphNode>;
+    const metadata = getPoseGraphNodeEditorMetadata(classConstructor);
+    return metadata?.appearance;
+}

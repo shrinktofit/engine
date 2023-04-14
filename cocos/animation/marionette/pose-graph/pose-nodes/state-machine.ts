@@ -7,12 +7,16 @@ import { blendPoseInto, Pose } from '../../../core/pose';
 import { AnimationGraphEvaluationContext, AnimationGraphUpdateContextGenerator } from '../../animation-graph-context';
 import { InterruptionBehavior, StateMachine } from '../../animation-graph';
 import { TopLevelStateMachineEvaluation } from '../../graph-eval';
-import { poseGraphNodeMenu } from '../pose-graph-node-common';
+import { poseGraphNodeAppearance, poseGraphNodeMenu } from '../pose-graph-node-common';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { poseInput } from '../pose-node-binding';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}StateMachineNode`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_POSE}状态机`)
+@poseGraphNodeAppearance({
+    themeColor: '#123456',
+    inline: true,
+})
 export class StateMachineNode extends PoseNode {
     @serializable
     public stateMachine = new StateMachine();

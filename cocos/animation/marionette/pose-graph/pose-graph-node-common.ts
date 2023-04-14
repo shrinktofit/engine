@@ -25,11 +25,59 @@ export type PoseGraphCreateNodeFactory<TArg> = {
 };
 
 export interface PoseGraphNodeEditorMetadata {
+    /**
+     * @zh
+     * 为 `true` 时表示此类型的结点对象不应该被编辑器创建和编辑。
+     * @en
+     * If `true`, nodes of this type should not be created and edited by editor.
+     */
     hide?: boolean;
 
+    /**
+     * @zh
+     * 此类型的结点的菜单路径。
+     * @en
+     * The menu path of this type of nodes.
+     */
     menu?: string;
 
+    /**
+     * @zh
+     * 创建此类型结点应使用的选项和方法。
+     * @en
+     * The options and factory should be taken to create this type of nodes.
+     */
     factory?: PoseGraphCreateNodeFactory<unknown>;
+
+    /**
+     * @zh
+     * 此类型结点的外观配置。
+     * @en
+     * The appearance configs of this type of nodes.
+     */
+    appearance?: PoseGraphNodeAppearanceOptions;
+}
+
+/**
+ * @zh 描述某类型结点的编辑器外观选项。
+ * @en Describes the editor appearance of a type of nodes.
+ */
+export interface PoseGraphNodeAppearanceOptions {
+    /**
+     * @zh
+     * 主题颜色。目前应为以 “#” 开头的十六进制字符串颜色表示，例如 `"#FF00FF"`。
+     * @en
+     * Theme color. Currently should be a color hex string starting with "#", for example: `"#FF00FF"`.
+     */
+    themeColor?: `#${string}`;
+
+    /**
+     * @zh
+     * 为 `true` 时表示展示该类型结点时尽可能地使用“内联”样式。
+     * @en
+     * If `true`, indicates editor should show this type of nodes in "inline" style if possible.
+     */
+    inline?: boolean;
 }
 
 const nodeEditorMetadataMap = new WeakMap<Constructor<PoseNode | XNode>, PoseGraphNodeEditorMetadata>();
@@ -60,6 +108,12 @@ export const poseGraphCreateNodeFactory = (factory: PoseGraphCreateNodeFactory<a
 
 export const poseGraphNodeHide = (hide = true) => makeNodeEditorMetadataModifier((metadata) => {
     metadata.hide = hide;
+});
+
+export const poseGraphNodeAppearance = (
+    appearance: Readonly<NonNullable<PoseGraphNodeEditorMetadata['appearance']>>,
+) => makeNodeEditorMetadataModifier((metadata) => {
+    Object.assign(metadata.appearance ??= {}, appearance);
 });
 
 // eslint-disable-next-line @typescript-eslint/ban-types
