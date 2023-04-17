@@ -12,6 +12,7 @@ import { SkeletalSpaceSinglePoseModifier } from '../single-pose-modifier';
 import { solveTwoBoneIK } from './solve-two-bone-ik';
 import { Transform } from '../../../../core/transform';
 import { AnimationGraphEvaluationContext } from '../../../animation-graph-context';
+import { PoseGraphType } from '../../type-system';
 
 const cacheRootTransform = new Transform();
 const cacheMiddleTransform = new Transform();
@@ -36,7 +37,7 @@ export class TwoBoneIKSolver extends SkeletalSpaceSinglePoseModifier {
 
     @serializable
     @editable
-    @xNodeInput()
+    @xNodeInput({ type: PoseGraphType.VEC3, })
     @visible(function(this: TwoBoneIKSolver) { return !this.endEffectorBoneName; })
     public endEffectorTargetPosition = new Vec3();
 

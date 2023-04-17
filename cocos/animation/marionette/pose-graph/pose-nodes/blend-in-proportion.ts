@@ -12,6 +12,7 @@ import {
     insertPoseGraphNodeArrayElement,
     deletePoseGraphNodeArrayElement,
 } from '../protected';
+import { PoseGraphType } from '../type-system';
 
 function insertItem (this: BlendInProportion, hint: number) {
     insertPoseGraphNodeArrayElement(this, { propertyKey: 'poses', elementIndex: hint }, null);
@@ -38,6 +39,7 @@ export class BlendInProportion extends PoseNode {
 
     @serializable
     @xNodeInput({
+        type: PoseGraphType.FLOAT,
         arrayLike: !EDITOR ? undefined : {
             insert: insertItem,
             delete: deleteItem,

@@ -11,6 +11,7 @@ import { AnimationGraphUpdateContextGenerator } from '../../animation-graph-cont
 import { poseGraphNodeMenu } from '../pose-graph-node-common';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE_BLEND } from './menu-common';
 import { AnimationMask } from '../../animation-mask';
+import { PoseGraphType } from '../type-system';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}BlendWithTransformFilter`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_POSE_BLEND}带变换过滤器的混合`)
@@ -24,7 +25,7 @@ export class BlendWithTransformFilter extends PoseNode {
     pose1: PoseNode | null = null;
 
     @serializable
-    @xNodeInput({})
+    @xNodeInput({ type: PoseGraphType.FLOAT, })
     weight = 1.0;
 
     @serializable

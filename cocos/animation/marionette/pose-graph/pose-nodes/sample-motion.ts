@@ -12,6 +12,7 @@ import { xNodeInput } from '../x-node-binding';
 import { poseGraphCreateNodeFactory } from '../pose-graph-node-common';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { getEnterInfo, makeCreateNodeFactory } from './play-or-sample-motion-pose-node-shared';
+import { PoseGraphType } from '../type-system';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}SampleMotionNode`)
 @poseGraphCreateNodeFactory(makeCreateNodeFactory(
@@ -29,7 +30,7 @@ export class SampleMotionNode extends PoseNode {
 
     @serializable
     @editable
-    @xNodeInput()
+    @xNodeInput({ type: PoseGraphType.FLOAT, })
     public time = 0.0;
 
     @serializable

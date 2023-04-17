@@ -1,6 +1,7 @@
 import { clamp } from '../../../../../../core';
 import { ccclass, editable, serializable } from '../../../../../../core/data/decorators';
 import { poseGraphNodeMenu } from '../../../../pose-graph/pose-graph-node-common';
+import { PoseGraphType } from '../../../type-system';
 import { SingleOutputXNode } from '../../../x-node';
 import { xNodeInput } from '../../../x-node-binding';
 import { CLASS_NAME_PREFIX_X_NODE_MATH, POSE_GRAPH_NODE_MENU_PREFIX_X_NODE_MATH } from './prefix';
@@ -10,12 +11,12 @@ import { CLASS_NAME_PREFIX_X_NODE_MATH, POSE_GRAPH_NODE_MENU_PREFIX_X_NODE_MATH 
 export class XNodeMin extends SingleOutputXNode<number> {
     @serializable
     @editable
-    @xNodeInput()
+    @xNodeInput({ type: PoseGraphType.FLOAT })
     public value0 = 0.0;
 
     @serializable
     @editable
-    @xNodeInput()
+    @xNodeInput({ type: PoseGraphType.FLOAT })
     public value1 = 0.0;
 
     public selfEvaluateDefaultOutput () {
@@ -28,12 +29,12 @@ export class XNodeMin extends SingleOutputXNode<number> {
 export class XNodeMax extends SingleOutputXNode<number> {
     @serializable
     @editable
-    @xNodeInput()
+    @xNodeInput({ type: PoseGraphType.FLOAT })
     public value0 = 0.0;
 
     @serializable
     @editable
-    @xNodeInput()
+    @xNodeInput({ type: PoseGraphType.FLOAT })
     public value1 = 0.0;
 
     public selfEvaluateDefaultOutput () {
@@ -46,17 +47,17 @@ export class XNodeMax extends SingleOutputXNode<number> {
 export class XNodeClamp extends SingleOutputXNode<number> {
     @serializable
     @editable
-    @xNodeInput()
+    @xNodeInput({ type: PoseGraphType.FLOAT })
     public input = 0.0;
 
     @serializable
     @editable
-    @xNodeInput()
+    @xNodeInput({ type: PoseGraphType.FLOAT })
     public min = 0.0;
 
     @serializable
     @editable
-    @xNodeInput()
+    @xNodeInput({ type: PoseGraphType.FLOAT })
     public max = 0.0;
 
     public selfEvaluateDefaultOutput () {

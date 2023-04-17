@@ -7,6 +7,7 @@ import { POSE_GRAPH_NODE_MENU_PREFIX_CHOOSE } from './menu';
 import { ChoosePoseBase } from './choose-pose-base';
 import { poseInput } from '../../pose-node-binding';
 import { deletePoseGraphNodeArrayElement, insertPoseGraphNodeArrayElement } from '../../protected';
+import { PoseGraphType } from '../../type-system';
 
 function insertItem (this: ChoosePoseBase, hint: number) {
     insertPoseGraphNodeArrayElement(this, { propertyKey: 'poses', elementIndex: hint }, null);
@@ -39,6 +40,7 @@ export class ChoosePoseByIndex extends ChoosePoseBase {
     }
 
     @xNodeInput({
+        type: PoseGraphType.FLOAT,
         arrayLike: !EDITOR ? undefined : {
             getDisplayName (this: ChoosePoseBase, index: number) {
                 return `索引 ${index} 交替时长`;
@@ -55,6 +57,7 @@ export class ChoosePoseByIndex extends ChoosePoseBase {
 
     @serializable
     @xNodeInput({
+        type: PoseGraphType.INTEGER,
         displayName: `选择的索引`,
     })
     public chosen = 0;

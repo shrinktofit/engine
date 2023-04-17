@@ -12,6 +12,7 @@ import { IntensitySpecification } from './intensity-specification';
 import { Pose } from '../../../core/pose';
 import { EDITOR } from 'internal:constants';
 import { SinglePoseModifier } from './single-pose-modifier';
+import { PoseGraphType } from '../type-system';
 
 enum TransformApplyFlag {
     LEAVE_UNCHANGED,
@@ -43,7 +44,7 @@ export class ApplyTransform extends SinglePoseModifier {
 
     @serializable
     @editable
-    @xNodeInput({ displayName: '位置' })
+    @xNodeInput({ type: PoseGraphType.VEC3, displayName: '位置' })
     @visible(function (this: ApplyTransform) { return this.positionApplyFlag !== TransformApplyFlag.LEAVE_UNCHANGED; })
     public position = new Vec3();
 
@@ -54,7 +55,7 @@ export class ApplyTransform extends SinglePoseModifier {
 
     @serializable
     @editable
-    @xNodeInput({ displayName: '旋转' })
+    @xNodeInput({ type: PoseGraphType.QUAT, displayName: '旋转' })
     @visible(function (this: ApplyTransform) { return this.rotationApplyFlag !== TransformApplyFlag.LEAVE_UNCHANGED; })
     public rotation = new Quat();
 
@@ -67,7 +68,7 @@ export class ApplyTransform extends SinglePoseModifier {
     @type(PoseTransformSpaceRequirement)
     public transformSpaceRequirement: PoseTransformSpaceRequirement = PoseTransformSpaceRequirement.NO;
 
-    @xNodeInput({ displayName: '强度值' })
+    @xNodeInput({ type: PoseGraphType.FLOAT, displayName: '强度值' })
     public get intensityValue() {
         return this.intensity.value;
     }

@@ -10,6 +10,7 @@ import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { Pose } from '../../../core/pose';
 import { AnySpaceSinglePoseModifier } from './single-pose-modifier';
 import { AnimationGraphEvaluationContext } from '../../animation-graph-context';
+import { PoseGraphType } from '../type-system';
 
 enum SetAuxiliaryCurveFlag {
     LEAVE_UNCHANGED,
@@ -30,7 +31,7 @@ export class SetAuxiliaryCurve extends AnySpaceSinglePoseModifier {
 
     @serializable
     @editable
-    @xNodeInput()
+    @xNodeInput({ type: PoseGraphType.FLOAT, })
     public curveValue = 0.0;
 
     @serializable

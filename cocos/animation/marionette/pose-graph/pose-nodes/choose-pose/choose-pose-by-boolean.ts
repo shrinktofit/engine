@@ -5,6 +5,7 @@ import { poseGraphNodeMenu } from '../../pose-graph-node-common';
 import { POSE_GRAPH_NODE_MENU_PREFIX_CHOOSE } from './menu';
 import { ChoosePoseBase } from './choose-pose-base';
 import { poseInput } from '../../pose-node-binding';
+import { PoseGraphType } from '../../type-system';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}ChoosePoseByBoolean`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_CHOOSE}按布尔选择`)
@@ -34,6 +35,7 @@ export class ChoosePoseByBoolean extends ChoosePoseBase {
     }
 
     @xNodeInput({
+        type: PoseGraphType.FLOAT,
         displayName: `为真时 交替时长`,
     })
     public get trueAlteringDuration () {
@@ -44,6 +46,7 @@ export class ChoosePoseByBoolean extends ChoosePoseBase {
     }
 
     @xNodeInput({
+        type: PoseGraphType.FLOAT,
         displayName: `为假时 交替时长`,
     })
     public get falseAlteringDuration () {
@@ -55,6 +58,7 @@ export class ChoosePoseByBoolean extends ChoosePoseBase {
 
     @serializable
     @xNodeInput({
+        type: PoseGraphType.BOOLEAN,
         displayName: `选择的值`,
     })
     public chosen = true;
