@@ -8,7 +8,7 @@ import { PoseNodeBindingContext } from "../../../cocos/animation/marionette/pose
 import { assertIsTrue, quat, v3 } from "../../../cocos/core";
 import { Node } from "../../../cocos/scene-graph";
 import { captureErrors } from '../../utils/log-capture';
-import { XNodeGetVariableNumber } from '../../../cocos/animation/marionette/pose-graph/x-nodes/get-variable';
+import { XNodeGetVariableFloat } from '../../../cocos/animation/marionette/pose-graph/x-nodes/get-variable';
 import { poseInput } from "../../../cocos/animation/marionette/pose-graph/pose-node-binding";
 import { xNodeInput } from "../../../cocos/animation/marionette/pose-graph/x-node-binding";
 import { createAnimationGraph } from "./utils/factory";
@@ -17,6 +17,7 @@ import 'jest-extended';
 import { poseGraphOp } from "../../../cocos/animation/marionette/pose-graph/op";
 import { PoseGraphNodeShell } from "../../../cocos/animation/marionette/pose-graph/node-shell";
 import { createGraphEventTarget } from "../../../cocos/animation/marionette/event";
+import { PoseGraphType } from "../../../cocos/animation/marionette/pose-graph/type-system";
 
 class UnimplementedPoseNode extends PoseNode {
     public bind(context: PoseNodeBindingContext): void {
@@ -78,7 +79,7 @@ describe(`X node input declarator: @xNodeInput`, () => {
         const errorWatcher = captureErrors();
 
         class _Node {
-            @xNodeInput({})
+            @xNodeInput({ type: PoseGraphType.FLOAT })
             v = 6;
         }
 
@@ -114,10 +115,10 @@ describe(`Node`, () => {
             @poseInput({ displayName: 'SomeDisPlayName' })
             pose_input_with_displayName_specified: PoseNode | null = null;
 
-            @xNodeInput({})
+            @xNodeInput({ type: PoseGraphType.FLOAT })
             x_node_input_with_no_displayName_specified = 1;
 
-            @xNodeInput({ displayName: 'XNode_SomeDisPlayName' })
+            @xNodeInput({ type: PoseGraphType.FLOAT, displayName: 'XNode_SomeDisPlayName' })
             x_node_input_with_displayName_specified = 2;
 
             /**
@@ -152,33 +153,33 @@ describe(`Node`, () => {
 
     const testSuiteXNode: PoseGraphNodeTestSuite = (() => {
         class Fundamental_Node extends UnimplementedXNode {
-            @xNodeInput({})
+            @xNodeInput({ type: PoseGraphType.FLOAT })
             x_node_input_with_no_displayName_specified = 1;
 
-            @xNodeInput({ displayName: 'XNode_SomeDisPlayName' })
+            @xNodeInput({ type: PoseGraphType.FLOAT, displayName: 'XNode_SomeDisPlayName' })
             x_node_input_with_displayName_specified = 2;
 
             /**
              * Does not observed by this test case.
              */
-            @xNodeInput({ })
+            @poseInput({ })
             array_inputs: Array<PoseNode | null> = [];
         }
 
         class ArrayInput_Node extends UnimplementedXNode {
-            @xNodeInput({})
+            @xNodeInput({ type: PoseGraphType.FLOAT })
             array_inputs: number[] = [];
         }
 
         return {
             makeFundamental: (poseGraph: PoseGraph) => {
-                const node = poseGraph.addNode(new Fundamental_Node(1));
+                const node = poseGraph.addNode(new Fundamental_Node([PoseGraphType.FLOAT]));
                 return {
                     node,
                 };
             },
             makeArrayInput: (poseGraph: PoseGraph) => {
-                const node = poseGraph.addNode(new ArrayInput_Node(1));
+                const node = poseGraph.addNode(new ArrayInput_Node([PoseGraphType.FLOAT]));
                 return {
                     node,
                     visitArray: () => node.node.array_inputs,
@@ -289,7 +290,7 @@ describe(`Node`, () => {
                 expect(poseGraphOp.getInputBinding(mainNode, key)).toBeUndefined();
                 // Connect and reconnect.
                 for (let i = 0; i < 2; ++i) {
-                    const bindingNode = poseGraph.addNode(new UnimplementedXNode(1));
+                    const bindingNode = poseGraph.addNode(new UnimplementedXNode([PoseGraphType.FLOAT]));
                     // Connect.
                     poseGraphOp.connectNode(mainNode, key, bindingNode, 0);
                     // Query the binding.
@@ -368,7 +369,7 @@ describe(`Node`, () => {
         const poseGraph = createPoseGraph();
 
         class PoseNode1 extends UnimplementedPoseNode {
-            @xNodeInput()
+            @xNodeInput({ type: PoseGraphType.FLOAT })
             public x_node_prop = 2;
 
             @poseInput({})
@@ -376,8 +377,8 @@ describe(`Node`, () => {
         }
 
         class XNode1 extends UnimplementedXNode {
-            constructor() { super(1); }
-            @xNodeInput()
+            constructor() { super([PoseGraphType.FLOAT]); }
+            @xNodeInput({ type: PoseGraphType.FLOAT })
             public x_node_prop = 2;
         }
 
@@ -414,7 +415,7 @@ describe(`Node`, () => {
             getTheOnlyOutputKey(xNode1),
         );
         expect(logCapture.captured).toHaveLength(1);
-        expect(logCapture.captured[0]).toStrictEqual([`Can not connect x-node to pose input.`]);
+        expect(logCapture.captured[0]).toStrictEqual([`Type mismatch: input has type POSE, output has type FLOAT.`]);
         logCapture.clear();
 
         // OK: connect pose node to pose input of pose node.
@@ -434,7 +435,7 @@ describe(`Node`, () => {
             getTheOnlyOutputKey(poseNode2),
         );
         expect(logCapture.captured).toHaveLength(1);
-        expect(logCapture.captured[0]).toStrictEqual([`Can not connect pose node to non-pose input.`]);
+        expect(logCapture.captured[0]).toStrictEqual([`Type mismatch: input has type FLOAT, output has type POSE.`]);
         logCapture.clear();
 
         // Error: connect pose node to x-node input of x-node node.
@@ -445,7 +446,7 @@ describe(`Node`, () => {
             getTheOnlyOutputKey(poseNode1),
         );
         expect(logCapture.captured).toHaveLength(1);
-        expect(logCapture.captured[0]).toStrictEqual([`Pose node can only be connected to pose nodes.`]);
+        expect(logCapture.captured[0]).toStrictEqual([`Type mismatch: input has type FLOAT, output has type POSE.`]);
         logCapture.clear();
     });
 });
@@ -515,7 +516,7 @@ describe(`Pose node instantiation`, () => {
 describe(`XNode`, () => {
     test(`Get number variable`, () => {
         class OutputNumberPoseNode extends PoseNode {
-            @xNodeInput()
+            @xNodeInput({ type: PoseGraphType.FLOAT })
             public value = 0.0;
 
             public bind(context: PoseNodeBindingContext): void {
@@ -535,7 +536,7 @@ describe(`XNode`, () => {
         const layer = animationGraph.addLayer();
         const poseState = layer.stateMachine.addPoseState();
         const poseNodeMock = poseState.poseGraph.addNode(new OutputNumberPoseNode());
-        const getVar = poseState.poseGraph.addNode(new XNodeGetVariableNumber());
+        const getVar = poseState.poseGraph.addNode(new XNodeGetVariableFloat());
         getVar.node.variableName = '_x';
         const keys = poseGraphOp.getInputKeys(poseNodeMock);
         expect(keys).toHaveLength(1);
@@ -636,7 +637,7 @@ test(`XNode should be evaluated before pose node updating`, () => {
     const recorder = jest.fn();
 
     class ObservedNode extends PoseNode {
-        @xNodeInput()
+        @xNodeInput({ type: PoseGraphType.FLOAT })
         public value = 0.0;
 
         public bind() { }
@@ -656,7 +657,7 @@ test(`XNode should be evaluated before pose node updating`, () => {
     const layer = animationGraph.addLayer();
     const poseState = layer.stateMachine.addPoseState();
     const poseNodeMock = poseState.poseGraph.addNode(new ObservedNode());
-    const getVar = poseState.poseGraph.addNode(new XNodeGetVariableNumber());
+    const getVar = poseState.poseGraph.addNode(new XNodeGetVariableFloat());
     getVar.node.variableName = '_x';
     const keys = poseGraphOp.getInputKeys(poseNodeMock);
     expect(keys).toHaveLength(1);
@@ -682,7 +683,7 @@ test(`XNode should be evaluated before pose node updating`, () => {
 
 test(`Inputs from base classes`, () => {
     class Base extends UnimplementedPoseNode {
-        @xNodeInput()
+        @xNodeInput({ type: PoseGraphType.FLOAT })
         base_xNode_input = 1.0;
 
         @poseInput({})
@@ -690,7 +691,7 @@ test(`Inputs from base classes`, () => {
     }
 
     class Sub extends Base {
-        @xNodeInput()
+        @xNodeInput({ type: PoseGraphType.FLOAT })
         sub_xNode_input = 2.0;
 
         @poseInput({})

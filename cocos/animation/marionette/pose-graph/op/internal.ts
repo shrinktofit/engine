@@ -4,6 +4,7 @@ import { XNode } from '../x-node';
 import { assertIsTrue, error } from '../../../../core';
 import { PoseGraphNodeShell } from '../node-shell';
 import { PoseGraphNode } from '../node';
+import { PoseGraphType } from '../type-system';
 
 export type {
     PoseGraphInputKey as InputKey,
@@ -16,6 +17,8 @@ export type OutputKey = number;
 export type Node = PoseNode | XNode;
 
 export type { PoseGraphNodeShell };
+
+export { PoseGraphType };
 
 const POSE_NODE_OUTPUT_BINDING_KEY = 0;
 
@@ -81,34 +84,55 @@ export const getOutputKeys = (() => {
     };
 })();
 
+export function getOutputType(shell: PoseGraphNodeShell, outputId: OutputKey) {
+    const { node } = shell;
+    if (node instanceof PoseNode) {
+        return PoseGraphType.POSE;
+    } else {
+        const outputIndex = Number(outputId);
+        if (outputIndex < 0 || outputIndex >= node.outputCount) {
+            throw new Error(`${shell.node} does not have specified output key ${outputId}`);
+        } else {
+            return node.getOutputType(outputIndex);
+        }
+    }
+}
+
 export function connectNode (shell: PoseGraphNodeShell, key: PoseGraphInputKey, producer: PoseGraphNodeShell, outputKey?: OutputKey) {
     const {
         node: consumerNode,
     } = shell;
 
+    const inputMetadata = getInputMetadata(shell, key);
+    if (!inputMetadata) {
+        error(`Consumer node does not have such specified input key ${key}`);
+        return;
+    }
+
     let outputIndex = 0;
+    let outputType: PoseGraphType;
     if (producer.node instanceof XNode) {
-        if (globalNodeInputManager.isPoseInput(consumerNode, key)) {
-            error(`Can not connect x-node to pose input.`);
-            return;
-        }
         if (typeof outputKey !== 'number') {
             error(`Output key is not specified.`);
             return;
         }
-        outputIndex = outputKey;
-    } else if (!(consumerNode instanceof PoseNode)) {
-        error(`Pose node can only be connected to pose nodes.`);
-        return;
+        const outputIndex = Number(outputKey);
+        if (outputIndex < 0 || outputIndex >= producer.node.outputCount) {
+            error(`Producer node does not have such specified output key ${key}`);
+            return;
+        }
+        outputType = producer.node.getOutputType(outputIndex);
+    } else {
+        if ((outputKey ?? POSE_NODE_OUTPUT_BINDING_KEY) !== POSE_NODE_OUTPUT_BINDING_KEY) {
+            error(`Pose nodes have and only have single output.`);
+            return;
+        }
+        outputType = PoseGraphType.POSE;
     }
     
-    if ((outputKey ?? POSE_NODE_OUTPUT_BINDING_KEY) !== POSE_NODE_OUTPUT_BINDING_KEY) {
-        error(`Pose nodes have and only have single output.`);
-        return;
-    }
-    
-    if (producer.node instanceof PoseNode && !globalNodeInputManager.isPoseInput(consumerNode, key)) {
-        error(`Can not connect pose node to non-pose input.`);
+    const inputType = inputMetadata.type;
+    if (inputType !== outputType) {
+        error(`Type mismatch: input has type ${PoseGraphType[inputType]}, output has type ${PoseGraphType[outputType]}.`);
         return;
     }
 

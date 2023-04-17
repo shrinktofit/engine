@@ -3,15 +3,18 @@
 import { error, js } from '../../../core';
 import { PropertyNodeInputPrivateMetadata, globalNodeInputManager } from '../pose-graph/node-input-common';
 import { PoseGraphNodeBase } from '../pose-graph/pose-graph-node-base';
+import { PoseGraphType } from './type-system';
 import { XNode } from './x-node';
 
 export function xNodeInput ({
+    type,
     displayName,
     arrayLike,
 }: {
+    type: Exclude<PoseGraphType, PoseGraphType.POSE>;
     displayName?: string;
     arrayLike?: PropertyNodeInputPrivateMetadata['arrayLike'],
-} = {}): PropertyDecorator {
+}): PropertyDecorator {
     return (target, propertyKey) => {
         if (typeof propertyKey !== 'string') {
             error(`@xNodeInput can be only applied to string-named fields.`);
@@ -24,7 +27,7 @@ export function xNodeInput ({
             return;
         }
         globalNodeInputManager.setPropertyNodeInputRecord(targetConstructor, propertyKey, {
-            isPose: false,
+            type,
             displayName,
             arrayLike,
         });

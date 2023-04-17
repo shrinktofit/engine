@@ -4,6 +4,7 @@ import {
     PropertyNodeInputPrivateMetadata,
     globalNodeInputManager,
 } from '../pose-graph/node-input-common';
+import { PoseGraphType } from './type-system';
 
 export function poseInput ({
     displayName,
@@ -24,7 +25,7 @@ export function poseInput ({
             return;
         }
         globalNodeInputManager.setPropertyNodeInputRecord(targetConstructor, propertyKey, {
-            isPose: true,
+            type: PoseGraphType.POSE,
             displayName,
             arrayLike,
         });

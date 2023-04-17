@@ -3,6 +3,7 @@ import { PoseGraphNode } from './node';
 import { deletePoseGraphNodeArrayElement, insertPoseGraphNodeArrayElement } from './protected';
 import { js } from '../../../core';
 import { PoseGraphNodeBase } from './pose-graph-node-base';
+import { PoseGraphType } from './type-system';
 
 export interface PoseGraphInputKey {
     readonly propertyKey: string;
@@ -23,10 +24,12 @@ export interface PropertyNodeInputMetadata {
 export interface PropertyNodeInputPrivateMetadata {
     arrayLike?: PoseGraphNodeInputArrayLikeOptions;
 
-    isPose: boolean;
+    type: PoseGraphType;
 }
 
 export interface PoseGraphNodeInputMetadata {
+    type: PoseGraphType;
+
     displayName?: string;
 
     deletable?: boolean;
@@ -90,7 +93,7 @@ class NodeInputManager {
         if (!propertyInputRecord) {
             return false;
         }
-        return propertyInputRecord.isPose;
+        return propertyInputRecord.type === PoseGraphType.POSE;
     }
 
     public getInputMetadata (object: PoseGraphNode, key: PoseGraphInputKey): Readonly<PoseGraphNodeInputMetadata> | undefined {
@@ -107,6 +110,7 @@ class NodeInputManager {
                 const displayName = propertyInputRecord.arrayLike?.getDisplayName?.call(object, elementIndex)
                     ?? `${propertyInputRecord.displayName ?? propertyKey} ${elementIndex}`;
                 return {
+                    type: propertyInputRecord.type,
                     displayName,
                     deletable: true,
                     insertPoint: true,
@@ -114,6 +118,7 @@ class NodeInputManager {
             }
         }
         return {
+            type: propertyInputRecord.type,
             displayName: propertyInputRecord.displayName ?? propertyKey,
         };
     }

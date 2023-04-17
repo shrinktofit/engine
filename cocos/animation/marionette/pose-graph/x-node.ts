@@ -1,29 +1,34 @@
 import { VarInstance } from '../variable';
 import { PoseGraphNodeBase } from './pose-graph-node-base';
+import { PoseGraphType } from './type-system';
 
 type Outputs = unknown[];
 
 export abstract class XNode extends PoseGraphNodeBase {
-    constructor (outputCount: number) {
+    constructor (outputTypes: readonly PoseGraphType[]) {
         super();
-        this._outputCount = outputCount;
+        this._outputTypes = outputTypes;
     }
 
     get outputCount () {
-        return this._outputCount;
+        return this._outputTypes.length;
+    }
+
+    public getOutputType (outputIndex: number) {
+        return this._outputTypes[outputIndex];
     }
 
     public link (context: XNodeLinkContext) {
     }
 
-    private _outputCount = 0;
+    private _outputTypes: readonly PoseGraphType[] = [];
 
     public abstract selfEvaluate(outputs: Outputs): void;
 }
 
 export abstract class SingleOutputXNode<TValue = unknown> extends XNode {
-    constructor () {
-        super(1);
+    constructor (outputType: PoseGraphType) {
+        super([outputType]);
     }
 
     public selfEvaluate (outputs: Outputs): void {
