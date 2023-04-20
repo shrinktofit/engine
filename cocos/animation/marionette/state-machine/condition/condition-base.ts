@@ -8,7 +8,7 @@ export type ConditionEvalContext = BindContext;
 
 export interface Condition {
     clone (): Condition;
-    [createEval] (context: AnimationGraphBindingContext): ConditionEval;
+    [createEval] (context: AnimationGraphBindingContext, transitionBindingContext: TransitionBindingContext): ConditionEval;
 }
 
 export interface ConditionEval {
@@ -16,4 +16,12 @@ export interface ConditionEval {
      * Evaluates this condition.
      */
     eval(): boolean;
+}
+
+export interface StateWeightObserver {
+    observe(): number;
+}
+
+export interface TransitionBindingContext {
+    createStateWeightVisitor(): StateWeightObserver;
 }

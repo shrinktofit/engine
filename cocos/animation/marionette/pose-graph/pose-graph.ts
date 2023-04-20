@@ -1,24 +1,27 @@
-import { EditorExtendable, js, warn } from '../../../core';
+import { assertIsTrue, EditorExtendable, js, warn } from '../../../core';
 import { ccclass, serializable } from '../../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import { PoseNode } from './pose-node';
+import { PoseGraphNode } from './node';
+import { PoseGraphNodeShell } from './node-shell';
+import { shellTag } from './pose-graph-node-base';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseGraph`)
 export class PoseGraph extends EditorExtendable {
-    /**
-     * @zh
-     * 连接到该姿势图根输出结点的结点。
-     * @en
-     * The node connected to the root output node of pose graph.
-     */
     public get main () {
         return this._main;
     }
 
     public set main (value) {
-        if (value && !this._nodes.includes(value)) {
-            warn(`Specified pose expr is not within container.`);
-            return;
+        if (value) {
+            if (!this._shells.includes(value)) {
+                warn(`Specified node is not within container.`);
+                return;
+            }
+            if (!(value.node instanceof PoseNode)) {
+                warn(`The main node must be pose node.`);
+                return;
+            }
         }
         this._main = value;
     }
@@ -28,41 +31,41 @@ export class PoseGraph extends EditorExtendable {
      * @internal
      */
     public __callOnAfterDeserializeRecursive () {
-        for (const node of this._nodes) {
-            if ('__callOnAfterDeserializeRecursive' in node) {
-                (node as unknown as {
-                    __callOnAfterDeserializeRecursive(): void;
-                }).__callOnAfterDeserializeRecursive();
-            }
+        for (const shell of this._shells) {
+            shell.__callOnAfterDeserializeRecursive();
         }
     }
 
-    public nodes () {
-        return this._nodes.values();
+    public shells () {
+        return this._shells.values();
     }
 
-    public addNode (node: PoseNode) {
-        this._nodes.push(node);
+    public addNode<TNode extends PoseGraphNode> (node: TNode) {
+        assertIsTrue(!node[shellTag], `The node has been added into else graph.`);
+        const shell = new PoseGraphNodeShell(node);
+        this._shells.push(shell);
+        node[shellTag] = shell;
+        return shell;
     }
 
-    public removeNode (node: PoseNode) {
+    public removeNode<TNode extends PoseGraphNode> (removal: PoseGraphNodeShell<TNode>) {
         // Disconnect from others.
-        for (const node of this._nodes) {
-            // TODO before merging:
+        for (const shell of this._shells) {
+            shell._deleteBindingTo(removal);
         }
 
         // Disconnect from output.
-        if (node === this._main) {
+        if (removal === this._main) {
             this._main = null;
         }
 
         // Remove from graph.
-        js.array.remove(this._nodes, node);
+        js.array.remove(this._shells, removal);
     }
 
     @serializable
-    private _nodes: PoseNode[] = [];
+    private _main: PoseGraphNodeShell<PoseNode> | null = null;
 
     @serializable
-    private _main: PoseNode | null = null;
+    private _shells: PoseGraphNodeShell<PoseGraphNode>[] = [];
 }

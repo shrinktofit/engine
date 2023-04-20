@@ -23,7 +23,7 @@
 */
 
 export { InvalidTransitionError, VariableNotDefinedError } from './errors';
-export { AnimationGraph, isAnimationTransition, StateMachine, SubStateMachine, EmptyStateTransition, EmptyState, PoseState, PoseTransition } from './animation-graph';
+export { AnimationGraph, isAnimationTransition, StateMachine, SubStateMachine, EmptyStateTransition, EmptyState, PoseState, PoseTransition, DurationalTransition } from './animation-graph';
 export type { Transition, AnimationTransition, Layer, State, VariableDescription } from './animation-graph';
 export { BinaryCondition, UnaryCondition, TriggerCondition } from './state-machine/condition';
 export type { Condition } from './state-machine/condition';
@@ -35,5 +35,12 @@ export { VariableType } from './parametric';
 export { BindableNumber, BindableBoolean } from './parametric';
 export { AnimationMask } from './animation-mask';
 export { AnimationGraphVariant } from './animation-graph-variant';
+
 export type { PoseGraph } from './pose-graph/pose-graph';
-export type { PoseNode } from './pose-graph/pose-node';
+export { PoseNode } from './pose-graph/pose-node';
+
+export { XNode } from './pose-graph/x-node';
+
+export * from './pose-graph/op/index'
+export type { EnterNodeInfo } from './pose-graph/enter-node-info';
+

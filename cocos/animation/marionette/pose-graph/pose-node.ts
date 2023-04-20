@@ -1,14 +1,32 @@
 import { TEST } from 'internal:constants';
 import { assertIsTrue, EditorExtendable } from '../../../core';
 import { ccclass } from '../../../core/data/decorators';
-import { Pose } from '../../core/pose';
+import { Node } from '../../../scene-graph';
+import { Pose, PoseTransformSpace, TransformFilter } from '../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
+import type { AnimationController, ReadonlyClipOverrideMap } from '../animation-controller';
 import {
     AnimationGraphBindingContext,
     AnimationGraphEvaluationContext,
     AnimationGraphSettleContext,
     AnimationGraphUpdateContext,
 } from '../animation-graph-context';
+import { PoseGraphNodeBase } from './pose-graph-node-base';
+import { RuntimeStashView } from './stash/runtime-stash';
+import { RuntimeCoordinator } from './coordination/runtime-coordinator';
+import { PoseNodeDependencyEvaluation } from './instantiation';
+
+export interface AllPreviousLayersResultManager {
+    retrieve(context: AnimationGraphEvaluationContext): Pose;
+}
+
+export enum PoseTransformSpaceRequirement {
+    NO,
+
+    LOCAL,
+
+    SKELETAL,
+}
 
 const POSE_NODE_EVALUATION_STACK_ORDER_DEBUG_ENABLED = !!TEST;
 
@@ -18,7 +36,7 @@ const POSE_NODE_EVALUATION_STACK_ORDER_DEBUG_ENABLED = !!TEST;
  * Pose nodes are nodes in pose graph that yields pose objects.
  */
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseNode`)
-export abstract class PoseNode extends EditorExtendable {
+export abstract class PoseNode extends PoseGraphNodeBase {
     /**
      * Starts the bind stage on this pose node.
      *
@@ -61,7 +79,7 @@ export abstract class PoseNode extends EditorExtendable {
      * @note Subclasses shall not override this method and should override `doUpdate` instead.
      */
     public update (context: AnimationGraphUpdateContext) {
-        // TODO: update dependencies.
+        this._dependencyEvaluation?.evaluate();
         this.doUpdate(context);
     }
 
@@ -73,7 +91,7 @@ export abstract class PoseNode extends EditorExtendable {
      *
      * @note Subclasses shall not override this method and should override `doEvaluate` instead.
      */
-    public evaluate (context: AnimationGraphEvaluationContext): Pose {
+    public evaluate (context: AnimationGraphEvaluationContext, poseTransformSpaceRequirement: PoseTransformSpaceRequirement) {
         let stackSizeBefore!: number;
         if (POSE_NODE_EVALUATION_STACK_ORDER_DEBUG_ENABLED) {
             stackSizeBefore = context._stackSize_debugging;
@@ -91,11 +109,48 @@ export abstract class PoseNode extends EditorExtendable {
                 `PoseNode.doEvaluate() should certainly push a pose node onto the stack and return it.`);
         }
 
+        const currentSpace = pose._poseTransformSpace;
+        switch (poseTransformSpaceRequirement) {
+        default:
+            assertIsTrue(false);
+            // fallthrough
+        case PoseTransformSpaceRequirement.NO:
+            break;
+        case PoseTransformSpaceRequirement.LOCAL: {
+            if (currentSpace === PoseTransformSpace.SKELETAL) {
+                context._poseTransformsSpaceSkeletalToLocal(pose);
+            }
+            assertIsTrue(pose._poseTransformSpace === PoseTransformSpace.LOCAL);
+            break;
+        }
+        case PoseTransformSpaceRequirement.SKELETAL: {
+            if (currentSpace === PoseTransformSpace.LOCAL) {
+                context._poseTransformsSpaceLocalToSkeletal(pose);
+            }
+            assertIsTrue(pose._poseTransformSpace === PoseTransformSpace.SKELETAL);
+            break;
+        }
+        }
+
         return pose;
     }
 
-    protected static evaluateDefaultPose (context: AnimationGraphEvaluationContext) {
-        return context.pushDefaultedPose();
+    public static evaluateDefaultPose (context: AnimationGraphEvaluationContext, poseTransformSpaceRequirement: PoseTransformSpaceRequirement) {
+        switch (poseTransformSpaceRequirement) {
+        default:
+            assertIsTrue(false);
+            // fallthrough
+        case PoseTransformSpaceRequirement.NO:
+        case PoseTransformSpaceRequirement.LOCAL:
+            return context.pushDefaultedPose();
+        case PoseTransformSpaceRequirement.SKELETAL:
+            return context.pushDefaultedPoseInSkeletalSpace();
+        }
+    }
+
+    /** @internal */
+    public _setDependencyEvaluation (dependency: PoseNodeDependencyEvaluation) {
+        this._dependencyEvaluation = dependency;
     }
 
     /**
@@ -115,5 +170,7 @@ export abstract class PoseNode extends EditorExtendable {
      *
      * @returns The result pose.
      */
-    protected abstract doEvaluate (context: AnimationGraphEvaluationContext): Pose;
+    protected abstract doEvaluate(context: AnimationGraphEvaluationContext): Pose;
+
+    private _dependencyEvaluation: PoseNodeDependencyEvaluation | undefined = undefined;
 }

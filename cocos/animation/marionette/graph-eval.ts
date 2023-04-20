@@ -22,10 +22,10 @@
  THE SOFTWARE.
 */
 
-import { DEBUG } from 'internal:constants';
+import { DEBUG, TEST } from 'internal:constants';
 import { AnimationGraph } from './animation-graph';
 import type { Node } from '../../scene-graph/node';
-import { Value, VarInstance, TriggerResetMode } from './variable';
+import { Value, VarInstance, TriggerResetMode, createVarInstance } from './variable';
 import { VariableType } from './parametric';
 import { assertIsTrue } from '../../core';
 import { MAX_ANIMATION_LAYER } from '../../3d/skeletal-animation/limits';
@@ -35,8 +35,11 @@ import {
     AnimationGraphPoseLayoutMaintainer, defaultTransformsTag, LayoutChangeFlag, AuxiliaryCurveRegistry,
     AnimationGraphUpdateContext, AnimationGraphUpdateContextGenerator,
     AnimationGraphSettleContext,
+    DeferredPoseStashAllocator,
 } from './animation-graph-context';
-import { createLayerEvaluationRecord, DefaultTopLevelPoseNode } from './pose-graph/default-top-level-pose-node';
+import { PoseTransformSpaceRequirement } from './pose-graph/pose-node';
+import { DefaultTopLevelPoseNode } from './pose-graph/default-top-level-pose-node';
+import { AnimationGraphEvent, GraphEventTarget } from './event';
 import {
     ClipStatus,
     MotionStateStatus,
@@ -50,7 +53,10 @@ export class AnimationGraphEval {
         time: 0.0,
     };
 
-    constructor (graph: AnimationGraph, root: Node, controller: AnimationController, clipOverrides: ReadonlyClipOverrideMap | null) {
+    constructor (
+        graph: AnimationGraph, root: Node, controller: AnimationController, clipOverrides: ReadonlyClipOverrideMap | null,
+        eventTarget: GraphEventTarget,
+    ) {
         if (DEBUG) {
             if (graph.layers.length >= MAX_ANIMATION_LAYER) {
                 throw new Error(
@@ -61,11 +67,10 @@ export class AnimationGraphEval {
         }
 
         for (const [name, variable] of graph.variables) {
-            const varInstance = this._varInstances[name] = new VarInstance(variable.type, variable.value);
-            if (variable.type === VariableType.TRIGGER) {
-                const { resetMode } = variable;
-                varInstance.resetMode = resetMode;
-                if (resetMode === TriggerResetMode.NEXT_FRAME_OR_AFTER_CONSUMED) {
+            const varInstance = createVarInstance(variable);
+            this._varInstances[name] = varInstance;
+            if (varInstance.type === VariableType.TRIGGER) {
+                if (varInstance.resetMode === TriggerResetMode.NEXT_FRAME_OR_AFTER_CONSUMED) {
                     this._hasAutoTrigger = true;
                 }
             }
@@ -75,7 +80,7 @@ export class AnimationGraphEval {
         this._poseLayoutMaintainer = poseLayoutMaintainer;
 
         const bindingContext = new AnimationGraphBindingContext(
-            root, poseLayoutMaintainer, this._varInstances, controller,
+            root, poseLayoutMaintainer, this._varInstances, controller, eventTarget,
         );
         this._bindingContext = bindingContext;
 
@@ -84,16 +89,10 @@ export class AnimationGraphEval {
 
         poseLayoutMaintainer.startBind();
 
-        const layerEvaluationRecords = graph.layers.map((layer) => {
-            const record = createLayerEvaluationRecord(
-                layer,
-                bindingContext,
-                clipOverrides,
-            );
-            return record;
-        });
+        const poseStashAllocator = new DeferredPoseStashAllocator();
+        this._poseStashAllocator = poseStashAllocator;
 
-        this._rootPoseNode = new DefaultTopLevelPoseNode(layerEvaluationRecords);
+        this._rootPoseNode = new DefaultTopLevelPoseNode(graph, bindingContext, clipOverrides, poseStashAllocator);
 
         this._root = root;
         this._initializeContexts();
@@ -130,9 +129,10 @@ export class AnimationGraphEval {
             deltaTime,
             1.0,
         );
+
         rootPoseNode.update(updateContext);
 
-        const finalPose = rootPoseNode.evaluate(evaluationContext);
+        const finalPose = rootPoseNode.evaluate(evaluationContext, PoseTransformSpaceRequirement.LOCAL);
 
         if (this._hasAutoTrigger) {
             const { _varInstances: varInstances } = this;
@@ -150,6 +150,7 @@ export class AnimationGraphEval {
 
         if (DEBUG) {
             assertIsTrue(evaluationContext.allocatedPoseCount === 0, `Pose leaked.`);
+            assertIsTrue(this._poseStashAllocator.allocatedPoseCount === 0, `Pose leaked.`);
         }
     }
 
@@ -206,6 +207,11 @@ export class AnimationGraphEval {
         this._rootPoseNode.setLayerWeight(layerIndex, weight);
     }
 
+    /** TODO: Remove me! */
+    public __getMetaValueTODO (name: string) {
+        return this._auxiliaryCurveRegistry.get(name);
+    }
+
     public overrideClips (overrides: ReadonlyClipOverrideMap) {
         const {
             _poseLayoutMaintainer: poseLayoutMaintainer,
@@ -234,6 +240,7 @@ export class AnimationGraphEval {
      */
     private declare _root: Node;
     private declare _evaluationContext: AnimationGraphEvaluationContext;
+    private declare _poseStashAllocator: DeferredPoseStashAllocator;
     private _rootUpdateContextGenerator = new AnimationGraphUpdateContextGenerator();
 
     private _initializeContexts () {
@@ -247,14 +254,13 @@ export class AnimationGraphEval {
 
         this._createOrUpdateTransformFilters();
 
-        const evaluationContext = new AnimationGraphEvaluationContext({
-            transformCount: poseLayoutMaintainer.transformCount,
-            auxiliaryCurveCount: poseLayoutMaintainer.auxiliaryCurveCount,
-        });
+        const evaluationContext = poseLayoutMaintainer.createEvaluationContext();
         this._evaluationContext = evaluationContext;
 
         // Capture the default transforms.
         poseLayoutMaintainer.fetchDefaultTransforms(evaluationContext[defaultTransformsTag]);
+
+        poseLayoutMaintainer.resetPoseStashAllocator(this._poseStashAllocator);
     }
 
     private _updateAfterPossiblePoseLayoutChange () {
@@ -279,13 +285,11 @@ export class AnimationGraphEval {
         let evaluationContextRecreated = false;
         if ((layoutChangeFlags & LayoutChangeFlag.TRANSFORM_COUNT)
         || (layoutChangeFlags & LayoutChangeFlag.AUXILIARY_CURVE_COUNT)) {
-            const evaluationContext = new AnimationGraphEvaluationContext({
-                transformCount: poseLayoutMaintainer.transformCount,
-                auxiliaryCurveCount: poseLayoutMaintainer.auxiliaryCurveCount,
-            });
+            const evaluationContext = poseLayoutMaintainer.createEvaluationContext();
             this._evaluationContext.destroy();
             this._evaluationContext = evaluationContext;
             evaluationContextRecreated = true;
+            poseLayoutMaintainer.resetPoseStashAllocator(this._poseStashAllocator);
         }
 
         // If the eval context was recreated or the layout has changed, we should update the default transforms.

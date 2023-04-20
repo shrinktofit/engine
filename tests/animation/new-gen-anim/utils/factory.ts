@@ -5,6 +5,7 @@ import { Motion, ClipMotion, AnimationBlend1D, AnimationBlend2D } from "../../..
 import { BinaryCondition, TriggerCondition, UnaryCondition } from "../../../../cocos/animation/marionette/state-machine/condition";
 import { MotionState } from "../../../../cocos/animation/marionette/state-machine/motion-state";
 import { Bindable } from "../../../../cocos/animation/marionette/parametric";
+import { PoseGraphNodeShell } from "../../../../cocos/animation/marionette/pose-graph/node-shell";
 import { TriggerResetMode } from "../../../../cocos/animation/marionette/variable";
 import { Vec2 } from "../../../../exports/base";
 
@@ -31,6 +32,12 @@ export function createAnimationGraph(params: AnimationGraphParams): AnimationGra
     }
     for (const layerParams of params.layers) {
         const layer = animationGraph.addLayer();
+        if (layerParams.stashes) {
+            for (const [stashId, stashParams] of Object.entries(layerParams.stashes)) {
+                const stash = layer.addStash(stashId);
+                fillPoseGraph(stash.graph, stashParams.graph);
+            }
+        }
         fillStateMachine(layer.stateMachine, layerParams.stateMachine);
         if (typeof layerParams.additive !== 'undefined') {
             layer.additive = layerParams.additive;
@@ -151,7 +158,7 @@ function fillTransition(transition: Transition, params: TransitionAttributes) {
 
     function assertsIsDurableTransition(transition: Transition): asserts transition is (AnimationTransition | EmptyStateTransition | PoseTransition) {
         if (!isAnimationTransition(transition) && !(transition instanceof EmptyStateTransition) && !(transition instanceof PoseTransition)) {
-            throw new Error(`The transition should be animation/empty transition.`);
+            throw new Error(`The transition should be animation/empty/pose transition.`);
         }
     }
 
@@ -258,6 +265,7 @@ export type VariableDeclarationParams = {
 interface LayerParams {
     stateMachine: StateMachineParams;
     additive?: boolean;
+    stashes?: Record<string, LayerStashParams>;
 }
 
 export interface StateMachineParams {
@@ -283,7 +291,7 @@ export type StateParams = ({
     name?: string;
 };
 
-type TransitionParams = {
+export type TransitionParams = {
     from: string;
     to: string;
 } & TransitionAttributes;
@@ -355,11 +363,15 @@ export type MotionParams = {
     }>;
 };
 
-export interface PoseGraphParams {
+interface LayerStashParams {
+    graph: PoseGraphParams;
+}
+
+interface PoseGraphParams {
     rootNode?: PoseNodeParams;
 }
 
-export type PoseNodeParams = PoseNode;
+export type PoseNodeParams = PoseNode | Node_;
 
 function fillPoseGraph(poseGraph: PoseGraph, params: PoseGraphParams) {
     if (params.rootNode) {
@@ -368,8 +380,31 @@ function fillPoseGraph(poseGraph: PoseGraph, params: PoseGraphParams) {
     }
 }
 
-export function createPoseNode(poseGraph: PoseGraph, params: PoseNodeParams): NonNullable<PoseGraph['main']> {
-    poseGraph.addNode(params);
-    return params;
+declare global {
+    interface PoseNodeFactoryRegistry {
+    }
+}
+
+type Map_ = {
+    [k in keyof PoseNodeFactoryRegistry]: PoseNodeFactoryRegistry[k] & { type: k };
+}
+
+const poseNodeFactoryMap: Record<string, (poseGraph: PoseGraph, params: any) => PoseGraphNodeShell<PoseNode>> = {};
+
+export function addPoseNodeFactory<T extends keyof PoseNodeFactoryRegistry> (
+    type: T, factory: (poseGraph: PoseGraph, params: PoseNodeFactoryRegistry[T]) => PoseGraphNodeShell<PoseNode>) {
+    poseNodeFactoryMap[type] = factory;
+}
+
+export type Node_ = Map_[keyof Map_];
+
+export function createPoseNode(poseGraph: PoseGraph, params: PoseNodeParams): PoseGraphNodeShell<PoseNode> {
+    if (params instanceof PoseNode) {
+        return poseGraph.addNode(params);
+    } else if (!(params.type in poseNodeFactoryMap)) {
+        throw new Error(`${params.type} factory does not exist.`);
+    } else {
+        return poseNodeFactoryMap[params.type](poseGraph, params);
+    }
 }
 

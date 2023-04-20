@@ -1,5 +1,6 @@
 import { AnimationController } from "../../../../cocos/animation/animation";
 import { AnimationGraph } from "../../../../cocos/animation/marionette/animation-graph";
+import { createGraphEventTarget } from "../../../../cocos/animation/marionette/event";
 import { AnimationGraphEval } from "../../../../cocos/animation/marionette/graph-eval";
 import { Node } from "../../../../cocos/scene-graph";
 
@@ -16,6 +17,7 @@ export class AnimationGraphEvalMock {
             node,
             controller,
             (animationGraph instanceof AnimationGraph) ? null : animationGraph.clipOverrides,
+            createGraphEventTarget(),
         );
         // @ts-expect-error HACK
         controller._graphEval = graphEval;
