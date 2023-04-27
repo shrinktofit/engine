@@ -1,8 +1,8 @@
 import { ccclass, editable, serializable } from '../../../../../../core/data/decorators';
-import { poseGraphNodeHide, poseGraphNodeMenu } from '../../../pose-graph-node-common';
-import { PoseGraphType } from '../../../type-system';
+import { poseGraphNodeHide, poseGraphNodeMenu } from '../../../decorator/node';
+import { PoseGraphType } from '../../../foundation/type-system';
 import { SingleOutputXNode, XNode } from '../../../x-node';
-import { xNodeInput } from '../../../x-node-binding';
+import { input } from '../../../decorator/input';
 import { CLASS_NAME_PREFIX_X_NODE_MATH, POSE_GRAPH_NODE_MENU_PREFIX_X_NODE_MATH } from './prefix';
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODE_MATH}XNodeUnaryNumericExpr`)
@@ -10,7 +10,7 @@ import { CLASS_NAME_PREFIX_X_NODE_MATH, POSE_GRAPH_NODE_MENU_PREFIX_X_NODE_MATH 
 export abstract class XNodeUnaryNumericExpr extends SingleOutputXNode<number> {
     @serializable
     @editable
-    @xNodeInput({ type: PoseGraphType.FLOAT })
+    @input({ type: PoseGraphType.FLOAT })
     public input = 0.0;
 
     public selfEvaluateDefaultOutput () {

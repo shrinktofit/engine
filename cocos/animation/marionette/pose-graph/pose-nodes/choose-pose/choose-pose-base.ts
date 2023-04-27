@@ -1,12 +1,12 @@
-import { DEBUG, EDITOR } from 'internal:constants';
-import { ccclass, editable, serializable, type } from '../../../../../core/data/decorators';
-import { blendPoseInto, Pose, TransformFilter } from '../../../../core/pose';
+import { DEBUG } from 'internal:constants';
+import { ccclass, serializable } from '../../../../../core/data/decorators';
+import { blendPoseInto, Pose } from '../../../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../../define';
 import { PoseNode, PoseTransformSpaceRequirement } from '../../pose-node';
-import { poseInput } from '../../pose-node-binding';
-import { xNodeInput } from '../../x-node-binding';
-import { AnimationGraphBindingContext, AnimationGraphEvaluationContext, AnimationGraphSettleContext, AnimationGraphUpdateContext, AnimationGraphUpdateContextGenerator } from '../../../animation-graph-context';
-import { poseGraphNodeHide, poseGraphNodeMenu } from '../../pose-graph-node-common';
+import { AnimationGraphBindingContext, AnimationGraphEvaluationContext, AnimationGraphSettleContext,
+    AnimationGraphUpdateContext, AnimationGraphUpdateContextGenerator,
+} from '../../../animation-graph-context';
+import { poseGraphNodeHide } from '../../decorator/node';
 import { approx, assertIsTrue, lerp } from '../../../../../core';
 
 const ZERO_ALTERING_DURATION_THRESHOLD = 1e-5;

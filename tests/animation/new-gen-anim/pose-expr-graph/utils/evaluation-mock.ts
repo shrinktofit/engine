@@ -13,7 +13,6 @@ import {
     AnimationGraphSettleContext,
     AnimationGraphUpdateContext,
 } from '../../../../../cocos/animation/marionette/animation-graph-context';
-import { createGraphEventTarget } from '../../../../../cocos/animation/marionette/event';
 import { BindContext } from '../../../../../cocos/animation/marionette/parametric';
 import { MotionCoordination } from '../../../../../cocos/animation/marionette/pose-graph/coordination/motion-coordination';
 import { RuntimeCoordinator } from '../../../../../cocos/animation/marionette/pose-graph/coordination/runtime-coordinator';
@@ -111,7 +110,8 @@ export class PoseNodeEvaluationMock<TAnimationResult> {
         const bindContext = new AnimationGraphBindingContext(
             origin, this._poseLayoutMaintainer, this._varRegistry,
             animationController,
-            createGraphEventTarget(),
+            // @ts-expect-error HACK here
+            animationController._customEventTarget,
         );
         this._poseLayoutMaintainer.startBind();
 

@@ -7,10 +7,12 @@ import { Motion, MotionEval, MotionPort } from '../../motion/motion';
 import { PoseNode } from '../pose-node';
 import { MotionCoordination } from '../coordination/motion-coordination';
 import { RuntimeCoordinationRecord } from '../coordination/runtime-coordinator';
-import { poseGraphCreateNodeFactory, poseGraphNodeAppearance } from '../pose-graph-node-common';
+import { poseGraphCreateNodeFactory, poseGraphNodeAppearance } from '../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { getEnterInfo, makeCreateNodeFactory } from './play-or-sample-motion-pose-node-shared';
-import { AnimationGraphBindingContext, AnimationGraphEvaluationContext, AnimationGraphSettleContext, AnimationGraphUpdateContext } from '../../animation-graph-context';
+import { AnimationGraphBindingContext, AnimationGraphEvaluationContext,
+    AnimationGraphSettleContext, AnimationGraphUpdateContext,
+} from '../../animation-graph-context';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}MotionNode`)
 @poseGraphCreateNodeFactory(makeCreateNodeFactory(

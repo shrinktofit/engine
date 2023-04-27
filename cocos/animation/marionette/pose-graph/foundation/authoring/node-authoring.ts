@@ -1,8 +1,5 @@
-import { js, warn } from '../../../core';
-import type { AnimationGraph } from '../animation-graph';
-import { PoseNode } from './pose-node';
-import { XNode } from './x-node';
-import { PoseGraphNode } from './node';
+import type { AnimationGraph } from '../../../animation-graph';
+import { PoseGraphNode } from '../pose-graph-node';
 
 export {};
 
@@ -80,52 +77,15 @@ export interface PoseGraphNodeAppearanceOptions {
     inline?: boolean;
 }
 
-const nodeEditorMetadataMap = new WeakMap<Constructor<PoseNode | XNode>, PoseGraphNodeEditorMetadata>();
+const nodeEditorMetadataMap = new WeakMap<Constructor<PoseGraphNode>, PoseGraphNodeEditorMetadata>();
 
-export function getPoseGraphNodeEditorMetadata<T extends PoseNode | XNode> (
-    classConstructor: Constructor<T>,
+export function getPoseGraphNodeEditorMetadata (
+    classConstructor: Constructor<PoseGraphNode>,
 ): Readonly<PoseGraphNodeEditorMetadata> | undefined {
     return nodeEditorMetadataMap.get(classConstructor);
 }
 
-function makeNodeEditorMetadataModifier (edit: (metadata: PoseGraphNodeEditorMetadata) => void): ClassDecorator {
-    return (target) => {
-        if (!checkDecoratorClass(target)) {
-            return;
-        }
-        const metadata = getOrCreateNodeEditorMetadata(target);
-        edit(metadata);
-    };
-}
-
-export const poseGraphNodeMenu = (menu: string) => makeNodeEditorMetadataModifier((metadata) => {
-    metadata.menu = menu;
-});
-
-export const poseGraphCreateNodeFactory = (factory: PoseGraphCreateNodeFactory<any>) => makeNodeEditorMetadataModifier((metadata) => {
-    metadata.factory = factory;
-});
-
-export const poseGraphNodeHide = (hide = true) => makeNodeEditorMetadataModifier((metadata) => {
-    metadata.hide = hide;
-});
-
-export const poseGraphNodeAppearance = (
-    appearance: Readonly<NonNullable<PoseGraphNodeEditorMetadata['appearance']>>,
-) => makeNodeEditorMetadataModifier((metadata) => {
-    Object.assign(metadata.appearance ??= {}, appearance);
-});
-
-// eslint-disable-next-line @typescript-eslint/ban-types
-function checkDecoratorClass (fn: Function): fn is Constructor<PoseNode | XNode> {
-    const result = fn === PoseNode || fn === XNode || js.isChildClassOf(fn, PoseNode) || js.isChildClassOf(fn, XNode);
-    if (!result) {
-        warn(`This kind of decorator should only be applied to pose graph node classes.`);
-    }
-    return result;
-}
-
-function getOrCreateNodeEditorMetadata (constructor: Constructor<PoseNode | XNode>) {
+export function getOrCreateNodeEditorMetadata (constructor: Constructor<PoseGraphNode>) {
     const existing = nodeEditorMetadataMap.get(constructor);
     if (existing) {
         return existing;

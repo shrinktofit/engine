@@ -1,13 +1,19 @@
-import { Condition, ConditionEval, ConditionEvalContext, StateWeightObserver, TransitionBindingContext } from './condition-base';
-import { VariableType, BindableNumber, bindNumericOr, EvaluationTimeAuxiliaryCurveVisitor, validateVariableTypeNumeric } from '../../parametric';
+import { Condition, ConditionEval, ConditionEvalContext, TransitionBindingContext } from './condition-base';
 import { _decorator } from '../../../../core';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
 import { createEval } from '../../create-eval';
-import { VariableNotDefinedError } from '../../errors';
-import { VarInstance } from '../../graph-eval';
+import { instantiate } from '../../../../serialization';
+import type { TCBinding, TCBindingEvaluation, TCBindingValueType } from './binding/binding';
+import { TCVariableBinding } from './binding/variable-binding';
+
+import './binding/runtime';
 
 const { ccclass, serializable } = _decorator;
 
+/**
+ * @zh 二元条件操作符。
+ * @en Operator used in binary condition.
+ */
 enum BinaryOperator {
     EQUAL_TO,
     NOT_EQUAL_TO,
@@ -17,73 +23,99 @@ enum BinaryOperator {
     GREATER_THAN_OR_EQUAL_TO,
 }
 
-class FloatValueHandle {
-    constructor (public value: number) { }
-}
+type LhsBinding = TCBinding<TCBindingValueType.FLOAT | TCBindingValueType.INTEGER>;
 
-interface FloatValueEvaluation {
-    evaluate(output: FloatValueHandle): void;
-}
+type lhsBindingEvaluation = TCBindingEvaluation<TCBindingValueType.FLOAT | TCBindingValueType.INTEGER>;
 
-abstract class FloatValueNode {
-    public abstract bind(context: ConditionEvalContext, transitionContext: TransitionBindingContext): FloatValueEvaluation | undefined;
-}
+/**
+ * @zh 描述一个二元条件，它有两个数值类型的操作数。
+ * @en Describes a binary condition, there are two operands with numeric type.
+ */
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}BinaryCondition`)
+export class BinaryCondition implements Condition {
+    public static readonly Operator = BinaryOperator;
 
-class RuntimeGetFloatVariable implements FloatValueEvaluation {
-    constructor (private _varInstance: VarInstance) { }
+    /**
+     * @zh
+     * 运算符。
+     * @en
+     * Operator.
+     */
+    @serializable
+    public operator: BinaryOperator = BinaryOperator.EQUAL_TO;
 
-    public evaluate (output: FloatValueHandle): void {
-        output.value = this._varInstance.value as number;
+    /**
+     * @zh
+     * 左操作数的值。
+     * @en
+     * Left operand value.
+     */
+    @serializable
+    public lhs = 0.0;
+
+    /**
+     * @zh
+     * 左操作数上的绑定。
+     * @en
+     * Left operand binding.
+     */
+    @serializable
+    public lhsBinding: LhsBinding = new TCVariableBinding<TCBindingValueType.FLOAT | TCBindingValueType.INTEGER>();
+
+    /**
+     * @zh
+     * 右操作数的值。
+     * @en
+     * Right operand value.
+     */
+    @serializable
+    public rhs = 0.0;
+
+    public clone () {
+        const that = new BinaryCondition();
+        that.operator = this.operator;
+        that.lhs = this.lhs;
+        that.lhsBinding = instantiate(this.lhsBinding);
+        that.rhs = this.rhs;
+        return that;
+    }
+
+    public [createEval] (context: ConditionEvalContext, transitionBindingContext: TransitionBindingContext) {
+        const lhsBindingEvaluation = this.lhsBinding?.bind(context, transitionBindingContext);
+
+        const binaryConditionEval = new BinaryConditionEval(
+            this.operator,
+            this.lhs,
+            this.rhs,
+            lhsBindingEvaluation,
+        );
+
+        return binaryConditionEval;
     }
 }
 
-class RuntimeGetAuxiliaryCurve implements FloatValueEvaluation {
-    constructor (private _visitor: EvaluationTimeAuxiliaryCurveVisitor) { }
-
-    evaluate (output: FloatValueHandle): void {
-        output.value = this._visitor.value;
-    }
+export declare namespace BinaryCondition {
+    export type Operator = BinaryOperator;
 }
 
-class RuntimeGetStateWeight implements FloatValueEvaluation {
-    constructor (private _visitor: StateWeightObserver) {}
-
-    public evaluate (output: FloatValueHandle): void {
-        output.value = this._visitor.observe();
-    }
-}
-
-class GenericBinaryConditionEval implements ConditionEval {
-    private _lhsHandle: FloatValueHandle;
-    private _rhsHandle: FloatValueHandle;
-
+class BinaryConditionEval implements ConditionEval {
     constructor (
         private _operator: BinaryOperator,
-        lhsInitialValue: number,
-        rhsInitialValue: number,
-        private _lhsEvaluation: FloatValueEvaluation | undefined,
-        private _rhsEvaluation: FloatValueEvaluation | undefined,
+        lhsValue: number,
+        rhsValue: number,
+        private _lhsBindingEvaluation: lhsBindingEvaluation | undefined,
     ) {
-        this._lhsHandle = new FloatValueHandle(lhsInitialValue);
-        this._rhsHandle = new FloatValueHandle(rhsInitialValue);
+        this._lhsValue = lhsValue;
+        this._rhsValue = rhsValue;
     }
 
     /**
      * Evaluates this condition.
      */
     public eval () {
-        const {
-            _lhsHandle: lhsHandle,
-            _lhsEvaluation: lhsEvaluation,
-            _rhsHandle: rhsHandle,
-            _rhsEvaluation: rhsEvaluation,
-        } = this;
+        const lhsValue = this._lhsBindingEvaluation?.evaluate() ?? this._lhsValue;
+        const rhsValue = this._rhsValue;
 
-        lhsEvaluation?.evaluate(lhsHandle);
-        rhsEvaluation?.evaluate(rhsHandle);
-
-        const lhsValue = lhsHandle.value;
-        const rhsValue = rhsHandle.value;
         switch (this._operator) {
         default:
         case BinaryOperator.EQUAL_TO:
@@ -100,72 +132,7 @@ class GenericBinaryConditionEval implements ConditionEval {
             return lhsValue >= rhsValue;
         }
     }
-}
 
-@ccclass(`${CLASS_NAME_PREFIX_ANIM}BinaryCondition`)
-export class BinaryCondition implements Condition {
-    public static readonly Operator = BinaryOperator;
-
-    @serializable
-    public operator: BinaryOperator = BinaryOperator.EQUAL_TO;
-
-    @serializable
-    public lhs: BindableNumber = new BindableNumber();
-
-    @serializable
-    public rhs: BindableNumber = new BindableNumber();
-
-    public clone () {
-        const that = new BinaryCondition();
-        that.operator = this.operator;
-        that.lhs = this.lhs.clone();
-        that.rhs = this.rhs.clone();
-        return that;
-    }
-
-    public [createEval] (context: ConditionEvalContext, transitionBindingContext: TransitionBindingContext) {
-        const {
-            operator,
-            lhs,
-            rhs,
-        } = this;
-
-        let lhsValue = 0.0;
-        let lhsEvaluation: FloatValueEvaluation | undefined;
-
-        if (lhs.variable === '#StateWeight') {
-            lhsEvaluation = new RuntimeGetStateWeight(
-                transitionBindingContext.createStateWeightVisitor(),
-            );
-        } else if (lhs.variable.startsWith('#')) {
-            lhsEvaluation = new RuntimeGetAuxiliaryCurve(
-                context.createEvaluationTimeAuxiliaryCurveVisitor(lhs.variable.slice(1)),
-            );
-        } else if (lhs.variable) {
-            const varInstance = context.getVar(lhs.variable);
-            if (!varInstance) {
-                throw new VariableNotDefinedError(lhs.variable);
-            }
-            validateVariableTypeNumeric(varInstance.type, lhs.variable);
-            lhsEvaluation = new RuntimeGetFloatVariable(varInstance);
-        } else {
-            lhsValue = lhs.value;
-        }
-
-        const rhsValue = rhs.value;
-
-        const binaryConditionEval = new GenericBinaryConditionEval(
-            operator,
-            lhsValue,
-            rhsValue,
-            lhsEvaluation,
-            undefined,
-        );
-
-        return binaryConditionEval;
-    }
-}
-
-export declare namespace BinaryCondition {
-    export type Operator = BinaryOperator;
+    private declare _lhsValue: number;
+    private declare _rhsValue: number;
 }

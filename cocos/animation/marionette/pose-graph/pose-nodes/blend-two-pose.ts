@@ -1,7 +1,7 @@
 import { ccclass } from '../../../../core/data/decorators';
 import { blendPoseInto, Pose } from '../../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
-import { poseGraphNodeMenu } from '../pose-graph-node-common';
+import { poseGraphNodeMenu } from '../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE_BLEND } from './menu-common';
 import { BlendTwoPoseBase } from './blend-two-pose-base';
 

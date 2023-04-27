@@ -1,34 +1,20 @@
 import { EDITOR } from 'internal:constants';
 import { ccclass, serializable } from '../../../../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../../define';
-import { xNodeInput } from '../../x-node-binding';
-import { poseGraphNodeMenu } from '../../pose-graph-node-common';
+import { input } from '../../decorator/input';
+import { poseGraphNodeMenu } from '../../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_CHOOSE } from './menu';
 import { ChoosePoseBase } from './choose-pose-base';
-import { poseInput } from '../../pose-node-binding';
-import { deletePoseGraphNodeArrayElement, insertPoseGraphNodeArrayElement } from '../../protected';
-import { PoseGraphType } from '../../type-system';
-
-function insertItem (this: ChoosePoseBase, hint: number) {
-    insertPoseGraphNodeArrayElement(this, ['poses', hint], null);
-    insertPoseGraphNodeArrayElement(this, ['alteringDurations', hint], 0.0);
-}
-
-function deleteItem (this: ChoosePoseBase, index: number) {
-    deletePoseGraphNodeArrayElement(this, ['poses', index]);
-    deletePoseGraphNodeArrayElement(this, ['alteringDurations', index]);
-}
+import { PoseGraphType } from '../../foundation/type-system';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}ChoosePoseByIndex`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_CHOOSE}按索引选择`)
 export class ChoosePoseByIndex extends ChoosePoseBase {
-    @poseInput({
-        arrayLike: !EDITOR ? undefined : {
-            insert: insertItem,
-            delete: deleteItem,
-            getDisplayName (this: ChoosePoseBase, index: number) {
-                return `索引 ${index} 姿势`;
-            },
+    @input({
+        type: PoseGraphType.POSE,
+        arraySyncGroup: 'choose-item',
+        getArrayElementDisplayName: !EDITOR ? undefined : function getArrayElementDisplayName (this: ChoosePoseByIndex, index: number) {
+            return `姿势 ${index}`;
         },
     })
     get poses () {
@@ -39,12 +25,11 @@ export class ChoosePoseByIndex extends ChoosePoseBase {
         this._poses = value;
     }
 
-    @xNodeInput({
+    @input({
         type: PoseGraphType.FLOAT,
-        arrayLike: !EDITOR ? undefined : {
-            getDisplayName (this: ChoosePoseBase, index: number) {
-                return `索引 ${index} 交替时长`;
-            },
+        arraySyncGroup: 'choose-item',
+        getArrayElementDisplayName: !EDITOR ? undefined : function getArrayElementDisplayName (this: ChoosePoseByIndex, index: number) {
+            return `姿势 ${index} 交替时长`;
         },
     })
     get alteringDurations () {
@@ -56,7 +41,7 @@ export class ChoosePoseByIndex extends ChoosePoseBase {
     }
 
     @serializable
-    @xNodeInput({
+    @input({
         type: PoseGraphType.INTEGER,
         displayName: `选择的索引`,
     })

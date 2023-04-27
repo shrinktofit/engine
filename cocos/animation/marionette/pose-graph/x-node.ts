@@ -1,10 +1,10 @@
 import { VarInstance } from '../variable';
-import { PoseGraphNodeBase } from './pose-graph-node-base';
-import { PoseGraphType } from './type-system';
+import { PoseGraphNode } from './foundation/pose-graph-node';
+import { PoseGraphType } from './foundation/type-system';
 
 type Outputs = unknown[];
 
-export abstract class XNode extends PoseGraphNodeBase {
+export abstract class XNode extends PoseGraphNode {
     constructor (outputTypes: readonly PoseGraphType[]) {
         super();
         this._outputTypes = outputTypes;

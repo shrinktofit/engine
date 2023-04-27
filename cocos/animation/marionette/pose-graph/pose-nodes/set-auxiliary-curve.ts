@@ -3,13 +3,13 @@ import { ccclass, editable, serializable, type } from '../../../../core/data/dec
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
 import { ccenum } from '../../../../core';
 import { AuxiliaryCurveHandle } from '../../../core/animation-handle';
-import { xNodeInput } from '../x-node-binding';
-import { poseGraphNodeMenu } from '../pose-graph-node-common';
+import { input } from '../decorator/input';
+import { poseGraphNodeMenu } from '../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { Pose } from '../../../core/pose';
 import { AnySpaceSinglePoseModifier } from './single-pose-modifier';
 import { AnimationGraphBindingContext, AnimationGraphEvaluationContext } from '../../animation-graph-context';
-import { PoseGraphType } from '../type-system';
+import { PoseGraphType } from '../foundation/type-system';
 
 enum SetAuxiliaryCurveFlag {
     LEAVE_UNCHANGED,
@@ -30,7 +30,7 @@ export class SetAuxiliaryCurve extends AnySpaceSinglePoseModifier {
 
     @serializable
     @editable
-    @xNodeInput({ type: PoseGraphType.FLOAT })
+    @input({ type: PoseGraphType.FLOAT })
     public curveValue = 0.0;
 
     @serializable

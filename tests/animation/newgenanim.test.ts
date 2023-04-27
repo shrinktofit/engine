@@ -23,7 +23,6 @@ import { AnimationBlend1DFixture, LinearRealValueAnimationFixture, ConstantRealV
 import { NodeTransformValueObserver } from './new-gen-anim/utils/node-transform-value-observer';
 import { SingleRealValueObserver } from './new-gen-anim/utils/single-real-value-observer';
 import { createAnimationGraph } from './new-gen-anim/utils/factory';
-import { createGraphEventTarget } from '../../cocos/animation/marionette/event';
 import { AnimationGraphEvalMock } from './new-gen-anim/utils/eval-mock';
 
 const DEFAULT_AROUND_NUM_DIGITS = 5;
@@ -1132,8 +1131,8 @@ describe('NewGen Anim', () => {
                 for (const [lhs, rhs, output] of samples) {
                     const condition = new BinaryCondition();
                     condition.operator = op;
-                    condition.lhs.value = lhs;
-                    condition.rhs.value = rhs;
+                    condition.lhs = lhs;
+                    condition.rhs = rhs;
                     const graph = createAnimationGraphForConditionTest([condition]);
                     const graphEval = createAnimationGraphEval(graph, new Node());
                     graphEval.update(0.0);
@@ -5710,8 +5709,9 @@ function createAnimationGraphEval (animationGraph: AnimationGraph | AnimationGra
         (animationGraph instanceof AnimationGraph) ? animationGraph : animationGraph.original!,
         node,
         newGenAnim,
+        // @ts-expect-error HACK here
+        newGenAnim._customEventTarget,
         (animationGraph instanceof AnimationGraph) ? null : animationGraph.clipOverrides,
-        createGraphEventTarget(),
     );
     // @ts-expect-error HACK
     newGenAnim._graphEval = graphEval;
@@ -5724,8 +5724,9 @@ function createAnimationGraphEval2 (animationGraph: AnimationGraph | AnimationGr
         (animationGraph instanceof AnimationGraph) ? animationGraph : animationGraph.original!,
         node,
         newGenAnim,
+        // @ts-expect-error HACK here
+        newGenAnim._customEventTarget,
         (animationGraph instanceof AnimationGraph) ? null : animationGraph.clipOverrides,
-        createGraphEventTarget(),
     );
     // @ts-expect-error HACK
     newGenAnim._graphEval = graphEval;

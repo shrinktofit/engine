@@ -1,11 +1,10 @@
 import { ccclass, serializable } from '../../../../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../../define';
-import { xNodeInput } from '../../x-node-binding';
-import { poseGraphNodeMenu } from '../../pose-graph-node-common';
+import { input } from '../../decorator/input';
+import { poseGraphNodeMenu } from '../../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_CHOOSE } from './menu';
 import { ChoosePoseBase } from './choose-pose-base';
-import { poseInput } from '../../pose-node-binding';
-import { PoseGraphType } from '../../type-system';
+import { PoseGraphType } from '../../foundation/type-system';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}ChoosePoseByBoolean`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_CHOOSE}按布尔选择`)
@@ -14,7 +13,8 @@ export class ChoosePoseByBoolean extends ChoosePoseBase {
         super(2);
     }
 
-    @poseInput({
+    @input({
+        type: PoseGraphType.POSE,
         displayName: `为真时 姿态`,
     })
     public get truePose () {
@@ -24,7 +24,8 @@ export class ChoosePoseByBoolean extends ChoosePoseBase {
         this._poses[0] = value;
     }
 
-    @poseInput({
+    @input({
+        type: PoseGraphType.POSE,
         displayName: `为假时 姿态`,
     })
     public get falsePose () {
@@ -34,7 +35,7 @@ export class ChoosePoseByBoolean extends ChoosePoseBase {
         this._poses[1] = value;
     }
 
-    @xNodeInput({
+    @input({
         type: PoseGraphType.FLOAT,
         displayName: `为真时 交替时长`,
     })
@@ -45,7 +46,7 @@ export class ChoosePoseByBoolean extends ChoosePoseBase {
         this._alteringDurations[0] = value;
     }
 
-    @xNodeInput({
+    @input({
         type: PoseGraphType.FLOAT,
         displayName: `为假时 交替时长`,
     })
@@ -57,7 +58,7 @@ export class ChoosePoseByBoolean extends ChoosePoseBase {
     }
 
     @serializable
-    @xNodeInput({
+    @input({
         type: PoseGraphType.BOOLEAN,
         displayName: `选择的值`,
     })

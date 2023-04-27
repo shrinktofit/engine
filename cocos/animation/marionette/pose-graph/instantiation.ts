@@ -1,26 +1,43 @@
+// cSpell:words Evaluatable
+
 import { assertIsTrue, warn } from '../../../core';
 import { instantiate } from '../../../serialization';
 import { PoseNode } from './pose-node';
 import { PoseGraph } from './pose-graph';
 import { XNode, XNodeLinkContext } from './x-node';
-import { PoseGraphNode } from './node';
-import { NodeInputPath, PoseGraphNodeShell } from './node-shell';
+import { NodeInputPath } from './foundation/node-shell';
+import { PoseGraphNode, shellTag } from './foundation/pose-graph-node';
+
+type EvaluatableNode = PoseNode | XNode;
+
+function isEvaluatableNode (node: PoseGraphNode): node is EvaluatableNode {
+    return (node instanceof PoseNode || node instanceof XNode);
+}
 
 export function instantiatePoseGraph (
     graph: PoseGraph,
     linkContext: XNodeLinkContext,
 ): PoseNode | undefined {
     const {
-        main,
+        outputNode,
     } = graph;
 
-    if (!main) {
+    const outputNodeShell = outputNode[shellTag];
+    assertIsTrue(outputNodeShell);
+    const bindings = outputNodeShell.getBindings();
+    // Output node can only has 1 or has no binding.
+    assertIsTrue(bindings.length < 2);
+    if (bindings.length === 0) {
         return undefined;
     }
+    // If the output node has a binding, it must be pose node.
+    const binding = bindings[0];
+    assertIsTrue(binding.outputIndex === 0);
+    assertIsTrue(binding.producer instanceof PoseNode);
 
     const instantiationMap = new Map<PoseGraphNode, RuntimeNodeEvaluation>();
     const mainRecord = instantiateNode(
-        main,
+        binding.producer,
         instantiationMap,
         linkContext,
     );
@@ -33,14 +50,15 @@ export interface PoseNodeDependencyEvaluation {
     evaluate(): void;
 }
 
-function instantiateNode<TNode extends PoseGraphNode> (
-    shell: PoseGraphNodeShell<TNode>,
+function instantiateNode<TNode extends EvaluatableNode> (
+    node: TNode,
     instantiationMap: Map<PoseGraphNode, RuntimeNodeEvaluation>,
     linkContext: XNodeLinkContext,
 ): RuntimeNodeEvaluation {
     const {
-        node,
-    } = shell;
+        [shellTag]: shell,
+    } = node;
+    assertIsTrue(shell, `Want to instantiate an unbound graph?`);
 
     const existing = instantiationMap.get(node);
     if (existing) {
@@ -69,11 +87,15 @@ function instantiateNode<TNode extends PoseGraphNode> (
      */
     const runtimeXNodePropertyBindings: RuntimeXNodePropertyBinding[] = [];
     for (const {
-        target: producerShell,
+        producer: producerNode,
         outputIndex: producerOutputIndex,
         inputPath: consumerInputPath,
-    } of shell._getBindings()) {
-        const producer = instantiateNode(producerShell, instantiationMap, linkContext);
+    } of shell.getBindings()) {
+        if (!isEvaluatableNode(producerNode)) {
+            warn(`There's a input bound to a node with unrecognized type.`);
+            continue;
+        }
+        const producer = instantiateNode(producerNode, instantiationMap, linkContext);
         if (producer instanceof PoseNode) {
             // Rule: pose nodes can only be used to feed pose nodes.
             assertIsTrue(consumerNode instanceof PoseNode);
@@ -239,7 +261,7 @@ interface RuntimeXNodePropertyBinding {
 
 class RuntimeXNodePlainPropertyBinding implements RuntimeXNodePropertyBinding {
     constructor (
-        private _consumerNode: PoseGraphNode, // TODO: Don't use any.
+        private _consumerNode: EvaluatableNode,
         private _consumerPropertyKey: string,
         private _producerRecord: RuntimeXNodeEvaluation,
         private _producerOutputIndex: number,
@@ -254,7 +276,7 @@ class RuntimeXNodePlainPropertyBinding implements RuntimeXNodePropertyBinding {
 
 class RuntimeXNodeArrayElementPropertyBinding implements RuntimeXNodePropertyBinding {
     constructor (
-        private _consumerNode: PoseGraphNode, // TODO: Don't use any.
+        private _consumerNode: EvaluatableNode,
         private _consumerPropertyKey: string,
         private _consumerElementIndex: number,
         private _producerRecord: RuntimeXNodeEvaluation,
@@ -269,7 +291,7 @@ class RuntimeXNodeArrayElementPropertyBinding implements RuntimeXNodePropertyBin
 }
 
 function linkXNode (
-    consumerNode: PoseGraphNode,
+    consumerNode: EvaluatableNode,
     consumerInputPath: NodeInputPath,
     producerRecord: RuntimeXNodeEvaluation,
     producerOutputIndex: number,

@@ -2,7 +2,7 @@ import { ccclass, editable, serializable, type } from '../../../../core/data/dec
 import { blendPoseInto, Pose, TransformFilter } from '../../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
 import { AnimationGraphSettleContext } from '../../animation-graph-context';
-import { poseGraphNodeMenu } from '../pose-graph-node-common';
+import { poseGraphNodeMenu } from '../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE_BLEND } from './menu-common';
 import { AnimationMask } from '../../animation-mask';
 import { BlendTwoPoseBase } from './blend-two-pose-base';

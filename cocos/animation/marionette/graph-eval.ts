@@ -39,13 +39,13 @@ import {
 } from './animation-graph-context';
 import { PoseTransformSpaceRequirement } from './pose-graph/pose-node';
 import { DefaultTopLevelPoseNode } from './pose-graph/default-top-level-pose-node';
-import { AnimationGraphEvent, GraphEventTarget } from './event';
 import {
     ClipStatus,
     MotionStateStatus,
     TransitionStatus,
 } from './state-machine/state-machine-eval';
 import { ReadonlyClipOverrideMap } from './clip-overriding';
+import { AnimationGraphCustomEventEmitter } from './event/custom-event-emitter';
 
 export class AnimationGraphEval {
     private _currentTransitionCache: TransitionStatus = {
@@ -54,8 +54,11 @@ export class AnimationGraphEval {
     };
 
     constructor (
-        graph: AnimationGraph, root: Node, controller: AnimationController, clipOverrides: ReadonlyClipOverrideMap | null,
-        eventTarget: GraphEventTarget,
+        graph: AnimationGraph,
+        root: Node,
+        controller: AnimationController,
+        customEventEmitter: AnimationGraphCustomEventEmitter,
+        clipOverrides: ReadonlyClipOverrideMap | null,
     ) {
         if (DEBUG) {
             if (graph.layers.length >= MAX_ANIMATION_LAYER) {
@@ -80,7 +83,8 @@ export class AnimationGraphEval {
         this._poseLayoutMaintainer = poseLayoutMaintainer;
 
         const bindingContext = new AnimationGraphBindingContext(
-            root, poseLayoutMaintainer, this._varInstances, controller, eventTarget,
+            root, poseLayoutMaintainer, this._varInstances, controller,
+            customEventEmitter,
         );
         this._bindingContext = bindingContext;
 
@@ -205,11 +209,6 @@ export class AnimationGraphEval {
 
     public setLayerWeight (layerIndex: number, weight: number) {
         this._rootPoseNode.setLayerWeight(layerIndex, weight);
-    }
-
-    /** TODO: Remove me! */
-    public __getMetaValueTODO (name: string) {
-        return this._auxiliaryCurveRegistry.get(name);
     }
 
     public overrideClips (overrides: ReadonlyClipOverrideMap) {

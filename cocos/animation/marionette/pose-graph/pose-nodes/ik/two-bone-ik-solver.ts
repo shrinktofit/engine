@@ -4,15 +4,15 @@ import { CLASS_NAME_PREFIX_ANIM } from '../../../../define';
 import { PoseTransformSpaceRequirement } from '../../pose-node';
 import { Vec3 } from '../../../../../core';
 import { TransformHandle } from '../../../../core/animation-handle';
-import { xNodeInput } from '../../x-node-binding';
-import { poseGraphNodeMenu } from '../../pose-graph-node-common';
+import { input } from '../../decorator/input';
+import { poseGraphNodeMenu } from '../../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from '../menu-common';
 import { Pose, PoseTransformSpace } from '../../../../core/pose';
 import { SkeletalSpaceSinglePoseModifier } from '../single-pose-modifier';
 import { solveTwoBoneIK } from './solve-two-bone-ik';
 import { Transform } from '../../../../core/transform';
 import { AnimationGraphBindingContext, AnimationGraphEvaluationContext } from '../../../animation-graph-context';
-import { PoseGraphType } from '../../type-system';
+import { PoseGraphType } from '../../foundation/type-system';
 
 const cacheRootTransform = new Transform();
 const cacheMiddleTransform = new Transform();
@@ -37,7 +37,7 @@ export class TwoBoneIKSolver extends SkeletalSpaceSinglePoseModifier {
 
     @serializable
     @editable
-    @xNodeInput({ type: PoseGraphType.VEC3 })
+    @input({ type: PoseGraphType.VEC3 })
     @visible(function (this: TwoBoneIKSolver) { return !this.endEffectorBoneName; })
     public endEffectorTargetPosition = new Vec3();
 

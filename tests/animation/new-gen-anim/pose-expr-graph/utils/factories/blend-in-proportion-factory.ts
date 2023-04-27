@@ -1,7 +1,7 @@
 
 import { BlendInProportion } from '../../../../../../cocos/animation/marionette/pose-graph/pose-nodes/blend-in-proportion';
 import { connectNode } from '../../../../../../cocos/animation/marionette/pose-graph/op/internal';
-import { insertPoseGraphNodeArrayElement } from '../../../../../../cocos/animation/marionette/pose-graph/protected';
+import { poseGraphOp } from '../../../../../../cocos/animation/marionette/pose-graph/op';
 import '../../../utils/factory';
 import { addPoseNodeFactory, createPoseNode, PoseNodeParams } from '../../../utils/factory';
 
@@ -20,9 +20,11 @@ addPoseNodeFactory('blend-in-proportion', (poseGraph, params) => {
     const node = poseGraph.addNode(new BlendInProportion());
     params.items.forEach(({ pose: poseParams, proportion }, itemIndex) => {
         const pose = createPoseNode(poseGraph, poseParams);
-        insertPoseGraphNodeArrayElement(node.node, ['poses', itemIndex], null);
+        const infos = Object.keys(poseGraphOp.getInputInsertInfos(node));
+        expect(infos.length).toBeGreaterThan(0);
+        poseGraphOp.insertInput(node, infos[0]);
         connectNode(node, ['poses', itemIndex], pose);
-        node.node.proportions[itemIndex] = proportion;
+        node.proportions[itemIndex] = proportion;
     });
     return node;
 });

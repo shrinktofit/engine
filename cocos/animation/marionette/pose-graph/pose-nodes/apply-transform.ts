@@ -5,16 +5,15 @@ import { PoseNode, PoseTransformSpaceRequirement } from '../pose-node';
 import {
     AnimationGraphBindingContext, AnimationGraphSettleContext, AnimationGraphUpdateContext, AnimationGraphEvaluationContext,
 } from '../../animation-graph-context';
-import { poseInput } from '../pose-node-binding';
+import { input } from '../decorator/input';
 import { approx, ccenum, error, Quat, Vec3 } from '../../../../core';
 import { TransformHandle } from '../../../core/animation-handle';
-import { xNodeInput } from '../x-node-binding';
-import { poseGraphNodeMenu } from '../pose-graph-node-common';
+import { poseGraphNodeMenu } from '../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { IntensitySpecification } from './intensity-specification';
 import { Pose } from '../../../core/pose';
 import { SinglePoseModifier } from './single-pose-modifier';
-import { PoseGraphType } from '../type-system';
+import { PoseGraphType } from '../foundation/type-system';
 
 enum TransformApplyFlag {
     LEAVE_UNCHANGED,
@@ -32,7 +31,7 @@ const APPLY_INTENSITY_EPSILON = 1e-5;
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_POSE}变换`)
 export class ApplyTransform extends SinglePoseModifier {
     @serializable
-    @poseInput({ displayName: '输入姿态' })
+    @input({ type: PoseGraphType.POSE, displayName: '输入姿态' })
     public input: PoseNode | null = null;
 
     @serializable
@@ -46,7 +45,7 @@ export class ApplyTransform extends SinglePoseModifier {
 
     @serializable
     @editable
-    @xNodeInput({ type: PoseGraphType.VEC3, displayName: '位置' })
+    @input({ type: PoseGraphType.VEC3, displayName: '位置' })
     @visible(function (this: ApplyTransform) { return this.positionApplyFlag !== TransformApplyFlag.LEAVE_UNCHANGED; })
     public position = new Vec3();
 
@@ -57,7 +56,7 @@ export class ApplyTransform extends SinglePoseModifier {
 
     @serializable
     @editable
-    @xNodeInput({ type: PoseGraphType.QUAT, displayName: '旋转' })
+    @input({ type: PoseGraphType.QUAT, displayName: '旋转' })
     @visible(function (this: ApplyTransform) { return this.rotationApplyFlag !== TransformApplyFlag.LEAVE_UNCHANGED; })
     public rotation = new Quat();
 
@@ -70,7 +69,7 @@ export class ApplyTransform extends SinglePoseModifier {
     @type(PoseTransformSpaceRequirement)
     public transformSpaceRequirement: PoseTransformSpaceRequirement = PoseTransformSpaceRequirement.NO;
 
-    @xNodeInput({ type: PoseGraphType.FLOAT, displayName: '强度值' })
+    @input({ type: PoseGraphType.FLOAT, displayName: '强度值' })
     public get intensityValue () {
         return this.intensity.value;
     }

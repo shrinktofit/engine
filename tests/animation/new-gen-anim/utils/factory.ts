@@ -1,13 +1,16 @@
 import { AnimationClip } from "../../../../cocos/animation/animation-clip";
 import { AnimationGraph, AnimationTransition, EmptyStateTransition, isAnimationTransition, PoseState, PoseTransition, State, StateMachine, SubStateMachine, Transition } from "../../../../cocos/animation/marionette/animation-graph";
-import { PoseGraph, PoseNode } from "../../../../cocos/animation/marionette/asset-creation";
+import { PoseGraph, poseGraphOp, PoseNode, TCBinding, TCBindingValueType } from "../../../../cocos/animation/marionette/asset-creation";
 import { Motion, ClipMotion, AnimationBlend1D, AnimationBlend2D } from "../../../../cocos/animation/marionette/motion";
 import { BinaryCondition, TriggerCondition, UnaryCondition } from "../../../../cocos/animation/marionette/state-machine/condition";
 import { MotionState } from "../../../../cocos/animation/marionette/state-machine/motion-state";
 import { Bindable } from "../../../../cocos/animation/marionette/parametric";
-import { PoseGraphNodeShell } from "../../../../cocos/animation/marionette/pose-graph/node-shell";
 import { TriggerResetMode } from "../../../../cocos/animation/marionette/variable";
-import { Vec2 } from "../../../../exports/base";
+import { assertIsTrue, Vec2 } from "../../../../exports/base";
+import { TCVariableBinding } from "../../../../cocos/animation/marionette/state-machine/condition/binding/variable-binding";
+import { TCAuxiliaryCurveBinding } from "../../../../cocos/animation/marionette/state-machine/condition/binding/auxiliary-curve-binding";
+import { TCStateWeightBinding } from "../../../../cocos/animation/marionette/state-machine/condition/binding/state-weight-binding";
+import { connectOutputNode } from "../../../../cocos/animation/marionette/pose-graph/op/internal";
 
 export function createAnimationGraph(params: AnimationGraphParams): AnimationGraph {
     const animationGraph = new AnimationGraph();
@@ -132,8 +135,13 @@ function fillTransition(transition: Transition, params: TransitionAttributes) {
                     case '<': condition.operator = BinaryCondition.Operator.LESS_THAN; break;
                     case '<=': condition.operator = BinaryCondition.Operator.LESS_THAN_OR_EQUAL_TO; break;
                 }
-                fillBindable(condition.lhs, conditionParams.lhs);
-                fillBindable(condition.rhs, conditionParams.rhs);
+                if (typeof conditionParams.lhs !== 'undefined') {
+                    condition.lhs = conditionParams.lhs;
+                }
+                if (conditionParams.lhsBinding) {
+                    condition.lhsBinding = createTCBinding(conditionParams.lhsBinding) as BinaryCondition['lhsBinding'];
+                }
+                condition.rhs = conditionParams.rhs;
                 return condition;
             }
             case 'trigger': {
@@ -195,6 +203,26 @@ function fillTransition(transition: Transition, params: TransitionAttributes) {
     if (typeof params.interruptible !== 'undefined') {
         assertsIsMotionTransition(transition);
         transition.interruptible = params.interruptible;
+    }
+}
+
+export function createTCBinding(params: TCBindingParams) {
+    switch (params.type) {
+        case 'variable': {
+            const binding = new TCVariableBinding();
+            binding.variableName = params.variableName;
+            binding.type = TCBindingValueType.FLOAT;
+            return binding;
+        }
+        case 'auxiliary-curve': {
+            const binding = new TCAuxiliaryCurveBinding();
+            binding.curveName = params.curveName;
+            return binding;
+        }
+        case 'state-weight': {
+            const binding = new TCStateWeightBinding();
+            return binding;
+        }
     }
 }
 
@@ -326,11 +354,22 @@ type TransitionConditionParams = {
 } | {
     type: 'binary';
     operator: '==' | '!=' | '>' | '<' | '>=' | '<=';
-    lhs: BindableParams<number>;
-    rhs: BindableParams<number>;
+    lhs?: number;
+    lhsBinding?: TCBindingParams;
+    rhs: number;
 } | {
     type: 'trigger';
     variableName: string;
+};
+
+export type TCBindingParams = {
+    type: 'variable';
+    variableName: string;
+} | {
+    type: 'auxiliary-curve';
+    curveName: string;
+} | {
+    type: 'state-weight';
 };
 
 type BindableParams<T> = {
@@ -376,7 +415,7 @@ export type PoseNodeParams = PoseNode | Node_;
 function fillPoseGraph(poseGraph: PoseGraph, params: PoseGraphParams) {
     if (params.rootNode) {
         const root = createPoseNode(poseGraph, params.rootNode);
-        poseGraph.main = root;
+        connectOutputNode(poseGraph.outputNode, root);
     }
 }
 
@@ -389,16 +428,16 @@ type Map_ = {
     [k in keyof PoseNodeFactoryRegistry]: PoseNodeFactoryRegistry[k] & { type: k };
 }
 
-const poseNodeFactoryMap: Record<string, (poseGraph: PoseGraph, params: any) => PoseGraphNodeShell<PoseNode>> = {};
+const poseNodeFactoryMap: Record<string, (poseGraph: PoseGraph, params: any) => PoseNode> = {};
 
 export function addPoseNodeFactory<T extends keyof PoseNodeFactoryRegistry> (
-    type: T, factory: (poseGraph: PoseGraph, params: PoseNodeFactoryRegistry[T]) => PoseGraphNodeShell<PoseNode>) {
+    type: T, factory: (poseGraph: PoseGraph, params: PoseNodeFactoryRegistry[T]) => PoseNode) {
     poseNodeFactoryMap[type] = factory;
 }
 
 export type Node_ = Map_[keyof Map_];
 
-export function createPoseNode(poseGraph: PoseGraph, params: PoseNodeParams): PoseGraphNodeShell<PoseNode> {
+export function createPoseNode(poseGraph: PoseGraph, params: PoseNodeParams): PoseNode {
     if (params instanceof PoseNode) {
         return poseGraph.addNode(params);
     } else if (!(params.type in poseNodeFactoryMap)) {

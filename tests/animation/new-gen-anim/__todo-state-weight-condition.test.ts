@@ -19,9 +19,6 @@ describe(`Used in interruption detection`, () => {
         const transitionDurationAToB = Math.min(fixture.motion_a.duration, fixture.motion_b.duration) * 0.5;
 
         const animationGraph = createAnimationGraph({
-            variableDeclarations: {
-                '#StateWeight': { type: 'float' },
-            },
             layers: [{
                 stateMachine: {
                     states: {
@@ -44,8 +41,8 @@ describe(`Used in interruption detection`, () => {
                         conditions: [{
                             type: 'binary',
                             operator: '>=',
-                            lhs: { type: 'variable', name: '#StateWeight' },
-                            rhs: { type: 'constant', value: fixture.observing_state_weight }
+                            lhsBinding: { type: 'state-weight' },
+                            rhs: fixture.observing_state_weight,
                         }],
                     }],
                 },

@@ -11,7 +11,7 @@ import {
     AnimationGraphSettleContext,
     AnimationGraphUpdateContext,
 } from '../animation-graph-context';
-import { PoseGraphNodeBase } from './pose-graph-node-base';
+import { PoseGraphNode } from './foundation/pose-graph-node';
 import { RuntimeStashView } from './stash/runtime-stash';
 import { RuntimeCoordinator } from './coordination/runtime-coordinator';
 import { PoseNodeDependencyEvaluation } from './instantiation';
@@ -36,7 +36,7 @@ const POSE_NODE_EVALUATION_STACK_ORDER_DEBUG_ENABLED = !!TEST;
  * Pose nodes are nodes in pose graph that yields pose objects.
  */
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseNode`)
-export abstract class PoseNode extends PoseGraphNodeBase {
+export abstract class PoseNode extends PoseGraphNode {
     /**
      * Starts the bind stage on this pose node.
      *

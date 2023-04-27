@@ -2,27 +2,26 @@ import { ccclass, editable, serializable, type } from '../../../../core/data/dec
 import { Pose } from '../../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
 import { PoseNode, PoseTransformSpaceRequirement } from '../pose-node';
-import { poseInput } from '../pose-node-binding';
-import { xNodeInput } from '../x-node-binding';
+import { input } from '../decorator/input';
 import { AnimationGraphBindingContext, AnimationGraphSettleContext,
     AnimationGraphUpdateContext, AnimationGraphUpdateContextGenerator, AnimationGraphEvaluationContext,
 } from '../../animation-graph-context';
-import { poseGraphNodeHide } from '../pose-graph-node-common';
-import { PoseGraphType } from '../type-system';
+import { poseGraphNodeHide } from '../decorator/node';
+import { PoseGraphType } from '../foundation/type-system';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}BlendTwoPoseBase`)
 @poseGraphNodeHide(true)
 export abstract class BlendTwoPoseBase extends PoseNode {
     @serializable
-    @poseInput({})
+    @input({ type: PoseGraphType.POSE })
     pose0: PoseNode | null = null;
 
     @serializable
-    @poseInput({})
+    @input({ type: PoseGraphType.POSE })
     pose1: PoseNode | null = null;
 
     @serializable
-    @xNodeInput({ type: PoseGraphType.FLOAT })
+    @input({ type: PoseGraphType.FLOAT })
     ratio = 1.0;
 
     public bind (context: AnimationGraphBindingContext) {

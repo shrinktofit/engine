@@ -25,9 +25,10 @@ import {
 import { blendPoseInto, Pose } from '../../core/pose';
 import { PoseNode, PoseTransformSpaceRequirement } from '../pose-graph/pose-node';
 import { instantiatePoseGraph } from '../pose-graph/instantiation';
-import { AnimationGraphEvent, GraphEventTarget } from '../event';
+import { AnimationGraphEvent } from '../event';
 import { TransitionBindingContext, StateWeightObserver } from './condition/condition-base';
 import { ReadonlyClipOverrideMap } from '../clip-overriding';
+import { AnimationGraphCustomEventEmitter } from '../event/custom-event-emitter';
 
 /**
  * @en
@@ -120,7 +121,7 @@ class TopLevelStateMachineEvaluation {
         this._additive = context.additive;
         this.name = name;
         this._controller = context.controller;
-        this._eventTarget = context.eventTarget;
+        this._customEventEmitter = context.customEventEmitter;
         const { entry, exit } = this._addStateMachine(
             stateMachine,
             null,
@@ -283,7 +284,7 @@ class TopLevelStateMachineEvaluation {
     }
 
     private declare _controller: AnimationController;
-    private _eventTarget: GraphEventTarget;
+    private _customEventEmitter: AnimationGraphCustomEventEmitter;
     /**
      * Preserved here for clip overriding.
      */
@@ -788,7 +789,7 @@ class TopLevelStateMachineEvaluation {
         this._currentTransitionPath.push(transitionInstance);
 
         if (transition.startEvent) {
-            transition.startEvent.emit(this._eventTarget);
+            transition.startEvent.emit(this._customEventEmitter);
         }
 
         if (isRealState(realDestination)) {
@@ -837,7 +838,7 @@ class TopLevelStateMachineEvaluation {
         this._callEnterMethods(targetNode);
 
         if (targetNode.transitionInEvent?.eventName) {
-            targetNode.transitionInEvent.emit(this._eventTarget);
+            targetNode.transitionInEvent.emit(this._customEventEmitter);
         }
     }
 
@@ -1048,7 +1049,7 @@ class TopLevelStateMachineEvaluation {
                 this._callExitMethods(destinationState);
             }
             if (transition.stub.endEvent) {
-                transition.stub.endEvent.emit(this._eventTarget);
+                transition.stub.endEvent.emit(this._customEventEmitter);
             }
             // The last destination state is not really unreferenced.
             // instead it will be referenced as "current state".

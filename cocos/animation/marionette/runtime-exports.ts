@@ -39,5 +39,3 @@ export { VariableType } from './parametric';
 export { StateMachineComponent } from './state-machine/state-machine-component';
 export type { PrimitiveValue as Value } from './variable';
 export type { Value as experimental_Value } from './variable';
-
-export type { GraphEventReceiver } from './event';

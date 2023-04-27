@@ -1,5 +1,7 @@
-import { PoseGraphNode } from "../../../cocos/animation/marionette/pose-graph/node";
-import { getPoseGraphNodeEditorMetadata, PoseGraphCreateNodeContext, PoseGraphNodeAppearanceOptions } from "../../../cocos/animation/marionette/pose-graph/pose-graph-node-common";
+import { PoseGraphNode } from "../../../cocos/animation/marionette/pose-graph/foundation/pose-graph-node";
+import {
+    getPoseGraphNodeEditorMetadata, PoseGraphCreateNodeContext, PoseGraphNodeAppearanceOptions,
+} from "../../../cocos/animation/marionette/pose-graph/foundation/authoring/node-authoring";
 import { js } from "../../../cocos/core/utils";
 import { PoseNode, XNode } from "../../exports/new-gen-anim";
 
@@ -12,10 +14,12 @@ export interface PoseGraphCreateNodeEntry {
 }
 
 export function* getCreatePoseGraphNodeEntries(
-    classConstructor: Constructor<PoseNode | XNode>,
+    classConstructor: Constructor<PoseGraphNode>,
     createNodeContext: PoseGraphCreateNodeContext,
 ): Iterable<PoseGraphCreateNodeEntry> {
-    if (classConstructor === PoseNode || classConstructor === XNode) {
+    type AbstractedConstructor<T = unknown> = abstract new (...args: any[]) => T;
+
+    if ((classConstructor as AbstractedConstructor) === PoseNode || (classConstructor as AbstractedConstructor) === XNode) {
         return;
     }
     const nodeClassMetadata = getPoseGraphNodeEditorMetadata(classConstructor as Constructor<PoseNode | XNode>);
@@ -35,9 +39,9 @@ export function* getCreatePoseGraphNodeEntries(
 }
 
 export function createPoseGraphNode(
-    classConstructor: Constructor<PoseNode | XNode>,
+    classConstructor: Constructor<PoseGraphNode>,
     arg: unknown,
-): PoseNode | XNode {
+): PoseGraphNode {
     const nodeClassMetadata = getPoseGraphNodeEditorMetadata(classConstructor as Constructor<PoseNode | XNode>);
     if (nodeClassMetadata?.factory) {
         return nodeClassMetadata.factory.create(arg) as PoseNode | XNode;
@@ -47,7 +51,7 @@ export function createPoseGraphNode(
 
 export type { PoseGraphCreateNodeContext };
 
-export function getNodeTitle(node: PoseNode | XNode) {
+export function getNodeTitle(node: PoseGraphNode) {
     if (node.getTitle) {
         return node.getTitle();
     }

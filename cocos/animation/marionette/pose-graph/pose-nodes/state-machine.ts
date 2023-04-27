@@ -7,9 +7,10 @@ import { blendPoseInto, Pose } from '../../../core/pose';
 import { AnimationGraphBindingContext, AnimationGraphEvaluationContext, AnimationGraphSettleContext, AnimationGraphUpdateContext, AnimationGraphUpdateContextGenerator } from '../../animation-graph-context';
 import { InterruptionBehavior, StateMachine } from '../../animation-graph';
 import { TopLevelStateMachineEvaluation } from '../../state-machine/state-machine-eval';
-import { poseGraphNodeAppearance, poseGraphNodeMenu } from '../pose-graph-node-common';
+import { poseGraphNodeAppearance, poseGraphNodeMenu } from '../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
-import { poseInput } from '../pose-node-binding';
+import { input } from '../decorator/input';
+import { PoseGraphType } from '../foundation/type-system';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}StateMachineNode`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_POSE}状态机`)
@@ -25,7 +26,7 @@ export class StateMachineNode extends PoseNode {
     public stateMachine = new StateMachine();
 
     @serializable
-    @poseInput({ displayName: `空状态姿势` })
+    @input({ type: PoseGraphType.POSE, displayName: `空状态姿势` })
     public emptyStatePose: PoseNode | null = null;
 
     /**

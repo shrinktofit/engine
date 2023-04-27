@@ -3,46 +3,34 @@ import { ccclass, serializable } from '../../../../core/data/decorators';
 import { blendPoseInto, Pose } from '../../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
 import { PoseNode, PoseTransformSpaceRequirement } from '../pose-node';
-import { poseInput } from '../pose-node-binding';
-import { xNodeInput } from '../x-node-binding';
-import { AnimationGraphBindingContext, AnimationGraphEvaluationContext, AnimationGraphSettleContext, AnimationGraphUpdateContext, AnimationGraphUpdateContextGenerator } from '../../animation-graph-context';
-import { poseGraphNodeMenu } from '../pose-graph-node-common';
+import { input } from '../decorator/input';
+import { AnimationGraphBindingContext, AnimationGraphEvaluationContext,
+    AnimationGraphSettleContext, AnimationGraphUpdateContext, AnimationGraphUpdateContextGenerator,
+} from '../../animation-graph-context';
+import { poseGraphNodeMenu } from '../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE_BLEND } from './menu-common';
-import {
-    insertPoseGraphNodeArrayElement,
-    deletePoseGraphNodeArrayElement,
-} from '../protected';
-import { PoseGraphType } from '../type-system';
-
-function insertItem (this: BlendInProportion, hint: number) {
-    insertPoseGraphNodeArrayElement(this, ['poses', hint], null);
-    insertPoseGraphNodeArrayElement(this, ['proportions', hint], 0.0);
-}
-
-function deleteItem (this: BlendInProportion, index: number) {
-    deletePoseGraphNodeArrayElement(this, ['poses', index]);
-    deletePoseGraphNodeArrayElement(this, ['proportions', index]);
-}
+import { PoseGraphType } from '../foundation/type-system';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}BlendInProportion`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_POSE_BLEND}按比例混合`)
 export class BlendInProportion extends PoseNode {
     @serializable
-    @poseInput({
+    @input({
+        type: PoseGraphType.POSE,
         displayName: 'Poses',
-        arrayLike: !EDITOR ? undefined : {
-            insert: insertItem,
-            delete: deleteItem,
+        arraySyncGroup: 'blend-item',
+        getArrayElementDisplayName: !EDITOR ? undefined : function getArrayElementDisplayName (this: BlendInProportion, index: number) {
+            return `姿势 ${index}`;
         },
     })
     public readonly poses: Array<PoseNode | null> = [];
 
     @serializable
-    @xNodeInput({
+    @input({
         type: PoseGraphType.FLOAT,
-        arrayLike: !EDITOR ? undefined : {
-            insert: insertItem,
-            delete: deleteItem,
+        arraySyncGroup: 'blend-item',
+        getArrayElementDisplayName: !EDITOR ? undefined : function getArrayElementDisplayName (this: BlendInProportion, index: number) {
+            return `姿势 ${index} 比例`;
         },
     })
     public readonly proportions: number[] = [];

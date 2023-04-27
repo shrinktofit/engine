@@ -8,11 +8,11 @@ import { Motion, MotionEval, MotionPort } from '../../motion/motion';
 import { PoseNode } from '../pose-node';
 import { Pose } from '../../../core/pose';
 import { AnimationGraphBindingContext, AnimationGraphEvaluationContext, AnimationGraphSettleContext, AnimationGraphUpdateContext } from '../../animation-graph-context';
-import { xNodeInput } from '../x-node-binding';
-import { poseGraphCreateNodeFactory } from '../pose-graph-node-common';
+import { input } from '../decorator/input';
+import { poseGraphCreateNodeFactory } from '../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { getEnterInfo, makeCreateNodeFactory } from './play-or-sample-motion-pose-node-shared';
-import { PoseGraphType } from '../type-system';
+import { PoseGraphType } from '../foundation/type-system';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}SampleMotionNode`)
 @poseGraphCreateNodeFactory(makeCreateNodeFactory(
@@ -30,7 +30,7 @@ export class SampleMotionNode extends PoseNode {
 
     @serializable
     @editable
-    @xNodeInput({ type: PoseGraphType.FLOAT })
+    @input({ type: PoseGraphType.FLOAT })
     public time = 0.0;
 
     @serializable

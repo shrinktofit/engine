@@ -6,8 +6,8 @@ import { CLASS_NAME_PREFIX_X_NODES } from './builtin/prefix';
 import { SingleOutputXNode, XNodeLinkContext } from '../x-node';
 import {
     PoseGraphCreateNodeEntry, PoseGraphCreateNodeFactory, poseGraphCreateNodeFactory, poseGraphNodeHide,
-} from '../pose-graph-node-common';
-import { PoseGraphType } from '../type-system';
+} from '../decorator/node';
+import { PoseGraphType } from '../foundation/type-system';
 
 interface CreateNodeArg {
     name: string;

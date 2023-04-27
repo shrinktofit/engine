@@ -1,8 +1,8 @@
 import { ClipMotion, AnimationBlend, AnimationBlend1D, AnimationBlend2D } from '../../motion';
 import { Motion } from '../../motion/motion';
-import { EnterNodeInfo } from '../enter-node-info';
-import { PoseGraphNode } from '../node';
-import { PoseGraphCreateNodeFactory } from '../pose-graph-node-common';
+import { EnterNodeInfo } from '../foundation/authoring/enter-node-info';
+import { PoseGraphCreateNodeFactory } from '../decorator/node';
+import { PoseNode } from '../pose-node';
 
 export {};
 
@@ -24,7 +24,7 @@ type CreateNodeArg = {
 
 export function makeCreateNodeFactory (
     menu_: (motionText: string) => string,
-    create_: (motion: Motion | null) => PoseGraphNode,
+    create_: (motion: Motion | null) => PoseNode,
 ): PoseGraphCreateNodeFactory<CreateNodeArg> {
     return {
         listEntries: (context) => [{

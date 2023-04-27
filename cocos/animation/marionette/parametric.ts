@@ -86,10 +86,6 @@ export type BindCallback<TValue, TThis, TArgs extends any[]> =
 
 export type VariableTypeValidator = () => void;
 
-export interface EvaluationTimeAuxiliaryCurveVisitor {
-    value: number;
-}
-
 export type BindContext = AnimationGraphBindingContext;
 
 export function bindOr<TValue, TThis, TArgs extends any[]> (

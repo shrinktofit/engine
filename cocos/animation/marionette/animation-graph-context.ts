@@ -10,12 +10,12 @@ import { VarInstance } from './variable';
 import { AnimationMask } from './animation-mask';
 import { error } from '../../core';
 import { partition } from '../../core/algorithm/partition';
-import { AnimationController, ReadonlyClipOverrideMap } from './animation-controller';
+import { AnimationController } from './animation-controller';
+import { AnimationGraphCustomEventEmitter } from './event/custom-event-emitter';
+import { ReadonlyClipOverrideMap } from './clip-overriding';
 import { AnimationClipGraphBindingContext } from './animation-graph-animation-clip-binding';
 import { PoseStashAllocator, RuntimeStashView } from './pose-graph/stash/runtime-stash';
 import { PoseHeapAllocator } from '../core/pose-heap-allocator';
-import { GraphEventTarget } from './event';
-import { EvaluationTimeAuxiliaryCurveVisitor } from './parametric';
 import { RuntimeCoordinator } from './pose-graph/coordination/runtime-coordinator';
 import { AllPreviousLayersResultManager } from './pose-graph/pose-node';
 
@@ -55,6 +55,10 @@ export type VarRegistry = Record<string, VarInstance>;
 
 export type TriggerResetter = (triggerName: string) => void;
 
+export interface EvaluationTimeAuxiliaryCurveView {
+    get(curveName: string): number;
+}
+
 /**
  * The binding context of an animation graph.
  */
@@ -64,13 +68,17 @@ export class AnimationGraphBindingContext {
         poseLayoutMaintainer: AnimationGraphPoseLayoutMaintainer,
         varRegistry: VarRegistry,
         private _controller: AnimationController,
-        eventTarget: GraphEventTarget,
+
+        /**
+         * The associated custom event emitter.
+         * Any portion of the animation graph may hold and use this emitter to emit custom events.
+         */
+        public readonly customEventEmitter: AnimationGraphCustomEventEmitter,
     ) {
         this._origin = origin;
         this._layoutMaintainer = poseLayoutMaintainer;
         this._varRegistry = varRegistry;
         this._additiveFlagStack = [false]; // By default, non-additive.
-        this._eventTarget = eventTarget;
     }
 
     /**
@@ -110,10 +118,6 @@ export class AnimationGraphBindingContext {
         return additiveFlagStack[additiveFlagStack.length - 1];
     }
 
-    get eventTarget () {
-        return this._eventTarget;
-    }
-
     public bindTransform (bone: string): TransformHandle | null {
         const boneNode = this._origin.getChildByPath(bone);
         if (!boneNode) {
@@ -150,6 +154,10 @@ export class AnimationGraphBindingContext {
         return this._layoutMaintainer.getOrCreateAuxiliaryCurveBinding(name);
     }
 
+    public getEvaluationTimeAuxiliaryCurveView (): EvaluationTimeAuxiliaryCurveView {
+        return this._layoutMaintainer.auxiliaryCurveRegistry;
+    }
+
     public getVar (id: string): VarInstance | undefined {
         return this._varRegistry[id];
     }
@@ -174,15 +182,6 @@ export class AnimationGraphBindingContext {
     /** @internal */
     public _integrityCheck () {
         return this._additiveFlagStack.length === 1;
-    }
-
-    public createEvaluationTimeAuxiliaryCurveVisitor (name: string): EvaluationTimeAuxiliaryCurveVisitor {
-        const registry = this._layoutMaintainer.auxiliaryCurveRegistry;
-        return {
-            get value () {
-                return registry.get(name);
-            },
-        };
     }
 
     public get stashView (): RuntimeStashView {
@@ -234,8 +233,6 @@ export class AnimationGraphBindingContext {
     }
 
     private _origin: Node;
-
-    private _eventTarget: GraphEventTarget;
 
     private _layoutMaintainer: AnimationGraphPoseLayoutMaintainer;
 
@@ -337,7 +334,7 @@ export class AnimationGraphPoseLayoutMaintainer {
         return this._auxiliaryCurveRecords.length;
     }
 
-    get auxiliaryCurveRegistry () {
+    get auxiliaryCurveRegistry (): { get(name: string): number; } {
         return this._auxiliaryCurveRegistry;
     }
 

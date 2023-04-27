@@ -2,7 +2,7 @@ import { EDITOR } from 'internal:constants';
 import { warn } from '../../../../core';
 import { ccclass, editable, serializable } from '../../../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
-import { PoseGraphCreateNodeFactory, poseGraphCreateNodeFactory } from '../pose-graph-node-common';
+import { PoseGraphCreateNodeFactory, poseGraphCreateNodeFactory } from '../decorator/node';
 import { RuntimeStash } from '../stash/runtime-stash';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { PoseNode } from '../pose-node';

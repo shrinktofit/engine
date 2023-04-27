@@ -96,8 +96,8 @@ describe(`Reentering`, () => {
                     exitTimeEnabled: false,
                     conditions: [{
                         type: 'binary', operator: '>=',
-                        lhs: { type: 'variable', name: '#StateWeight' },
-                        rhs: { type: 'constant', value: fixture.interruption_state_weight_threshold },
+                        lhsBinding: { type: 'state-weight' },
+                        rhs: fixture.interruption_state_weight_threshold,
                     }],
                 }],
             });

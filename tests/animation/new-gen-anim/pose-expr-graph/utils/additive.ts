@@ -2,7 +2,6 @@ import { PoseNode } from "../../../../../cocos/animation/marionette/asset-creati
 import { AnimationController } from "../../../../../cocos/animation/animation";
 import { AnimationGraphBindingContext, AnimationGraphPoseLayoutMaintainer, AnimationGraphSettleContext, AnimationGraphUpdateContext, AuxiliaryCurveRegistry } from "../../../../../cocos/animation/marionette/animation-graph-context";
 import { Node } from "../../../../../cocos/scene-graph";
-import { createGraphEventTarget } from "../../../../../cocos/animation/marionette/event";
 
 export function createAdditivityCheckMock() {
     const bindMock = jest.fn<void, [additive: boolean]>();
@@ -37,7 +36,8 @@ export function createPoseNodeBindContextMock_WithAdditive(additive: boolean): A
         poseLayoutMaintainer,
         varRegistry,
         controller,
-        createGraphEventTarget(),
+        // @ts-expect-error HACK here
+        controller._customEventTarget,
     );
     result._pushAdditiveFlag(additive);
     return result;

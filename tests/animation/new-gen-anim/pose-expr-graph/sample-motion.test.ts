@@ -1,4 +1,5 @@
 import { AnimationGraph } from "../../../../cocos/animation/marionette/animation-graph";
+import { connectOutputNode } from "../../../../cocos/animation/marionette/pose-graph/op/internal";
 import { SampleMotionNode } from "../../../../cocos/animation/marionette/pose-graph/pose-nodes/sample-motion";
 import { Node } from "../../../../cocos/scene-graph";
 import { AnimationGraphEvalMock } from "../utils/eval-mock";
@@ -19,12 +20,12 @@ describe(`Use normalized time`, () => {
         const layer = graph.addLayer();
         const poseState = layer.stateMachine.addPoseState();
         const poseNode = poseState.graph.addNode(new SampleMotionNode());
-        poseState.graph.main = poseNode;
+        connectOutputNode(poseState.graph.outputNode, poseNode);
         layer.stateMachine.connect(layer.stateMachine.entryState, poseState);
 
-        poseNode.node.motion = fixture.animation.createMotion(observer.getCreateMotionContext());
-        poseNode.node.time = 0.2;
-        poseNode.node.useNormalizedTime = useNormalizedTime;
+        poseNode.motion = fixture.animation.createMotion(observer.getCreateMotionContext());
+        poseNode.time = 0.2;
+        poseNode.useNormalizedTime = useNormalizedTime;
 
         const evalMock = new AnimationGraphEvalMock(observer.root, graph);
 

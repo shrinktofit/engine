@@ -12,15 +12,20 @@ import {
     AnimationGraphPoseLayoutMaintainer, defaultTransformsTag, AuxiliaryCurveRegistry,
 } from '../../../cocos/animation/marionette/animation-graph-context';
 import { blendPoseInto, Pose } from '../../../cocos/animation/core/pose';
-import { createGraphEventTarget, GraphEventTarget } from '../../../cocos/animation/marionette/event';
+import { AnimationController } from '../../../cocos/animation/marionette/animation-controller';
+import { EventTarget } from '../../../exports/base';
 import { VariableDescription } from '../../../cocos/animation/marionette/animation-graph';
 
 class AnimationGraphPartialPreviewer {
     constructor(root: Node) {
         this._root = root;
+
+        const dummyAnimationControllerNode = new Node();
+        this._dummyAnimationController = dummyAnimationControllerNode.addComponent(AnimationController);
     }
 
     public destroy() {
+        this._dummyAnimationController.node.destroy();
     }
 
     public evaluate() {
@@ -71,12 +76,16 @@ class AnimationGraphPartialPreviewer {
 
     private _motionRecords: MotionEvalRecord[] = [];
 
+    private _dummyAnimationController: AnimationController;
+
     private _updateAllRecords() {
         const poseLayoutMaintainer = new AnimationGraphPoseLayoutMaintainer(this._root, new AuxiliaryCurveRegistry());
         this._poseLayoutMaintainer = poseLayoutMaintainer;
 
         const bindingContext = new AnimationGraphBindingContext(
-            this._root, this._poseLayoutMaintainer, this._varInstances, createGraphEventTarget());
+            this._root, this._poseLayoutMaintainer, this._varInstances, this._dummyAnimationController,
+            new EventTarget(),
+        );
 
         poseLayoutMaintainer.startBind();
 
@@ -420,8 +429,6 @@ class MotionEvalRecord {
     }
 
     public rebind(bindContext: AnimationGraphBindingContext) {
-        // TODO: please fix type @Leslie Leigh
-        // Tracking issue: https://github.com/cocos/cocos-engine/issues/14640
         const motionEval = this._motion[createEval](bindContext, null);
 
         if (!motionEval) {

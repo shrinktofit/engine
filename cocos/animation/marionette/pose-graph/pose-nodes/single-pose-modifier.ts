@@ -2,16 +2,17 @@ import { EDITOR } from 'internal:constants';
 import { ccclass, editable, serializable, type } from '../../../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
 import { PoseNode, PoseTransformSpaceRequirement } from '../pose-node';
-import { poseInput } from '../pose-node-binding';
-import { poseGraphNodeHide } from '../pose-graph-node-common';
+import { input } from '../decorator/input';
+import { poseGraphNodeHide } from '../decorator/node';
 import { Pose } from '../../../core/pose';
 import { AnimationGraphBindingContext, AnimationGraphEvaluationContext, AnimationGraphSettleContext, AnimationGraphUpdateContext } from '../../animation-graph-context';
+import { PoseGraphType } from '../foundation/type-system';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}SinglePoseModifier`)
 @poseGraphNodeHide()
 export abstract class SinglePoseModifier extends PoseNode {
     @serializable
-    @poseInput({ displayName: '输入姿态' })
+    @input({ type: PoseGraphType.POSE, displayName: '输入姿态' })
     public input: PoseNode | null = null;
 
     public settle (context: AnimationGraphSettleContext) {

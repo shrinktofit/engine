@@ -1,13 +1,14 @@
 import { ccclass, serializable } from '../../../../core/data/decorators';
 import { applyDeltaPose } from '../../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
-import { poseGraphNodeMenu } from '../pose-graph-node-common';
+import { poseGraphNodeMenu } from '../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { PoseNode, PoseTransformSpaceRequirement } from '../pose-node';
-import { poseInput } from '../pose-node-binding';
+import { input } from '../decorator/input';
 import {
     AnimationGraphBindingContext, AnimationGraphSettleContext, AnimationGraphUpdateContext, AnimationGraphEvaluationContext,
 } from '../../animation-graph-context';
+import { PoseGraphType } from '../foundation/type-system';
 
 /**
  * Add an additional pose onto a base pose.
@@ -18,11 +19,11 @@ import {
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_POSE}混加姿势`)
 export class AddPose extends PoseNode {
     @serializable
-    @poseInput({ displayName: 'Base' })
+    @input({ type: PoseGraphType.POSE, displayName: 'Base' })
     public base: PoseNode | null = null;
 
     @serializable
-    @poseInput({ displayName: 'Addition' })
+    @input({ type: PoseGraphType.POSE, displayName: 'Addition' })
     public addition: PoseNode | null = null;
 
     public bind (context: AnimationGraphBindingContext) {
