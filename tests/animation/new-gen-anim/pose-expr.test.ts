@@ -14,6 +14,8 @@ import { poseGraphOp } from "../../../cocos/animation/marionette/pose-graph/op";
 import { PoseGraphType } from "../../../cocos/animation/marionette/pose-graph/foundation/type-system";
 import { PoseGraphNode } from "../../../cocos/animation/marionette/pose-graph/foundation/pose-graph-node";
 import { AddNonFreestandingNodeError } from "../../../cocos/animation/marionette/pose-graph/foundation/errors";
+import { poseGraphCreateNodeFactory, poseGraphNodeAppearance, poseGraphNodeHide, poseGraphNodeMenu } from "../../../cocos/animation/marionette/pose-graph/decorator/node";
+import { PoseGraphCreateNodeFactory, PoseGraphNodeEditorMetadata, getPoseGraphNodeEditorMetadata } from "../../../cocos/animation/marionette/pose-graph/foundation/authoring/node-authoring";
 
 class UnimplementedPoseNode extends PoseNode {
     public settle(context: AnimationGraphSettleContext): void {
@@ -189,6 +191,69 @@ describe(`Input decorator @input`, () => {
             return _Node;
         }
     });
+});
+
+describe(`Node editor decorators`, () => {
+    test(`@poseGraphNodeMenu`, () => {
+        checkInjection(
+            poseGraphNodeMenu('some-menu-item-1/some-menu-item-2'),
+            { menu: 'some-menu-item-1/some-menu-item-2' },
+        );
+    });
+
+    test(`@poseGraphNodeHide`, () => {
+        checkInjection(
+            poseGraphNodeHide(true),
+            { hide: true },
+        );
+    });
+
+    test(`@poseGraphNodeAppearance`, () => {
+        checkInjection(
+            poseGraphNodeAppearance({ themeColor: '#ff0012', inline: true }),
+            { appearance: { themeColor: '#ff0012', inline: true } },
+        );
+    });
+
+    test(`@poseGraphCreateNodeFactory`, () => {
+        const factory = {
+            listEntries: () => [],
+            create() { throw new Error(`Should never be invoked.`); },
+        };
+        checkInjection(
+            poseGraphCreateNodeFactory(factory),
+            { factory },
+        );
+    });
+
+    test(`All node decorators should be node dedicated.`, () => {
+        const errorWatcher = captureErrors();
+
+        for (const decorator of [
+            poseGraphNodeMenu(''),
+            poseGraphNodeAppearance({}),
+            poseGraphCreateNodeFactory({
+                listEntries: () => [],
+                create() { throw new Error(`Should never be invoked.`); },
+            }),
+        ] as const) {
+            @decorator
+            class NotPoseGraphNode {}
+
+            expect(errorWatcher.captured).toStrictEqual([
+                ['This kind of decorator should only be applied to pose graph node classes.'],
+            ]);
+
+            errorWatcher.clear();
+        }
+    });
+
+    function checkInjection(decorator: ClassDecorator, expectedMetadata: PoseGraphNodeEditorMetadata) {
+        @decorator
+        class SomePoseGraphNode extends PoseGraphNode {}
+
+        expect(getPoseGraphNodeEditorMetadata(SomePoseGraphNode)).toMatchObject(expectedMetadata);
+    }
 });
 
 describe(`Node`, () => {

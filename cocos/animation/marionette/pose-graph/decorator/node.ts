@@ -1,6 +1,4 @@
-import { js, warn } from '../../../../core';
-import { PoseNode } from '../pose-node';
-import { XNode } from '../x-node';
+import { error, js } from '../../../../core';
 import { PoseGraphNode } from '../foundation/pose-graph-node';
 
 import {
@@ -20,7 +18,7 @@ export type {
 
 function makeNodeEditorMetadataModifier (edit: (metadata: PoseGraphNodeEditorMetadata) => void): ClassDecorator {
     return (target) => {
-        if (!checkDecoratorClass(target)) {
+        if (!checkDecoratingClass(target)) {
             return;
         }
         const metadata = getOrCreateNodeEditorMetadata(target);
@@ -47,10 +45,10 @@ export const poseGraphNodeAppearance = (
 });
 
 // eslint-disable-next-line @typescript-eslint/ban-types
-function checkDecoratorClass (fn: Function): fn is Constructor<PoseNode | XNode> {
-    const result = fn === PoseNode || fn === XNode || js.isChildClassOf(fn, PoseNode) || js.isChildClassOf(fn, XNode);
-    if (!result) {
-        warn(`This kind of decorator should only be applied to pose graph node classes.`);
+function checkDecoratingClass (fn: Function): fn is Constructor<PoseGraphNode> {
+    if (!js.isChildClassOf(fn, PoseGraphNode)) {
+        error(`This kind of decorator should only be applied to pose graph node classes.`);
+        return false;
     }
-    return result;
+    return true;
 }

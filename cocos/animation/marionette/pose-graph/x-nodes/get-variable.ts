@@ -152,10 +152,6 @@ export class XNodeGetVariableQuat extends XNodeGetVariable<Quat> {
         super(PoseGraphType.QUAT);
     }
 
-    @editable
-    @serializable
-    public variableName = '';
-
     public selfEvaluateDefaultOutput (): Readonly<Quat> {
         return this._varInstance?.value as unknown as Quat; // TODO
     }
