@@ -12,7 +12,7 @@ import { PoseGraphType } from '../foundation/type-system';
 @poseGraphNodeHide()
 export abstract class SinglePoseModifier extends PoseNode {
     @serializable
-    @input({ type: PoseGraphType.POSE, displayName: '输入姿态' })
+    @input({ type: PoseGraphType.POSE, displayName: '输入姿势' })
     public input: PoseNode | null = null;
 
     public settle (context: AnimationGraphSettleContext) {

@@ -31,7 +31,7 @@ const APPLY_INTENSITY_EPSILON = 1e-5;
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_POSE}变换`)
 export class ApplyTransform extends SinglePoseModifier {
     @serializable
-    @input({ type: PoseGraphType.POSE, displayName: '输入姿态' })
+    @input({ type: PoseGraphType.POSE, displayName: '输入姿势' })
     public input: PoseNode | null = null;
 
     @serializable

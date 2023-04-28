@@ -942,6 +942,9 @@ test(`Inputs from base classes`, () => {
 
         @input({ type: PoseGraphType.POSE, })
         base_pose_input: Pose | null = null;
+
+        @input({ type: PoseGraphType.POSE })
+        base_input_about_to_be_overrode: Pose | null = null;
     }
 
     class Sub extends Base {
@@ -950,6 +953,9 @@ test(`Inputs from base classes`, () => {
 
         @input({ type: PoseGraphType.POSE, })
         sub_pose_input: Pose | null = null;
+
+        @input({ type: PoseGraphType.POSE })
+        base_input_about_to_be_overrode: Pose | null = null;
     }
 
     const poseGraph = createPoseGraph();
@@ -968,6 +974,7 @@ test(`Inputs from base classes`, () => {
             // Base inputs first.
             { displayName: 'base_xNode_input', value: 1.0 },
             { displayName: 'base_pose_input', value: null },
+            { displayName: 'base_input_about_to_be_overrode', value: null },
             { displayName: 'sub_xNode_input', value: 2.0 },
             { displayName: 'sub_pose_input', value: null },
         ]);
