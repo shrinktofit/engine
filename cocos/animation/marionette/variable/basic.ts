@@ -1,4 +1,4 @@
-import { Quat, Vec3 } from '../../../core';
+import { ccenum, Quat, Vec3 } from '../../../core';
 
 /**
  * @en
@@ -55,6 +55,7 @@ export enum VariableType {
      */
     QUAT_experimental,
 }
+ccenum(VariableType);
 
 export type PrimitiveValue = number | string | boolean;
 

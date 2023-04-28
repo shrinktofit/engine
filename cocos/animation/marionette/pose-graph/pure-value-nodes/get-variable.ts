@@ -1,7 +1,8 @@
 import { EDITOR } from 'internal:constants';
 import { editable, Quat, serializable, Vec3 } from '../../../../core';
-import { ccclass } from '../../../../core/data/class-decorator';
+import { ccclass, type } from '../../../../core/data/class-decorator';
 import { VariableType, VarInstance } from '../../variable';
+import { variableReference } from '../../variable/variable-reference';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
 import { SingleOutputPVNode, PureValueNodeLinkContext } from '../pure-value-node';
 import {
@@ -85,6 +86,9 @@ const createNodeFactory: PoseGraphCreateNodeFactory<CreateNodeArg> = {
 export abstract class PVNodeGetVariableBase<T> extends SingleOutputPVNode<T> {
     @editable
     @serializable
+    @variableReference(function getVariableTypes (this: PVNodeGetVariableBase<T>) {
+        return [this.getVariableType()];
+    })
     public variableName = '';
 
     link (context: PureValueNodeLinkContext) {
@@ -92,6 +96,8 @@ export abstract class PVNodeGetVariableBase<T> extends SingleOutputPVNode<T> {
     }
 
     protected _varInstance: VarInstance | undefined = undefined;
+
+    protected abstract getVariableType(): VariableType;
 }
 
 if (EDITOR) {
@@ -117,6 +123,10 @@ export class PVNodeGetVariableFloat extends PVNodeGetVariableBase<number> {
     public selfEvaluateDefaultOutput (): number {
         return this._varInstance?.value as number; // TODO
     }
+
+    protected getVariableType (): VariableType {
+        return VariableType.FLOAT;
+    }
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PVNodeGetVariableInteger`)
@@ -132,6 +142,10 @@ export class PVNodeGetVariableInteger extends PVNodeGetVariableBase<number> {
 
     public selfEvaluateDefaultOutput (): number {
         return this._varInstance?.value as number; // TODO
+    }
+
+    protected getVariableType (): VariableType {
+        return VariableType.INTEGER;
     }
 }
 
@@ -149,6 +163,10 @@ export class PVNodeGetVariableBoolean extends PVNodeGetVariableBase<boolean> {
     public selfEvaluateDefaultOutput (): boolean {
         return this._varInstance?.value as boolean; // TODO
     }
+
+    protected getVariableType (): VariableType {
+        return VariableType.BOOLEAN;
+    }
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PVNodeGetVariableVec3`)
@@ -165,6 +183,10 @@ export class PVNodeGetVariableVec3 extends PVNodeGetVariableBase<Readonly<Vec3>>
     public selfEvaluateDefaultOutput (): Readonly<Vec3> {
         return this._varInstance?.value as unknown as Readonly<Vec3>; // TODO
     }
+
+    protected getVariableType (): VariableType {
+        return VariableType.VEC3_experimental;
+    }
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PVNodeGetVariableQuat`)
@@ -180,5 +202,9 @@ export class PVNodeGetVariableQuat extends PVNodeGetVariableBase<Quat> {
 
     public selfEvaluateDefaultOutput (): Readonly<Quat> {
         return this._varInstance?.value as unknown as Quat; // TODO
+    }
+
+    protected getVariableType (): VariableType {
+        return VariableType.QUAT_experimental;
     }
 }

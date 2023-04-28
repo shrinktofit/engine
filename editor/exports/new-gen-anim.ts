@@ -1,5 +1,10 @@
 
 export {
+    getSupportedVariableTypes,
+    AnimationGraphVariableReference,
+} from '../../cocos/animation/marionette/variable/variable-reference';
+
+export {
     blend1D,
 } from '../../cocos/animation/marionette/motion/blend-1d';
 
