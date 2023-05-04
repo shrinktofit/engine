@@ -1,7 +1,7 @@
 import { ccclass, serializable } from '../../../../core/data/decorators';
 import { applyDeltaPose } from '../../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
-import { poseGraphNodeMenu } from '../decorator/node';
+import { poseGraphNodeMenu, poseGraphNodeAppearance } from '../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { PoseNode, PoseTransformSpaceRequirement } from '../pose-node';
 import { input } from '../decorator/input';
@@ -17,6 +17,7 @@ import { PoseGraphType } from '../foundation/type-system';
  */
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}AddPose`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_POSE}混加姿势`)
+@poseGraphNodeAppearance({ themeColor: '#72A869' })
 export class AddPose extends PoseNode {
     @serializable
     @input({ type: PoseGraphType.POSE, displayName: 'Base' })

@@ -9,7 +9,7 @@ import { PoseNode } from '../pose-node';
 import { Pose } from '../../../core/pose';
 import { AnimationGraphBindingContext, AnimationGraphEvaluationContext, AnimationGraphSettleContext, AnimationGraphUpdateContext } from '../../animation-graph-context';
 import { input } from '../decorator/input';
-import { poseGraphCreateNodeFactory } from '../decorator/node';
+import { poseGraphCreateNodeFactory, poseGraphNodeAppearance } from '../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { getEnterInfo, makeCreateNodeFactory } from './play-or-sample-motion-pose-node-shared';
 import { PoseGraphType } from '../foundation/type-system';
@@ -23,6 +23,7 @@ import { PoseGraphType } from '../foundation/type-system';
         return node;
     },
 ))
+@poseGraphNodeAppearance({ themeColor: '#D97721' })
 export class SampleMotionNode extends PoseNode {
     @serializable
     @editable

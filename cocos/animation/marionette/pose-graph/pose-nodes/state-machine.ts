@@ -15,7 +15,7 @@ import { PoseGraphType } from '../foundation/type-system';
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}StateMachineNode`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_POSE}状态机`)
 @poseGraphNodeAppearance({
-    themeColor: '#123456',
+    themeColor: '#CCCCCC',
     inline: true,
 })
 export class StateMachineNode extends PoseNode {

@@ -8,7 +8,7 @@ import {
 import { input } from '../decorator/input';
 import { approx, ccenum, error, Quat, Vec3 } from '../../../../core';
 import { TransformHandle } from '../../../core/animation-handle';
-import { poseGraphNodeMenu } from '../decorator/node';
+import { poseGraphNodeMenu, poseGraphNodeAppearance } from '../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { IntensitySpecification } from './intensity-specification';
 import { Pose } from '../../../core/pose';
@@ -29,6 +29,7 @@ const APPLY_INTENSITY_EPSILON = 1e-5;
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}ApplyTransform`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_POSE}变换`)
+@poseGraphNodeAppearance({ themeColor: '#72A869' })
 export class ApplyTransform extends SinglePoseModifier {
     @serializable
     @input({ type: PoseGraphType.POSE, displayName: '输入姿势' })

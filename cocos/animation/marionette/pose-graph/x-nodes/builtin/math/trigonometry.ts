@@ -1,5 +1,5 @@
 import { ccclass, editable, serializable } from '../../../../../../core/data/decorators';
-import { poseGraphNodeHide, poseGraphNodeMenu } from '../../../decorator/node';
+import { poseGraphNodeHide, poseGraphNodeMenu, poseGraphNodeAppearance } from '../../../decorator/node';
 import { PoseGraphType } from '../../../foundation/type-system';
 import { SingleOutputXNode, XNode } from '../../../x-node';
 import { input } from '../../../decorator/input';
@@ -7,6 +7,7 @@ import { CLASS_NAME_PREFIX_X_NODE_MATH, POSE_GRAPH_NODE_MENU_PREFIX_X_NODE_MATH 
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODE_MATH}XNodeUnaryNumericExpr`)
 @poseGraphNodeHide()
+@poseGraphNodeAppearance({ themeColor: '#B169C4' })
 export abstract class XNodeUnaryNumericExpr extends SingleOutputXNode<number> {
     @serializable
     @editable
@@ -22,6 +23,7 @@ export abstract class XNodeUnaryNumericExpr extends SingleOutputXNode<number> {
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODE_MATH}XNodeAbs`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_X_NODE_MATH}取绝对值`)
+@poseGraphNodeAppearance({ themeColor: '#B169C4' })
 export class XNodeAbs extends XNodeUnaryNumericExpr {
     protected evaluateValue (value: number) {
         return Math.abs(value);
@@ -30,6 +32,7 @@ export class XNodeAbs extends XNodeUnaryNumericExpr {
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODE_MATH}XNodeCosine`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_X_NODE_MATH}取余弦`)
+@poseGraphNodeAppearance({ themeColor: '#B169C4' })
 export class XNodeCosine extends XNodeUnaryNumericExpr {
     protected evaluateValue (value: number) {
         return Math.cos(value);
@@ -38,6 +41,7 @@ export class XNodeCosine extends XNodeUnaryNumericExpr {
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODE_MATH}XNodeSine`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_X_NODE_MATH}取正弦`)
+@poseGraphNodeAppearance({ themeColor: '#B169C4' })
 export class XNodeSine extends XNodeUnaryNumericExpr {
     protected evaluateValue (value: number) {
         return Math.sin(value);

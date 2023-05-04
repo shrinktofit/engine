@@ -4,7 +4,7 @@ import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
 import { PoseTransformSpaceRequirement } from '../pose-node';
 import { ccenum } from '../../../../core';
 import { TransformHandle } from '../../../core/animation-handle';
-import { poseGraphNodeMenu } from '../decorator/node';
+import { poseGraphNodeMenu, poseGraphNodeAppearance } from '../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
 import { Pose, PoseTransformSpace } from '../../../core/pose';
 import { AnySpaceSinglePoseModifier, SinglePoseModifier } from './single-pose-modifier';
@@ -25,6 +25,7 @@ const cacheTransform = new Transform();
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}CopyTransform`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_POSE}拷贝变换`)
+@poseGraphNodeAppearance({ themeColor: '#72A869' })
 export class CopyTransform extends SinglePoseModifier {
     @serializable
     @editable
