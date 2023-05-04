@@ -24,7 +24,7 @@ import { AnimationGraphBindingContext, AnimationGraphEvaluationContext,
     },
 ))
 @poseGraphNodeAppearance({
-    themeColor: '#FFFFFF',
+    themeColor: '#227F9B',
 })
 export class MotionNode extends PoseNode {
     @serializable

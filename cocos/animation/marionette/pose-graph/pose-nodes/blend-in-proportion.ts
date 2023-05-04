@@ -7,12 +7,13 @@ import { input } from '../decorator/input';
 import { AnimationGraphBindingContext, AnimationGraphEvaluationContext,
     AnimationGraphSettleContext, AnimationGraphUpdateContext, AnimationGraphUpdateContextGenerator,
 } from '../../animation-graph-context';
-import { poseGraphNodeMenu } from '../decorator/node';
+import { poseGraphNodeMenu, poseGraphNodeAppearance } from '../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE_BLEND } from './menu-common';
 import { PoseGraphType } from '../foundation/type-system';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}BlendInProportion`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_POSE_BLEND}按比例混合`)
+@poseGraphNodeAppearance({ themeColor: '#72A869' })
 export class BlendInProportion extends PoseNode {
     @serializable
     @input({

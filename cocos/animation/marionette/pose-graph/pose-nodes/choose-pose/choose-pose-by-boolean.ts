@@ -1,13 +1,14 @@
 import { ccclass, serializable } from '../../../../../core/data/decorators';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../../define';
 import { input } from '../../decorator/input';
-import { poseGraphNodeMenu } from '../../decorator/node';
+import { poseGraphNodeMenu, poseGraphNodeAppearance } from '../../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_CHOOSE } from './menu';
 import { ChoosePoseBase } from './choose-pose-base';
 import { PoseGraphType } from '../../foundation/type-system';
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}ChoosePoseByBoolean`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_CHOOSE}按布尔选择`)
+@poseGraphNodeAppearance({ themeColor: '#D07979' })
 export class ChoosePoseByBoolean extends ChoosePoseBase {
     constructor () {
         super(2);
