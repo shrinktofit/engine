@@ -156,6 +156,10 @@ class NodeInputManager {
                 return;
             }
             for (const [propertyKey] of Object.entries(record.properties)) {
+                // Subclass's input mapping declaration overrides base's.
+                if (result.findIndex(([subClassPropertyKey]) => propertyKey === subClassPropertyKey) >= 0) {
+                    continue;
+                }
                 const field = object[propertyKey];
                 if (Array.isArray(field)) {
                     for (let iElement = 0; iElement < field.length; ++iElement) {

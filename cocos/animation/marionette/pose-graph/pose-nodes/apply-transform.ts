@@ -32,7 +32,7 @@ const APPLY_INTENSITY_EPSILON = 1e-5;
 @poseGraphNodeAppearance({ themeColor: '#72A869' })
 export class ApplyTransform extends SinglePoseModifier {
     @serializable
-    @input({ type: PoseGraphType.POSE, displayName: '输入姿态' })
+    @input({ type: PoseGraphType.POSE, displayName: '输入姿势' })
     public input: PoseNode | null = null;
 
     @serializable

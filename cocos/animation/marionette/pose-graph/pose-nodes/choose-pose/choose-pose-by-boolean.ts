@@ -16,7 +16,7 @@ export class ChoosePoseByBoolean extends ChoosePoseBase {
 
     @input({
         type: PoseGraphType.POSE,
-        displayName: `为真时 姿态`,
+        displayName: `为真时 姿势`,
     })
     public get truePose () {
         return this._poses[0];
@@ -27,7 +27,7 @@ export class ChoosePoseByBoolean extends ChoosePoseBase {
 
     @input({
         type: PoseGraphType.POSE,
-        displayName: `为假时 姿态`,
+        displayName: `为假时 姿势`,
     })
     public get falsePose () {
         return this._poses[1];
