@@ -194,7 +194,7 @@ export function isWellFormedInputKey(test: unknown): test is PoseGraphInputKey {
     if (!Array.isArray(test)) {
         return false;
     }
-    if (test.length >= 2) {
+    if (test.length > 2) {
         return false;
     }
     if (typeof test[0] !== 'string') {

@@ -10,6 +10,10 @@ import { CLASS_NAME_PREFIX_X_NODE_MATH, POSE_GRAPH_NODE_MENU_PREFIX_X_NODE_MATH 
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_X_NODE_MATH}取最小值`)
 @poseGraphNodeAppearance({ themeColor: '#B169C4' })
 export class XNodeMin extends SingleOutputXNode<number> {
+    constructor () {
+        super(PoseGraphType.FLOAT);
+    }
+
     @serializable
     @editable
     @input({ type: PoseGraphType.FLOAT })
@@ -29,6 +33,10 @@ export class XNodeMin extends SingleOutputXNode<number> {
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_X_NODE_MATH}取最大值`)
 @poseGraphNodeAppearance({ themeColor: '#B169C4' })
 export class XNodeMax extends SingleOutputXNode<number> {
+    constructor () {
+        super(PoseGraphType.FLOAT);
+    }
+
     @serializable
     @editable
     @input({ type: PoseGraphType.FLOAT })
@@ -48,6 +56,10 @@ export class XNodeMax extends SingleOutputXNode<number> {
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_X_NODE_MATH}钳制`)
 @poseGraphNodeAppearance({ themeColor: '#B169C4' })
 export class XNodeClamp extends SingleOutputXNode<number> {
+    constructor () {
+        super(PoseGraphType.FLOAT);
+    }
+
     @serializable
     @editable
     @input({ type: PoseGraphType.FLOAT })

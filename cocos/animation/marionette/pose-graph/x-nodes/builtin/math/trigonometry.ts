@@ -9,6 +9,10 @@ import { CLASS_NAME_PREFIX_X_NODE_MATH, POSE_GRAPH_NODE_MENU_PREFIX_X_NODE_MATH 
 @poseGraphNodeHide()
 @poseGraphNodeAppearance({ themeColor: '#B169C4' })
 export abstract class XNodeUnaryNumericExpr extends SingleOutputXNode<number> {
+    constructor () {
+        super(PoseGraphType.FLOAT);
+    }
+
     @serializable
     @editable
     @input({ type: PoseGraphType.FLOAT })
