@@ -185,7 +185,7 @@ describe(`Exit and reentering`, () => {
 });
 
 describe(`Stash update`, () => {
-    test(`Two nodes request different delta time stash update`, () => {
+    test(`Multiple threading stash update`, () => {
     
         const poseNodeMock = new PoseNodeMock();
     
@@ -227,25 +227,13 @@ describe(`Stash update`, () => {
 
         for (const timePoint of [1.15, 1.2]) {
             const evalMock = new AnimationGraphEvalMock(new Node(), animationGraph);
-            evalMock.step(timePoint);
-            if (timePoint === 1.15) {
-                expect(poseNodeMock.update_).toBeCalledTimes(2);
-                // Thread: UseStash1
-                expect(poseNodeMock.update_).toHaveBeenNthCalledWith(1, expect.objectContaining({
-                    deltaTime: expect.toBeAround(0.25),
-                }));
-                // Thread: UseStash2
-                expect(poseNodeMock.update_).toHaveBeenNthCalledWith(2, expect.objectContaining({
-                    deltaTime: expect.toBeAround(0.0),
-                }));
-            } else {
-                // Only Use Stash2.
-                expect(poseNodeMock.update_).toBeCalledTimes(1);
-                // Thread: UseStash1
-                expect(poseNodeMock.update_).toHaveBeenNthCalledWith(1, expect.objectContaining({
-                    deltaTime: expect.toBeAround(0.3),
-                }));
-            }
+            evalMock.goto(0.91); // Past the exit condition
+            const stash1_start_time = evalMock.current;
+            evalMock.goto(timePoint);
+            expect(poseNodeMock.update_).toBeCalledTimes(1);
+            expect(poseNodeMock.update_).toHaveBeenNthCalledWith(1, expect.objectContaining({
+                deltaTime: expect.toBeAround(evalMock.current - stash1_start_time),
+            }));
             poseNodeMock.update_.mockClear();
             expect(poseNodeMock.doEvaluate_).toBeCalledTimes(1);
             poseNodeMock.doEvaluate_.mockClear();

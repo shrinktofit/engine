@@ -1,4 +1,3 @@
-import { InterruptionBehavior } from '../../../cocos/animation/marionette/animation-graph';
 import { createAnimationGraph } from './utils/factory';
 import { LinearRealValueAnimationFixture } from './utils/fixtures';
 import { SingleRealValueObserver } from './utils/single-real-value-observer';
@@ -48,8 +47,6 @@ describe(`Used in interruption detection`, () => {
                 },
             }],
         });
-
-        animationGraph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
 
         const evalMock = new AnimationGraphEvalMock(valueObserver.root, animationGraph);
 

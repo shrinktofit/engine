@@ -22,7 +22,7 @@ import { VariableType, BindableBoolean, bindOr } from '../../parametric';
 import { _decorator } from '../../../../core';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
 import { createEval } from '../../create-eval';
-import { Condition, ConditionEval, ConditionEvalContext } from './condition-base';
+import { Condition, ConditionEval, ConditionBindingContext } from './condition-base';
 
 const { ccclass, serializable } = _decorator;
 
@@ -48,7 +48,7 @@ export class UnaryCondition implements Condition {
         return that;
     }
 
-    public [createEval] (context: ConditionEvalContext) {
+    public [createEval] (context: ConditionBindingContext) {
         const { operator, operand } = this;
         const evaluation = new UnaryConditionEval(operator, false);
         const value = bindOr(

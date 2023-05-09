@@ -1,6 +1,6 @@
 import { assertIsTrue } from '../../../core';
 import { applyDeltaPose, blendPoseInto, Pose, TransformFilter } from '../../core/pose';
-import { AnimationGraph, InterruptionBehavior, Layer } from '../animation-graph';
+import { AnimationGraph, Layer } from '../animation-graph';
 import { AnimationGraphBindingContext, AnimationGraphEvaluationContext,
     AnimationGraphSettleContext, AnimationGraphUpdateContext } from '../animation-graph-context';
 import { AnimationMask } from '../animation-mask';
@@ -26,7 +26,6 @@ export class DefaultTopLevelPoseNode extends PoseNode {
                 clipOverrides,
                 poseStashAllocator,
                 this._allPreviousLayersResultManager,
-                graph.interruptionBehavior,
             );
 
             return record;
@@ -126,7 +125,6 @@ class LayerEvaluationRecord {
         clipOverrides: ReadonlyClipOverrideMap | null,
         poseStashAllocator: PoseStashAllocator,
         allPreviousLayersResultManager: AllPreviousLayersResultManager,
-        interruptionBehavior: InterruptionBehavior,
     ) {
         const stashManager = new RuntimeStashManager(poseStashAllocator);
         for (const [stashId, _] of layer.stashes()) {
@@ -156,7 +154,6 @@ class LayerEvaluationRecord {
             layer.name,
             bindingContext,
             clipOverrides,
-            interruptionBehavior,
         );
         bindingContext._popAdditiveFlag();
 

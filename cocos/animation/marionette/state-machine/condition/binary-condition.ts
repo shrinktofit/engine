@@ -1,4 +1,4 @@
-import { Condition, ConditionEval, ConditionEvalContext, TransitionBindingContext } from './condition-base';
+import { Condition, ConditionEval, ConditionBindingContext, ConditionEvaluationContext } from './condition-base';
 import { _decorator } from '../../../../core';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
 import { createEval } from '../../create-eval';
@@ -80,8 +80,8 @@ export class BinaryCondition implements Condition {
         return that;
     }
 
-    public [createEval] (context: ConditionEvalContext, transitionBindingContext: TransitionBindingContext) {
-        const lhsBindingEvaluation = this.lhsBinding?.bind(context, transitionBindingContext);
+    public [createEval] (context: ConditionBindingContext) {
+        const lhsBindingEvaluation = this.lhsBinding?.bind(context);
 
         const binaryConditionEval = new BinaryConditionEval(
             this.operator,
@@ -112,8 +112,8 @@ class BinaryConditionEval implements ConditionEval {
     /**
      * Evaluates this condition.
      */
-    public eval () {
-        const lhsValue = this._lhsBindingEvaluation?.evaluate() ?? this._lhsValue;
+    public eval (context: ConditionEvaluationContext) {
+        const lhsValue = this._lhsBindingEvaluation?.evaluate(context) ?? this._lhsValue;
         const rhsValue = this._rhsValue;
 
         switch (this._operator) {

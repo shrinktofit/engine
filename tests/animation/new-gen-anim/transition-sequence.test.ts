@@ -1,5 +1,5 @@
 import { AnimationController } from "../../../cocos/animation/animation";
-import { AnimationGraph, AnimationTransition, EmptyState, EmptyStateTransition, InterruptionBehavior, isAnimationTransition, Layer, State, SubStateMachine, Transition, TransitionInterruptionSource } from "../../../cocos/animation/marionette/animation-graph";
+import { AnimationGraph, AnimationTransition, EmptyState, EmptyStateTransition, isAnimationTransition, Layer, State, SubStateMachine, Transition } from "../../../cocos/animation/marionette/animation-graph";
 import { UnaryCondition } from "../../../cocos/animation/marionette/state-machine/condition";
 import { MotionState } from "../../../cocos/animation/marionette/state-machine/motion-state";
 import { assertIsTrue, lerp } from "../../../cocos/core";
@@ -8,12 +8,14 @@ import { ConstantRealValueAnimationFixture, LinearRealValueAnimationFixture } fr
 import { SingleRealValueObserver } from "./utils/single-real-value-observer";
 import '../../utils/matchers/value-type-asymmetric-matchers';
 import { createAnimationGraph, StateParams, TransitionParams } from "./utils/factory";
-import './pose-expr-graph/utils/factories/all';
+import { ApplyAnimationFixturePoseNode } from "./utils/apply-animation-fixture-pose-node";
 
 const DEFAULT_VALUE = 6.666;
 
 // m: Motion | +: Entry | -: Exit
 type SequenceString = string;
+
+const MAX_TRANSITIONS_PER_FRAME = 100;
 
 describe(`Transition sequence`, () => {
     describe(`At a moment`, () => {
@@ -72,8 +74,7 @@ describe(`Transition sequence`, () => {
                 expect(mock.controller.getNextStateStatus(0)).toBeNull();
             });
     
-            // FIXME:
-            test.skip(`Not all transitions are route transitions`, () => {
+            test(`Not all transitions are route transitions`, () => {
                 const mock = mockTransitionSequence({
                     head: { type: 'motion', animation: { from: 0.1, to: 0.3 }, progress: 0.3 },
                     transitions: [
@@ -157,7 +158,6 @@ describe(`Transition sequence`, () => {
 
         const observer = new SingleRealValueObserver(fixture.initialValue);
         const graph = new AnimationGraph();
-        graph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
         const layer = graph.addLayer();
         const [ mA, mB, mC ] = ([[fixture.a, 'A'], [fixture.b, 'B'], [fixture.c, 'C']] as const).map(([animation, name]) => {
             const s = layer.stateMachine.addMotion();
@@ -173,7 +173,6 @@ describe(`Transition sequence`, () => {
             const transition = layer.stateMachine.connect(from, to);
             transition.exitConditionEnabled = false;
             transition.duration = fixture.transitionDuration;
-            transition.interruptionSource = TransitionInterruptionSource.NEXT_STATE;
             const [condition] = transition.conditions = [new UnaryCondition()];
             condition.operator = UnaryCondition.Operator.TRUTHY;
             condition.operand.variable = `${transitionIndex}`;
@@ -292,7 +291,6 @@ describe(`Transition sequence`, () => {
         ) {
             const observer = new SingleRealValueObserver(0.0);
             const graph = new AnimationGraph();
-            graph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
             const layer = graph.addLayer();
             const states = Array.from({ length: transitionDurations.length + 1 }, (_, index) => {
                 const s = layer.stateMachine.addMotion();
@@ -307,7 +305,6 @@ describe(`Transition sequence`, () => {
                 const transition = layer.stateMachine.connect(fromMotion, toMotion);
                 transition.exitConditionEnabled = false;
                 transition.duration = transitionDurations[transitionIndex];
-                transition.interruptionSource = TransitionInterruptionSource.NEXT_STATE;
                 const [condition] = transition.conditions = [new UnaryCondition()];
                 condition.operator = UnaryCondition.Operator.TRUTHY;
                 condition.operand.variable = `${transitionIndex}`;
@@ -322,175 +319,6 @@ describe(`Transition sequence`, () => {
                 },
             };
         }
-    });
-
-    describe(`Race between concurrent interruption and transition update`, () => {
-        test.each([
-            [`Interruption requires less time`, 'interruption_requires_less_time'],
-            [`Update requires less time`, 'update_requires_less_time'],
-            [`Both interruption and update requires same time`, 'both_requires_same_time'],
-        ] as const)(`%s`, (_title, caseType) => {
-            const fixture = {
-                motion_1: new LinearRealValueAnimationFixture(1., 2., 9.),
-                motion_2: new LinearRealValueAnimationFixture(4., 5., 3.),
-                motion_3: new LinearRealValueAnimationFixture(7., 8., 6.),
-            };
-    
-            const valueObserver = new SingleRealValueObserver();
-
-            const exitTime = 0.5;
-            const exitTimeUnit = fixture.motion_2.duration;
-            const exitTimeAbsolute = exitTimeUnit * exitTime;
-
-            const originalTransitionScale = caseType === 'both_requires_same_time'
-                ? 1.0
-                : caseType === 'update_requires_less_time'
-                    ? 0.7
-                    : 1.3;
-            const originalTransitionDuration = exitTimeAbsolute * originalTransitionScale;
-    
-            const interruptingTransitionDuration = Math.max(fixture.motion_1.duration, fixture.motion_2.duration, fixture.motion_3.duration);
-            const animationGraph = createAnimationGraph({
-                variableDeclarations: {
-                    'original_transition_activated': { type: 'boolean', value: true },
-                },
-                layers: [{
-                    stateMachine: {
-                        states: {
-                            'motion_1': { type: 'motion', motion: fixture.motion_1.createMotion(valueObserver.getCreateMotionContext()) },
-                            'motion_2': { type: 'motion', motion: fixture.motion_2.createMotion(valueObserver.getCreateMotionContext()) },
-                            'motion_3': { type: 'motion', motion: fixture.motion_3.createMotion(valueObserver.getCreateMotionContext()) },
-                        },
-                        entryTransitions: [{ to: 'motion_1' }],
-                        transitions: [{
-                            from: 'motion_1', to: 'motion_2', exitTimeEnabled: false, duration: originalTransitionDuration,
-                            conditions: [{ type: 'unary', operator: 'to-be-true', operand: { type: 'variable', name: 'original_transition_activated' } }],
-                        }, {
-                            from: 'motion_2', to: 'motion_3', exitTimeEnabled: true, exitTime: exitTime, duration: interruptingTransitionDuration,
-                        }],
-                    },
-                }],
-            });
-    
-            animationGraph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
-    
-            const evalMock = new AnimationGraphEvalMock(valueObserver.root, animationGraph);
-    
-            // Step so that:
-            // motion_1 --> motion_2
-            // but no interruption match.
-            evalMock.step(Math.min(originalTransitionDuration, exitTimeAbsolute) * 0.5);
-
-            // Step so that:
-            // The interruption requires another 50% T_e.
-            // But the motion_1 --> motion_2 transition's remain time(20% T_e) < T.
-            evalMock.goto(exitTimeAbsolute * (1.0 + 0.01));
-            const timeElapsedSinceExitTimeArrived = evalMock.current - exitTimeAbsolute;
-
-            if (caseType === 'update_requires_less_time' || caseType === 'both_requires_same_time') {
-                // If update requires less time or both requires same time,
-                // the interruption will not take place.
-                expect(valueObserver.value).toBeCloseTo(calculateExpectedTransitionSequenceResult(
-                    fixture.motion_2.getExpected(evalMock.current),
-                    [fixture.motion_3.getExpected(timeElapsedSinceExitTimeArrived),  timeElapsedSinceExitTimeArrived / interruptingTransitionDuration],
-                ));
-            } else {
-                // Otherwise the interruption will take place.
-                expect(valueObserver.value).toBeCloseTo(calculateExpectedTransitionSequenceResult(
-                    fixture.motion_1.getExpected(evalMock.current),
-                    [fixture.motion_2.getExpected(evalMock.current), evalMock.current / originalTransitionDuration],
-                    [fixture.motion_3.getExpected(timeElapsedSinceExitTimeArrived),  timeElapsedSinceExitTimeArrived / interruptingTransitionDuration],
-                ));
-            }
-        });
-    });
-
-    test(`Exit condition should consider "to" port when matching non-head state`, () => {
-        const fixture = {
-            motion_1: new LinearRealValueAnimationFixture(1., 2., 3.),
-            motion_2: new LinearRealValueAnimationFixture(4., 5., 6.),
-            motion_3: new LinearRealValueAnimationFixture(7., 8., 9.),
-        };
-
-        const valueObserver = new SingleRealValueObserver();
-
-        const transitionDuration = Math.max(fixture.motion_1.duration, fixture.motion_2.duration, fixture.motion_3.duration);
-        const animationGraph = createAnimationGraph({
-            variableDeclarations: {
-                'transition_1_to_2': { type: 'boolean', value: false },
-                'transition_1_to_3': { type: 'boolean', value: false },
-            },
-            layers: [{
-                stateMachine: {
-                    states: {
-                        'motion_1': { type: 'motion', motion: fixture.motion_1.createMotion(valueObserver.getCreateMotionContext()) },
-                        'motion_2': { type: 'motion', motion: fixture.motion_2.createMotion(valueObserver.getCreateMotionContext()) },
-                        'motion_3': { type: 'motion', motion: fixture.motion_3.createMotion(valueObserver.getCreateMotionContext()) },
-                    },
-                    entryTransitions: [{ to: 'motion_1' }],
-                    transitions: [{
-                        from: 'motion_1', to: 'motion_2', exitTimeEnabled: false, duration: transitionDuration,
-                        conditions: [{ type: 'unary', operator: 'to-be-true', operand: { type: 'variable', name: 'transition_1_to_2' } }],
-                    }, {
-                        from: 'motion_2', to: 'motion_1', exitTimeEnabled: false, duration: transitionDuration,
-                        conditions: [{ type: 'unary', operator: 'to-be-false', operand: { type: 'variable', name: 'transition_1_to_2' } }],
-                    }, {
-                        from: 'motion_1', to: 'motion_3', exitTimeEnabled: true,
-                        exitTime: 0.2, // Should be less than 1/4 as test designed.
-                        duration: transitionDuration,
-                        conditions: [{ type: 'unary', operator: 'to-be-true', operand: { type: 'variable', name: 'transition_1_to_3' } }],
-                    }],
-                },
-            }],
-        });
-
-        animationGraph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
-
-        const evalMock = new AnimationGraphEvalMock(valueObserver.root, animationGraph);
-
-        // Step motion_1 to 20%.
-        evalMock.goto(fixture.motion_1.duration * 0.2);
-
-        // Trigger motion_1 --> motion_2.
-        const motion2ComingTime = evalMock.current;
-        evalMock.controller.setValue(`transition_1_to_2`, true);
-        // motion_1(30%) --> motion_2
-        evalMock.goto(fixture.motion_1.duration * 0.3);
-        expect(valueObserver.value).toBeCloseTo(calculateExpectedTransitionSequenceResult(
-            fixture.motion_1.getExpected(evalMock.current),
-            [fixture.motion_2.getExpected(evalMock.current - motion2ComingTime), (evalMock.current - motion2ComingTime) / transitionDuration],
-        ), 5);
-
-        // Trigger motion_2 --> motion_1.
-        const motion1ToPortComingTime = evalMock.current;
-        evalMock.controller.setValue(`transition_1_to_2`, false);
-        evalMock.controller.setValue(`transition_1_to_3`, true);
-        // motion_1(35%) --> motion_2 --> motion1(5%)
-        evalMock.goto(fixture.motion_1.duration * 0.35);
-        expect(valueObserver.value).toBeCloseTo(calculateExpectedTransitionSequenceResult(
-            fixture.motion_1.getExpected(evalMock.current),
-            [fixture.motion_2.getExpected(evalMock.current - motion2ComingTime), (evalMock.current - motion2ComingTime) / transitionDuration],
-            [fixture.motion_1.getExpected(evalMock.current - motion1ToPortComingTime), (evalMock.current - motion1ToPortComingTime) / transitionDuration],
-        ), 5);
-
-        // motion_1(45%) --> motion_2 --> motion_1(15%)
-        // Still don't satisfy the exit condition.
-        evalMock.goto(fixture.motion_1.duration * 0.45);
-        expect(valueObserver.value).toBeCloseTo(calculateExpectedTransitionSequenceResult(
-            fixture.motion_1.getExpected(evalMock.current),
-            [fixture.motion_2.getExpected(evalMock.current - motion2ComingTime), (evalMock.current - motion2ComingTime) / transitionDuration],
-            [fixture.motion_1.getExpected(evalMock.current - motion1ToPortComingTime), (evalMock.current - motion1ToPortComingTime) / transitionDuration],
-        ), 5);
-
-        // motion_1(52%) --> motion_2 --> motion_1(22%) --> motion_3(2%)
-        const motion3ComingTime = motion1ToPortComingTime + fixture.motion_1.duration * 0.2;
-        evalMock.goto(fixture.motion_1.duration * 0.52);
-        expect(valueObserver.value).toBeCloseTo(calculateExpectedTransitionSequenceResult(
-            fixture.motion_1.getExpected(evalMock.current),
-            [fixture.motion_2.getExpected(evalMock.current - motion2ComingTime), (evalMock.current - motion2ComingTime) / transitionDuration],
-            [fixture.motion_1.getExpected(evalMock.current - motion1ToPortComingTime), (evalMock.current - motion1ToPortComingTime) / transitionDuration],
-            [fixture.motion_3.getExpected(evalMock.current - motion3ComingTime), (evalMock.current - motion3ComingTime) / transitionDuration],
-        ), 5);
     });
 
     test(`Transition to a state multiple times through different transitions`, () => {
@@ -524,22 +352,21 @@ describe(`Transition sequence`, () => {
                         from: 'A', to: 'B',
                         duration: uniformTransitionDuration,
                         exitTimeEnabled: false,
-                        conditions: [{ type: 'binary', 'operator': '==', 'lhs': { type: 'variable', name: 'transitionId' }, rhs: { type :'constant', value: TransitionId.A_B } }],
+                        conditions: [{ type: 'binary', 'operator': '==', 'lhsBinding': { type: 'variable', variableName: 'transitionId' }, rhs: TransitionId.A_B }],
                     }, {
                         from: 'B', to: 'C',
                         duration: uniformTransitionDuration,
                         exitTimeEnabled: false,
-                        conditions:  [{ type: 'binary', 'operator': '==', 'lhs': { type: 'variable', name: 'transitionId' }, rhs: { type :'constant', value: TransitionId.A_B } }],
+                        conditions:  [{ type: 'binary', 'operator': '==', 'lhsBinding': { type: 'variable', variableName: 'transitionId' }, rhs: TransitionId.A_B }],
                     }, {
                         from: 'C', to: 'B',
                         duration: uniformTransitionDuration,
                         exitTimeEnabled: false,
-                        conditions:  [{ type: 'binary', 'operator': '==', 'lhs': { type: 'variable', name: 'transitionId' }, rhs: { type :'constant', value: TransitionId.A_B } }],
+                        conditions:  [{ type: 'binary', 'operator': '==', 'lhsBinding': { type: 'variable', variableName: 'transitionId' }, rhs: TransitionId.A_B }],
                     }],
                 },
             }],
         });
-        graph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
         
         const evalMock = new AnimationGraphEvalMock(observer.root, graph);
 
@@ -578,17 +405,16 @@ describe(`Transition sequence`, () => {
                         from: 'A', to: 'B',
                         duration: uniformTransitionDuration,
                         exitTimeEnabled: false,
-                        conditions: [{ type: 'binary', 'operator': '==', 'lhs': { type: 'variable', name: 'transitionId' }, rhs: { type :'constant', value: TransitionId.A_B } }],
+                        conditions: [{ type: 'binary', 'operator': '==', 'lhsBinding': { type: 'variable', variableName: 'transitionId' }, rhs: TransitionId.A_B }],
                     }, {
                         from: 'B', to: 'A',
                         duration: uniformTransitionDuration,
                         exitTimeEnabled: false,
-                        conditions:  [{ type: 'binary', 'operator': '==', 'lhs': { type: 'variable', name: 'transitionId' }, rhs: { type :'constant', value: TransitionId.B_A } }],
+                        conditions:  [{ type: 'binary', 'operator': '==', 'lhsBinding': { type: 'variable', variableName: 'transitionId' }, rhs: TransitionId.A_B }],
                     }],
                 },
             }],
         });
-        graph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
         
         const evalMock = new AnimationGraphEvalMock(observer.root, graph);
 
@@ -615,110 +441,6 @@ describe(`Transition sequence`, () => {
 
         // A
         evalMock.goto(uniformTransitionDuration * (1 + 0.1 * 3 + 0.01));
-    });
-
-    describe(`Head state alternation: self alternation`, () => {
-        test(`Simple case A->A`, () => {
-            const fixture = {
-                a_animation: new LinearRealValueAnimationFixture(1., 2., 3.),
-            };
-    
-            const observer = new SingleRealValueObserver();
-    
-            const uniformTransitionDuration = 0.3;
-    
-            const graph = createAnimationGraph({
-                variableDeclarations: {
-                    'A-->A': { type: 'boolean', value: true },
-                },
-                layers: [{
-                    stateMachine: {
-                        states: {
-                            'A': { type: 'motion', motion: fixture.a_animation.createMotion(observer.getCreateMotionContext()) },
-                        },
-                        entryTransitions: [{ to: 'A' }],
-                        transitions: [{
-                            from: 'A', to: 'A',
-                            duration: uniformTransitionDuration,
-                            exitTimeEnabled: false,
-                            conditions: [{ type: 'unary', 'operator': 'to-be-true', 'operand': { type: 'variable', name: 'A-->A' } }],
-                        }],
-                    },
-                }],
-            });
-            graph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
-            
-            const evalMock = new AnimationGraphEvalMock(observer.root, graph);
-    
-            // A --> A
-            evalMock.step(uniformTransitionDuration * 0.1);
-    
-            // A
-            evalMock.controller.setValue('A-->A', false);
-            evalMock.step(uniformTransitionDuration * (1 + 0.01));
-            expect(observer.value).toBeCloseTo(fixture.a_animation.getExpected(evalMock.current));
-        });
-    
-        test(`Another case A->B->A`, () => {
-            const fixture = {
-                a_animation: new LinearRealValueAnimationFixture(1., 2., 3.),
-                b_animation: new LinearRealValueAnimationFixture(4., 5., 6.),
-            };
-    
-            const observer = new SingleRealValueObserver();
-    
-            const uniformTransitionDuration = 0.3;
-            const transformDurationAToB = uniformTransitionDuration + 0.1;
-    
-            const graph = createAnimationGraph({
-                variableDeclarations: {
-                    'A-->B': { type: 'boolean', value: true },
-                    'B-->A': { type: 'boolean', value: true },
-                },
-                layers: [{
-                    stateMachine: {
-                        states: {
-                            'A': { type: 'motion', motion: fixture.a_animation.createMotion(observer.getCreateMotionContext()) },
-                            'B': { type: 'motion', motion: fixture.b_animation.createMotion(observer.getCreateMotionContext()) },
-                        },
-                        entryTransitions: [{ to: 'A' }],
-                        transitions: [{
-                            from: 'A', to: 'B',
-                            duration: transformDurationAToB, // Make sure the later transition will be dropped first.
-                            exitTimeEnabled: false,
-                            conditions: [{ type: 'unary', 'operator': 'to-be-true', 'operand': { type: 'variable', name: 'A-->B' } }],
-                        }, {
-                            from: 'B', to: 'A',
-                            duration: uniformTransitionDuration,
-                            exitTimeEnabled: false,
-                            conditions:  [{ type: 'unary', 'operator': 'to-be-true', 'operand': { type: 'variable', name: 'B-->A' } }],
-                        }],
-                    },
-                }],
-            });
-            graph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
-            
-            const evalMock = new AnimationGraphEvalMock(observer.root, graph);
-    
-            // A --> B --> A
-            evalMock.step(uniformTransitionDuration * 0.1);
-            expect(observer.value).toBeCloseTo(
-                calculateExpectedTransitionSequenceResult(
-                    fixture.a_animation.getExpected(evalMock.current),
-                    [fixture.b_animation.getExpected(evalMock.current), evalMock.current / transformDurationAToB],
-                    [fixture.a_animation.getExpected(evalMock.current), evalMock.current / uniformTransitionDuration],
-                ),
-                5,
-            );
-    
-            // A
-            evalMock.controller.setValue('A-->B', false);
-            evalMock.step(uniformTransitionDuration * (1 + 0.01));
-            expect(observer.value).toBeCloseTo(
-                fixture.a_animation.getExpected(evalMock.current),
-                5,
-            );
-        });
     });
 
     test(`Transition to a state multiple times through different transitions`, () => {
@@ -752,22 +474,21 @@ describe(`Transition sequence`, () => {
                         from: 'A', to: 'B',
                         duration: uniformTransitionDuration,
                         exitTimeEnabled: false,
-                        conditions: [{ type: 'binary', 'operator': '==', 'lhs': { type: 'variable', name: 'transitionId' }, rhs: { type :'constant', value: TransitionId.A_B } }],
+                        conditions: [{ type: 'binary', 'operator': '==', 'lhsBinding': { type: 'variable', variableName: 'transitionId' }, rhs: TransitionId.A_B }],
                     }, {
                         from: 'B', to: 'C',
                         duration: uniformTransitionDuration,
                         exitTimeEnabled: false,
-                        conditions:  [{ type: 'binary', 'operator': '==', 'lhs': { type: 'variable', name: 'transitionId' }, rhs: { type :'constant', value: TransitionId.A_B } }],
+                        conditions:  [{ type: 'binary', 'operator': '==', 'lhsBinding': { type: 'variable', variableName: 'transitionId' }, rhs: TransitionId.A_B }],
                     }, {
                         from: 'C', to: 'B',
                         duration: uniformTransitionDuration,
                         exitTimeEnabled: false,
-                        conditions:  [{ type: 'binary', 'operator': '==', 'lhs': { type: 'variable', name: 'transitionId' }, rhs: { type :'constant', value: TransitionId.A_B } }],
+                        conditions:  [{ type: 'binary', 'operator': '==', 'lhsBinding': { type: 'variable', variableName: 'transitionId' }, rhs: TransitionId.A_B }],
                     }],
                 },
             }],
         });
-        graph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
         
         const evalMock = new AnimationGraphEvalMock(observer.root, graph);
 
@@ -780,8 +501,106 @@ describe(`Transition sequence`, () => {
 });
 
 describe(`Circular transitions`, () => {
-    test(`Rule: loop transition sequence having no required match time does form infinite loop`, () => {
+    describe(`Circular self transition A->A`, () => {
+        test(`Motion state self transition A->A has special semantic`, () => {
+            const fixture = {
+                a_animation: new LinearRealValueAnimationFixture(1., 2., 3.),
+            };
 
+            const observer = new SingleRealValueObserver();
+
+            const {
+                graph, uniformTransitionDuration,
+                enableTransition, disableTransition,
+            } = createSelfTransitioningGraph({
+                type: 'motion',
+                motion: fixture.a_animation.createMotion(observer.getCreateMotionContext()),
+            }); 
+
+            const evalMock = new AnimationGraphEvalMock(observer.root, graph);
+    
+            // Run the state to 30%.
+            const state_1_start_time = evalMock.current;
+            evalMock.step(fixture.a_animation.duration * 0.3);
+            expect(observer.value).toBeCloseTo(
+                fixture.a_animation.getExpected(evalMock.current - state_1_start_time),
+                5,
+            );
+
+            // Enable the transition, and step the duration for 20%.
+            // This forms transition "State:1 --> State:2 --> State:1 --> State:2 --> ...."
+            enableTransition(evalMock.controller);
+            evalMock.step(uniformTransitionDuration * 0.2);
+            expect(observer.value).toBeCloseTo(1.32, 5);
+
+            // Once disabled, all things become normal.
+            disableTransition(evalMock.controller);
+            evalMock.step(uniformTransitionDuration * 1.0);
+            evalMock.step(0.1);
+            expect(evalMock.controller.getCurrentTransition(0)).toBeNull();
+            expect(observer.value).toBeCloseTo(1.4533333333333334, 5);
+        });
+
+        test(`Non-motion-state self transition A->A is takes no effect`, () => {
+            const fixture = {
+                a_animation: new LinearRealValueAnimationFixture(1., 2., 3.),
+            };
+
+            const observer = new SingleRealValueObserver();
+
+            const {
+                graph, uniformTransitionDuration,
+                enableTransition,
+            } = createSelfTransitioningGraph({
+                type: 'pose',
+                graph: { rootNode: new ApplyAnimationFixturePoseNode(fixture.a_animation, observer) },
+            }); 
+
+            const evalMock = new AnimationGraphEvalMock(observer.root, graph);
+
+            // Run the state to 30%.
+            evalMock.step(fixture.a_animation.duration * 0.3);
+            expect(observer.value).toBeCloseTo(fixture.a_animation.getExpected(evalMock.current), 5);
+
+            // Enable the transition, but the transition has no effect.
+            enableTransition(evalMock.controller);
+            evalMock.step(uniformTransitionDuration * 0.1);
+            expect(observer.value).toBeCloseTo(fixture.a_animation.getExpected(evalMock.current), 5);
+        });
+
+        function createSelfTransitioningGraph(state: StateParams) {
+            const uniformTransitionDuration = 0.3;
+    
+            const graph = createAnimationGraph({
+                variableDeclarations: {
+                    'A-->A': { type: 'boolean', value: false },
+                },
+                layers: [{
+                    stateMachine: {
+                        states: {
+                            'A': state,
+                        },
+                        entryTransitions: [{ to: 'A' }],
+                        transitions: [{
+                            from: 'A', to: 'A',
+                            duration: uniformTransitionDuration,
+                            exitTimeEnabled: state.type === 'motion' ? false : undefined,
+                            conditions: [{ type: 'unary', 'operator': 'to-be-true', 'operand': { type: 'variable', name: 'A-->A' } }],
+                        }],
+                    },
+                }],
+            });
+
+            return {
+                graph,
+                uniformTransitionDuration,
+                enableTransition: (controller: AnimationController) => controller.setValue('A-->A', true),
+                disableTransition: (controller: AnimationController) => controller.setValue('A-->A', false),
+            };
+        }
+    });
+
+    test(`Rule: loop transition sequence having always-true conditions forms infinite loop`, () => {
         const fixtures = {
             first_state_animation: new LinearRealValueAnimationFixture(1, 2, 3),
             verbose_loop_prefix_length: 3,
@@ -808,9 +627,9 @@ describe(`Circular transitions`, () => {
             layers: [{
                 stateMachine: {
                     states: {
-                        'first': { type: 'pose', graph: { rootNode: { type: 'motion', motion: fixtures.first_state_animation.createMotion(observer.getCreateMotionContext()) } } },
+                        'first': { type: 'pose', graph: { rootNode: new ApplyAnimationFixturePoseNode(fixtures.first_state_animation, observer) } },
                         ...verboseLoopPrefixPathConfig.reduce((result, { stateName, animation }, verboseIndex) => {
-                            result[stateName] = { type: 'pose', graph: { rootNode: { type: 'motion', motion: animation.createMotion(observer.getCreateMotionContext()) } } };
+                            result[stateName] = { type: 'pose', graph: { rootNode: new ApplyAnimationFixturePoseNode(animation, observer) } };
                             return result;
                         }, {} as Record<string, StateParams>),
                     },
@@ -835,47 +654,163 @@ describe(`Circular transitions`, () => {
             }],
         });
 
-        animationGraph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
-
         const evalMock = new AnimationGraphEvalMock(observer.root, animationGraph);
 
-        const loopFormTime: number[] = [];
-        [0.3, 0.5, 0.9].forEach((t, tickIndex) => {
-            loopFormTime.push(evalMock.current);
+        const stateCount = verboseLoopPrefixPathConfig.length + 1;
 
-            evalMock.goto(verboseLoopPrefixPathConfig[0].transitionDuration * t);
+        const firstStateIndex = stateCount - 1;
 
-            const tail: [number, number][] = [];
-            for (let iTick = 0; iTick <= tickIndex; ++iTick) {
-                const circularElapsedTime = evalMock.current - loopFormTime[iTick];
-                tail.push(
-                    ...verboseLoopPrefixPathConfig.map(({ animation, transitionDuration }) => {
-                        return [
-                            animation.getExpected(evalMock.current),
-                            circularElapsedTime / transitionDuration,
-                        ] as [number, number];
-                    }),
-                    [fixtures.first_state_animation.getExpected(evalMock.current), circularElapsedTime / lastLoopPathDuration],
-                );
+        const getStateFixture = (stateIndex: number) => {
+            expect(stateIndex).toBeGreaterThanOrEqual(0);
+            expect(stateIndex).toBeLessThan(stateCount);
+            if (stateIndex === stateCount - 1) {
+                return {
+                    animation: fixtures.first_state_animation,
+                    incomingTransitionDuration: lastLoopPathDuration,
+                };
+            } else {
+                return {
+                    animation: verboseLoopPrefixPathConfig[stateIndex].animation,
+                    incomingTransitionDuration: verboseLoopPrefixPathConfig[stateIndex].transitionDuration,
+                };
+            }
+        };
+
+        let ticked = false;
+        const expectation = {
+            stateElapsedTimes: new Array(stateCount).fill(0.0),
+            headStateIndex: firstStateIndex,
+            transitions: [] as Array<{
+                destStateIndex: number;
+                expectedElapsedTransitionTime: number;
+                transitionDuration: number;
+            }>,
+        };
+
+        const minTransitionDuration = Math.min(...Array.from({ length: stateCount }, (_, stateIndex) =>
+            getStateFixture(stateIndex).incomingTransitionDuration));
+        for (const minTransitionDurationRatio of [
+            0.3,
+            0.5,
+            0.9,
+        ]) {
+            const tickDeltaTime = minTransitionDuration * minTransitionDurationRatio;
+            // Tick.
+            evalMock.goto(tickDeltaTime);
+            // Check.
+            calculateExpectedTickResult(evalMock.lastDeltaTime);
+        }
+
+        /**
+         * Ticks the graph by specified time, then check the tick result.
+         */
+        function calculateExpectedTickResult(tickDeltaTime: number) {
+            const isFirstTick = !ticked;
+            ticked = true;
+
+            // Every tick, upto `MAX_TRANSITIONS_PER_FRAME` transitions will be appended to transition.
+            {
+                const lastStateIndexBeforeTick = expectation.transitions.length === 0
+                    ? expectation.headStateIndex
+                    : expectation.transitions[expectation.transitions.length - 1].destStateIndex;
+
+                const stateWeightsBeforeTick = new Array(stateCount).fill(0.0);
+                if (!isFirstTick) {
+                    const [lastStateWeight, destinationWeights] = computeExpectedWeightsOfTransitionSequence(
+                        ...expectation.transitions.map(
+                            ({ expectedElapsedTransitionTime, transitionDuration }): [number, number] => [expectedElapsedTransitionTime, transitionDuration])
+                    );
+                    expectation.transitions.forEach(({ destStateIndex }, transitionIndex) => {
+                        stateWeightsBeforeTick[destStateIndex] += destinationWeights[transitionIndex];
+                    });
+                    stateWeightsBeforeTick[lastStateIndexBeforeTick] += lastStateWeight;
+                }
+
+                const expectedNewTransitionsCount = isFirstTick
+                    ? MAX_TRANSITIONS_PER_FRAME - 1 // The first tick will exclude Entry -> Head consume 1 iteration
+                    : MAX_TRANSITIONS_PER_FRAME;
+                for (let iteration = 0; iteration < expectedNewTransitionsCount; ++iteration) {
+                    const destStateIndex = Math.floor((lastStateIndexBeforeTick + 1 + iteration) % stateCount);
+                    expectation.transitions.push({
+                        destStateIndex,
+                        transitionDuration: (1.0 - stateWeightsBeforeTick[destStateIndex]) * getStateFixture(destStateIndex).incomingTransitionDuration,
+                        expectedElapsedTransitionTime: 0.0,
+                    });
+                }
             }
 
-            expect(observer.value).toBeCloseTo(calculateExpectedTransitionSequenceResult(
-                fixtures.first_state_animation.getExpected(evalMock.current),
-                ...tail,
+            // Then all transitions update.
+            for (let iTransition = expectation.transitions.length - 1; iTransition >= 0; --iTransition) {
+                const transition = expectation.transitions[iTransition];
+                transition.expectedElapsedTransitionTime += tickDeltaTime;
+                const { destStateIndex, transitionDuration } = transition;
+                if (transition.expectedElapsedTransitionTime > transitionDuration) {
+                    expectation.transitions.splice(0, iTransition + 1);
+                    expectation.headStateIndex = destStateIndex;
+                    break;
+                }
+            }
+
+            // Then all activated states update.
+            const activatedStates = new Set<number>();
+            for (const { destStateIndex } of expectation.transitions) {
+                if (!activatedStates.has(destStateIndex)) {
+                    activatedStates.add(destStateIndex);
+                    expectation.stateElapsedTimes[destStateIndex] += tickDeltaTime;
+                }
+            }
+            for (let iState = 0; iState < stateCount; ++iState) {
+                if (!activatedStates.has(iState)) {
+                    expectation.stateElapsedTimes[iState] = 0.0;
+                }
+            }
+
+            // Check if the result matches.
+            expect(observer.value).toBeCloseTo(computeExpectedTransitionSequenceResult(
+                getStateFixture(expectation.headStateIndex).animation.getExpected(expectation.stateElapsedTimes[expectation.headStateIndex]),
+                ...expectation.transitions.map(({ expectedElapsedTransitionTime, transitionDuration, destStateIndex }) => {
+                    return [
+                        getStateFixture(destStateIndex).animation.getExpected(expectation.stateElapsedTimes[destStateIndex]),
+                        expectedElapsedTransitionTime,
+                        transitionDuration,
+                    ] as [number, number, number];
+                }),
             ), 5);
-        });
+        }
     });
 });
 
-function calculateExpectedTransitionSequenceResult(
+function computeExpectedTransitionSequenceResult(
     headValue: number,
-    ...tail: Array<[value: number, transitionProgress: number]>
+    ...tail: Array<[value: number, transitionTime: number, transitionDuration: number]>
 ): number {
-    let result = headValue;
-    for (const [value, transitionProgress] of tail) {
-        result = lerp(result, value, transitionProgress);
-    }
+    const [headWeight, destinationWeights] = computeExpectedWeightsOfTransitionSequence(
+        ...tail.map(([_, ...transition]) => transition)
+    );
+    let result = headValue * headWeight;
+    tail.forEach(([destinationValue], transitionIndex) => {
+        result += destinationValue * destinationWeights[transitionIndex];
+    });
     return result;
+}
+
+function computeExpectedWeightsOfTransitionSequence(
+    ...transitions: Array<[transitionTime: number, transitionDuration: number]>
+): [number, number[]] {
+    let remainingWeight = 1.0;
+    const destStateWeights = new Array(transitions.length).fill(0.0);
+    for (let iTransition = transitions.length - 1; iTransition >= 0; --iTransition) {
+        const [transitionTime, transitionDuration] = transitions[iTransition];
+        expect(transitionTime).toBeGreaterThanOrEqual(0.0);
+        expect(transitionTime).toBeLessThanOrEqual(transitionDuration);
+        const transitionRatio = transitionTime / transitionDuration;
+        destStateWeights[iTransition] = (remainingWeight * transitionRatio);
+        remainingWeight = remainingWeight * (1.0 - transitionRatio);
+    }
+    return [
+        remainingWeight,
+        destStateWeights,
+    ];
 }
 
 function generateTransitionSequence(
@@ -917,8 +852,6 @@ function mockTransitionSequence(sequenceFixture: TransitionSequenceFixture): {
         graph,
         updates,
     } = makeGraphByTransitionSequenceFixture(sequenceFixture, 1.0, observer);
-
-    graph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
 
     const evalMock = new AnimationGraphEvalMock(observer.root, graph);
 
@@ -1036,7 +969,6 @@ function makeGraphByTransitionSequenceFixture(
         }
         if (isAnimationTransition(transition)) {
             transition.exitConditionEnabled = false;
-            transition.interruptionSource = TransitionInterruptionSource.NEXT_STATE;
         }
 
         const [condition] = transition.conditions = [new UnaryCondition()];

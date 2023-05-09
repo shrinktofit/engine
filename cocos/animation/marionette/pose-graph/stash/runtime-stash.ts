@@ -1,11 +1,11 @@
-import { assertIsTrue } from '../../../../core';
+import { DEBUG } from 'internal:constants';
+import { approx, assertIsTrue, error } from '../../../../core';
 import { Pose } from '../../../core/pose';
 import { PoseGraphStash } from '../../animation-graph';
 import { AnimationGraphBindingContext, AnimationGraphEvaluationContext,
     AnimationGraphSettleContext, AnimationGraphUpdateContext, AnimationGraphUpdateContextGenerator,
 } from '../../animation-graph-context';
-import { instantiatePoseGraph } from '../instantiation';
-import { PoseNode, PoseTransformSpaceRequirement } from '../pose-node';
+import { InstantiatedPoseGraph, instantiatePoseGraph } from '../instantiation';
 
 interface RuntimeStash {
     reenter(): void;
@@ -104,11 +104,9 @@ class RuntimeStashRecord implements RuntimeStash {
 
     public set (stash: PoseGraphStash, context: AnimationGraphBindingContext) {
         assertIsTrue(this._state === StashRecordState.UNINITIALIZED, `The stash has already been set.`);
-        const node = instantiatePoseGraph(stash.graph, context);
-        if (node) {
-            node.bind(context);
-            this._poseNodeEval = node;
-        }
+        const instantiatedPoseGraph = instantiatePoseGraph(stash.graph, context);
+        instantiatedPoseGraph.bind(context);
+        this._instantiatedPoseGraph = instantiatedPoseGraph;
         this._state = StashRecordState.HANGED;
     }
 
@@ -117,7 +115,8 @@ class RuntimeStashRecord implements RuntimeStash {
             this._state === StashRecordState.HANGED // First time settle
             || this._state === StashRecordState.SETTLED, // Resettle
         );
-        this._poseNodeEval?.settle(context);
+        assertIsTrue(this._instantiatedPoseGraph);
+        this._instantiatedPoseGraph.settle(context);
         this._state = StashRecordState.SETTLED;
     }
 
@@ -154,9 +153,10 @@ class RuntimeStashRecord implements RuntimeStash {
             || this._state === StashRecordState.PENDING
             || this._state === StashRecordState.UPDATED, // The stash has been updated in other place, but here again reenters.
         );
+        assertIsTrue(this._instantiatedPoseGraph);
         if (this._state === StashRecordState.SETTLED) {
             this._state = StashRecordState.PENDING;
-            this._poseNodeEval?.reenter();
+            this._instantiatedPoseGraph.reenter();
         }
     }
 
@@ -167,23 +167,37 @@ class RuntimeStashRecord implements RuntimeStash {
             || this._state === StashRecordState.UPDATING
             || this._state === StashRecordState.UPDATED,
         );
+        assertIsTrue(this._instantiatedPoseGraph);
 
         // We entered a loop, stop.
         if (this._state === StashRecordState.UPDATING) {
             return;
         }
 
-        this._state = StashRecordState.UPDATING;
         // Note: even `deltaTime < this._maxRequestedUpdateTime`(the `diffDeltaTime` becomes 0.0),
         // the `context.directiveAbsoluteWeight` might not be 0.0.
         // We still need to trigger an update since some nodes(such as MotionNode) needs to accumulate weight.
         const diffDeltaTime = Math.max(0.0, deltaTime - this._maxRequestedUpdateTime);
+        // We accepted two same time-length update, don't do redundant updates.
+        // After PR #14990, this should always true.
+        if (this._state === StashRecordState.UPDATED) {
+            if (approx(diffDeltaTime, 0.0, 1e-8)) {
+                return;
+            } else {
+                // eslint-disable-next-line no-lonely-if
+                if (DEBUG) {
+                    error(`Arrived here indicates a violent of PR #14990. Please report the BUG.`);
+                    return;
+                }
+            }
+        }
+        this._state = StashRecordState.UPDATING;
         this._maxRequestedUpdateTime = Math.max(deltaTime, this._maxRequestedUpdateTime);
         const updateContext = this._updateContextGenerator.generate(
             diffDeltaTime,
             context.indicativeWeight,
         );
-        this._poseNodeEval?.update(updateContext);
+        this._instantiatedPoseGraph.update(updateContext);
         this._state = StashRecordState.UPDATED;
     }
 
@@ -193,13 +207,14 @@ class RuntimeStashRecord implements RuntimeStash {
             || this._state === StashRecordState.EVALUATING
             || this._state === StashRecordState.EVALUATED,
         );
+        assertIsTrue(this._instantiatedPoseGraph);
         if (this._state === StashRecordState.EVALUATING) {
             // Circular reference occurred.
             this._state = StashRecordState.EVALUATED;
         } else if (this._state === StashRecordState.UPDATED) {
             assertIsTrue(!this._evaluationCache);
             this._state = StashRecordState.EVALUATING;
-            const pose = this._poseNodeEval?.evaluate(context, PoseTransformSpaceRequirement.NO);
+            const pose = this._instantiatedPoseGraph?.evaluate(context);
             this._state = StashRecordState.EVALUATED;
             if (pose) {
                 const heapPose = this._allocator.allocatePose();
@@ -216,7 +231,7 @@ class RuntimeStashRecord implements RuntimeStash {
     }
 
     private _state = StashRecordState.UNINITIALIZED;
-    private _poseNodeEval: PoseNode | undefined = undefined;
+    private _instantiatedPoseGraph: InstantiatedPoseGraph | undefined = undefined;
     private _maxRequestedUpdateTime = 0.0;
     private _evaluationCache: Pose | null = null;
     private _updateContextGenerator = new AnimationGraphUpdateContextGenerator();

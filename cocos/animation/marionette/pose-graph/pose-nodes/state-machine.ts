@@ -5,7 +5,7 @@ import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
 import { PoseNode, PoseTransformSpaceRequirement } from '../pose-node';
 import { blendPoseInto, Pose } from '../../../core/pose';
 import { AnimationGraphBindingContext, AnimationGraphEvaluationContext, AnimationGraphSettleContext, AnimationGraphUpdateContext, AnimationGraphUpdateContextGenerator } from '../../animation-graph-context';
-import { InterruptionBehavior, StateMachine } from '../../animation-graph';
+import { StateMachine } from '../../animation-graph';
 import { TopLevelStateMachineEvaluation } from '../../state-machine/state-machine-eval';
 import { poseGraphNodeAppearance, poseGraphNodeMenu } from '../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
@@ -44,7 +44,6 @@ export class StateMachineNode extends PoseNode {
             '',
             context,
             null,
-            InterruptionBehavior.CONCURRENT,
         );
         this.emptyStatePose?.bind(context);
     }

@@ -22,7 +22,7 @@ import { VariableType, BindableBoolean, bindOr, validateVariableExistence, valid
 import { _decorator } from '../../../../core';
 import { CLASS_NAME_PREFIX_ANIM } from '../../../define';
 import { createEval } from '../../create-eval';
-import { Condition, ConditionEval, ConditionEvalContext } from './condition-base';
+import { Condition, ConditionEval, ConditionBindingContext } from './condition-base';
 
 const { ccclass, serializable } = _decorator;
 
@@ -37,7 +37,7 @@ export class TriggerCondition implements Condition {
         return that;
     }
 
-    [createEval] (context: ConditionEvalContext): ConditionEval {
+    [createEval] (context: ConditionBindingContext): ConditionEval {
         const evaluation = new TriggerConditionEval(false);
         const triggerInstance = context.getVar(this.trigger);
         if (validateVariableExistence(triggerInstance, this.trigger)) {

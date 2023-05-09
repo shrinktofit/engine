@@ -36,6 +36,20 @@ export class MotionNode extends PoseNode {
     @displayName(`协调`)
     public readonly coordination = new MotionCoordination();
 
+    /**
+     * The weight of this node indicated in last update.
+     */
+    get lastIndicativeWeight () {
+        return this._workspace?.lastIndicativeWeight ?? 0.0;
+    }
+
+    /**
+     * Normalized time elapsed on specified motion.
+     */
+    get elapsedMotionTime () {
+        return this._workspace?.normalizedTime ?? 0.0;
+    }
+
     public bind (context: AnimationGraphBindingContext) {
         const { motion } = this;
         if (!motion) {
@@ -63,6 +77,7 @@ export class MotionNode extends PoseNode {
             } else {
                 this._workspace.normalizedTime = 0.0;
             }
+            this._workspace.lastIndicativeWeight = 0.0;
         }
     }
 
@@ -103,6 +118,7 @@ class Workspace {
     }
 
     public normalizedTime = 0.0;
+    public lastIndicativeWeight = 0.0;
 }
 
 if (EDITOR) {

@@ -1,5 +1,4 @@
 import { AnimationController } from "../../../../cocos/animation/animation";
-import { InterruptionBehavior } from "../../../../cocos/animation/marionette/animation-graph";
 import { lerp } from "../../../../exports/base";
 import { AnimationGraphEvalMock } from "../utils/eval-mock";
 import { createAnimationGraph, StateMachineParams, VariableDeclarationParams } from "../utils/factory";
@@ -101,8 +100,6 @@ describe(`Reentering`, () => {
                     }],
                 }],
             });
-
-            animationGraph.interruptionBehavior = InterruptionBehavior.CONCURRENT;
     
             const evalMock = new AnimationGraphEvalMock(valueObserver.root, animationGraph);
     

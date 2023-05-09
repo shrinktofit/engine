@@ -21,7 +21,8 @@
 export type {
     Condition,
     ConditionEval,
-    ConditionEvalContext,
+    ConditionBindingContext,
+    ConditionEvaluationContext,
 } from './condition-base';
 
 export { UnaryCondition } from './unary-condition';

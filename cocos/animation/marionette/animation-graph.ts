@@ -90,14 +90,6 @@ export type { TransitionView as Transition };
 
 export type TransitionInternal = Transition;
 
-export enum TransitionInterruptionSource {
-    NONE,
-    CURRENT_STATE,
-    NEXT_STATE,
-    CURRENT_STATE_THEN_NEXT_STATE,
-    NEXT_STATE_THEN_CURRENT_STATE,
-}
-
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}DurationalTransition`)
 class DurationalTransition extends Transition {
     @serializable
@@ -166,33 +158,13 @@ class AnimationTransition extends DurationalTransition {
         this._exitCondition = value;
     }
 
-    /**
-     * @internal This field is exposed for **experimental editor only** usage.
-     */
-    get interruptible () {
-        return this.interruptionSource !== TransitionInterruptionSource.NONE;
-    }
-
-    set interruptible (value) {
-        this.interruptionSource = value
-            ? TransitionInterruptionSource.CURRENT_STATE_THEN_NEXT_STATE
-            : TransitionInterruptionSource.NONE;
-    }
-
     public copyTo (that: AnimationTransition) {
         super.copyTo(that);
         that.duration = this.duration;
         that.relativeDuration = this.relativeDuration;
         that.exitConditionEnabled = this.exitConditionEnabled;
         that.exitCondition = this.exitCondition;
-        that.interruptible = this.interruptible;
     }
-
-    /**
-     * @internal This field is exposed for **internal** usage.
-     */
-    @serializable
-    public interruptionSource = TransitionInterruptionSource.NONE;
 
     @serializable
     private _exitCondition = 1.0;
@@ -263,29 +235,9 @@ class PoseTransition extends DurationalTransition {
     @serializable
     public duration = 0.3;
 
-    /**
-     * @internal This field is exposed for **experimental editor only** usage.
-     */
-    get interruptible () {
-        return this.interruptionSource !== TransitionInterruptionSource.NONE;
-    }
-
-    set interruptible (value) {
-        this.interruptionSource = value
-            ? TransitionInterruptionSource.CURRENT_STATE_THEN_NEXT_STATE
-            : TransitionInterruptionSource.NONE;
-    }
-
-    /**
-     * @internal This field is exposed for **internal** usage.
-     */
-    @serializable
-    public interruptionSource = TransitionInterruptionSource.NONE;
-
     public copyTo (that: PoseTransition) {
         super.copyTo(that);
         that.duration = this.duration;
-        that.interruptionSource = this.interruptionSource;
     }
 }
 
@@ -294,14 +246,6 @@ const PoseTransition_ = createInstanceofProxy(PoseTransition);
 export {
     PoseTransition_ as PoseTransition,
 };
-
-export enum InterruptionBehavior {
-    SNAPSHOT,
-
-    CONCURRENT,
-}
-
-ccenum(InterruptionBehavior);
 
 @ccclass('cc.animation.StateMachine')
 export class StateMachine extends EditorExtendable {
@@ -1035,9 +979,6 @@ export type VariableDescription =
 @ccclass('cc.animation.AnimationGraph')
 export class AnimationGraph extends AnimationGraphLike implements AnimationGraphRunTime {
     public declare readonly __brand: 'AnimationGraph';
-
-    @serializable
-    public interruptionBehavior = InterruptionBehavior.SNAPSHOT;
 
     @serializable
     private _layers: Layer[] = [];
