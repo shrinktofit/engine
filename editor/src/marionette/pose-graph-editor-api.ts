@@ -9,6 +9,7 @@ import { PoseGraphOutputNode } from "../../../cocos/animation/marionette/pose-gr
 import { assertIsTrue, editorExtrasTag } from "../../../exports/base";
 import { UseStashedPose } from '../../../cocos/animation/marionette/pose-graph/pose-nodes/use-cached-pose';
 import { PoseGraphStash } from "../../../cocos/animation/marionette/animation-graph";
+import { visitPoseNodeInLayer } from "./visit/visit-pose-node";
 
 type Constructor<T = unknown> = new (...args: any[]) => T;
 
@@ -282,4 +283,15 @@ export function stashPoseGraph(
         stash,
         useStashNode: useStashNode as PoseGraphNode, // Don't expose the node type.
     };
+}
+
+interface StashReference {
+}
+
+export function* visitStashReferences(layer: Layer, stashId: string): Generator<StashReference> {
+    for (const poseNode of visitPoseNodeInLayer(layer)) {
+        if (poseNode instanceof UseStashedPose && poseNode.stashName === stashId) {
+            yield poseNode;
+        }
+    }
 }
