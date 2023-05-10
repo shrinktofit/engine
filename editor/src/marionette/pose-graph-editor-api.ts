@@ -95,7 +95,7 @@ function copyPoseGraphOutputNode(node: PoseGraphOutputNode): PoseGraphOutputNode
 }
 
 function pastPoseGraphOutputNode(node: PoseGraphOutputNode, copyInfo: PoseGraphOutputNodeCopyInfo) {
-    node[editorExtrasTag] = copyInfo;
+    node[editorExtrasTag] = copyInfo.editorExtras;
 }
 
 interface PoseGraphNodesCopyInfo {
