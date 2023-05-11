@@ -5,7 +5,7 @@ import { VariableType, VarInstance } from '../../variable';
 import { CLASS_NAME_PREFIX_X_NODES } from './builtin/prefix';
 import { SingleOutputXNode, XNodeLinkContext } from '../x-node';
 import {
-    PoseGraphCreateNodeEntry, PoseGraphCreateNodeFactory, poseGraphCreateNodeFactory, poseGraphNodeHide,
+    PoseGraphCreateNodeEntry, PoseGraphCreateNodeFactory, poseGraphCreateNodeFactory, poseGraphNodeHide, poseGraphNodeAppearance,
 } from '../decorator/node';
 import { PoseGraphType } from '../foundation/type-system';
 
@@ -99,6 +99,10 @@ if (EDITOR) {
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODES}XNodeGetVariableFloat`)
 @poseGraphNodeHide()
+@poseGraphNodeAppearance({
+    inline: true,
+    themeColor: '#8471CF',
+})
 export class XNodeGetVariableFloat extends XNodeGetVariable<number> {
     constructor () {
         super(PoseGraphType.FLOAT);
@@ -111,6 +115,10 @@ export class XNodeGetVariableFloat extends XNodeGetVariable<number> {
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODES}XNodeGetVariableInteger`)
 @poseGraphNodeHide()
+@poseGraphNodeAppearance({
+    inline: true,
+    themeColor: '#8471CF',
+})
 export class XNodeGetVariableInteger extends XNodeGetVariable<number> {
     constructor () {
         super(PoseGraphType.INTEGER);
@@ -123,6 +131,10 @@ export class XNodeGetVariableInteger extends XNodeGetVariable<number> {
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODES}XNodeGetVariableBoolean`)
 @poseGraphNodeHide()
+@poseGraphNodeAppearance({
+    inline: true,
+    themeColor: '#D07979',
+})
 export class XNodeGetVariableBoolean extends XNodeGetVariable<boolean> {
     constructor () {
         super(PoseGraphType.BOOLEAN);
@@ -135,6 +147,10 @@ export class XNodeGetVariableBoolean extends XNodeGetVariable<boolean> {
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODES}XNodeGetVariableVec3`)
 @poseGraphNodeHide()
+@poseGraphNodeAppearance({
+    inline: true,
+    themeColor: '#D97721',
+})
 export class XNodeGetVariableVec3 extends XNodeGetVariable<Readonly<Vec3>> {
     constructor () {
         super(PoseGraphType.VEC3);
@@ -147,6 +163,10 @@ export class XNodeGetVariableVec3 extends XNodeGetVariable<Readonly<Vec3>> {
 
 @ccclass(`${CLASS_NAME_PREFIX_X_NODES}XNodeGetVariableQuat`)
 @poseGraphNodeHide()
+@poseGraphNodeAppearance({
+    inline: true,
+    themeColor: '#B169C4',
+})
 export class XNodeGetVariableQuat extends XNodeGetVariable<Quat> {
     constructor () {
         super(PoseGraphType.QUAT);
