@@ -7,7 +7,7 @@ import { Layer, PoseGraph, poseGraphOp, PoseNode, PureValueNode } from "../../ex
 import { instantiate } from "../../../cocos/serialization";
 import { PoseGraphOutputNode } from "../../../cocos/animation/marionette/pose-graph/graph-output-node";
 import { assertIsTrue, editorExtrasTag } from "../../../exports/base";
-import { UseStashedPose } from '../../../cocos/animation/marionette/pose-graph/pose-nodes/use-cached-pose';
+import { UseStashedPose } from '../../../cocos/animation/marionette/pose-graph/pose-nodes/use-stashed-pose';
 import { PoseGraphStash } from "../../../cocos/animation/marionette/animation-graph";
 import { visitPoseNodeInLayer } from "./visit/visit-pose-node";
 
@@ -295,3 +295,6 @@ export function* visitStashReferences(layer: Layer, stashId: string): Generator<
         }
     }
 }
+
+export { queryNodeSpecializedOperations, performNodeSpecializedOperation } from './specialized-node-operation';
+export type { NodeSpecializedOperation } from './specialized-node-operation';
