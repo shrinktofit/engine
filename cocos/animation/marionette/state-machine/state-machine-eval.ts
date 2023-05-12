@@ -3,6 +3,7 @@ import {
     StateMachine, State, isAnimationTransition,
     SubStateMachine, EmptyState, EmptyStateTransition,
     PoseState, PoseTransition,
+    DurationalTransition,
 } from '../animation-graph';
 import { MotionEval, MotionEvalContext, MotionPort } from '../motion';
 import { createEval } from '../create-eval';
@@ -13,7 +14,7 @@ import { warnID, assertIsTrue, assertIsNonNullable, Pool, approx, clamp01 } from
 import { AnimationClip } from '../../animation-clip';
 import type { AnimationController } from '../animation-controller';
 import { StateMachineComponent } from './state-machine-component';
-import { InteractiveState } from './state';
+import { EventifiedState, InteractiveState } from './state';
 import {
     AnimationGraphBindingContext, AnimationGraphEvaluationContext,
     AnimationGraphUpdateContext, AnimationGraphUpdateContextGenerator,
@@ -21,10 +22,11 @@ import {
     TriggerResetter,
 } from '../animation-graph-context';
 import { blendPoseInto, Pose } from '../../core/pose';
-import { PoseNode } from '../pose-graph/pose-node';
-import { instantiatePoseGraph, InstantiatedPoseGraph } from '../pose-graph/instantiation';
-import { ConditionEvaluationContext } from './condition/condition-base';
+import { InstantiatedPoseGraph, instantiatePoseGraph } from '../pose-graph/instantiation';
+import { AnimationGraphEvent } from '../event';
+import { ConditionBindingContext, ConditionEvaluationContext } from './condition/condition-base';
 import { ReadonlyClipOverrideMap } from '../clip-overriding';
+import { AnimationGraphCustomEventEmitter } from '../event/custom-event-emitter';
 
 /**
  * The max transitions can be matched in single frame.
@@ -123,6 +125,7 @@ class TopLevelStateMachineEvaluation {
         this._additive = context.additive;
         this.name = name;
         this._controller = context.controller;
+        this._customEventEmitter = context.customEventEmitter;
         const { entry, exit } = this._addStateMachine(
             stateMachine,
             null,
@@ -151,6 +154,20 @@ class TopLevelStateMachineEvaluation {
             const state = poseStates[iState];
             state.settle(context);
         }
+    }
+
+    public reenter () {
+        // Known problem: no callbacks are triggered.
+
+        for (const transition of this._activatedTransitions) {
+            transition.destination.decreaseActiveReference();
+            this._activatedTransitionPool.free(transition);
+        }
+        this._activatedTransitions.length = 0;
+
+        this._topLevelEntry.increaseActiveReference();
+        this._currentNode.decreaseActiveReference();
+        this._currentNode = this._topLevelEntry;
     }
 
     public update (context: AnimationGraphUpdateContext) {
@@ -247,6 +264,7 @@ class TopLevelStateMachineEvaluation {
     }
 
     private declare _controller: AnimationController;
+    private _customEventEmitter: AnimationGraphCustomEventEmitter;
     /**
      * Preserved here for clip overriding.
      */
@@ -394,20 +412,24 @@ class TopLevelStateMachineEvaluation {
                     relativeDestinationStart: false,
                     exitCondition: 0.0,
                     exitConditionEnabled: false,
-                    activated: false,
+                    startEvent: undefined,
+                    endEvent: undefined,
                 };
+
+                if (outgoing instanceof DurationalTransition) {
+                    transitionEval.startEvent = outgoing.startEvent;
+                    transitionEval.endEvent = outgoing.endEvent;
+                    transitionEval.destinationStart = outgoing.destinationStart;
+                    transitionEval.relativeDestinationStart = outgoing.relativeDestinationStart;
+                }
 
                 if (isAnimationTransition(outgoing)) {
                     transitionEval.duration = outgoing.duration;
                     transitionEval.normalizedDuration = outgoing.relativeDuration;
                     transitionEval.exitConditionEnabled = outgoing.exitConditionEnabled;
                     transitionEval.exitCondition = outgoing.exitCondition;
-                    transitionEval.destinationStart = outgoing.destinationStart;
-                    transitionEval.relativeDestinationStart = outgoing.relativeDestinationStart;
                 } else if (outgoing instanceof EmptyStateTransition) {
                     transitionEval.duration = outgoing.duration;
-                    transitionEval.destinationStart = outgoing.destinationStart;
-                    transitionEval.relativeDestinationStart = outgoing.relativeDestinationStart;
                 } else if (outgoing instanceof PoseTransition) {
                     transitionEval.duration = outgoing.duration;
                 }
@@ -672,9 +694,6 @@ class TopLevelStateMachineEvaluation {
         const nTransitions = outgoingTransitions.length;
         for (let iTransition = 0; iTransition < nTransitions; ++iTransition) {
             const transition = outgoingTransitions[iTransition];
-            if (transition.activated) {
-                continue;
-            }
 
             const { conditions } = transition;
             const nConditions = conditions.length;
@@ -751,12 +770,25 @@ class TopLevelStateMachineEvaluation {
             // We're entering a state machine
             this._callEnterMethods(detailedTransition.to);
         }
+
+        // Fire transition out event on source real state.
+        assertIsTrue(this._activatedTransitions.length > 0);
+        const previousState = this._activatedTransitions.length === 1 // this activating transition
+            ? this._currentNode
+            : this._activatedTransitions[this._activatedTransitions.length - 2].destination;
+        if (previousState.transitionOutEvent) {
+            previousState.transitionOutEvent.emit(this._customEventEmitter);
+        }
+
+        // Fire transition in event on destination real target.
+        if (destinationState.transitionInEvent) {
+            destinationState.transitionInEvent.emit(this._customEventEmitter);
+        }
     }
 
     /**
      * Update transitions, also update states within(includes the case of no transition).
      * @param deltaTime Time piece.
-     * @returns
      */
     private _updateActivatedTransitions (deltaTime: number) {
         const {
@@ -965,6 +997,14 @@ export class StateEval {
 
     public outgoingTransitions: TransitionEval[] = [];
 
+    public transitionInEvent: AnimationGraphEvent | undefined = undefined;
+
+    public transitionOutEvent: AnimationGraphEvent | undefined = undefined;
+
+    public transitionInFinishedEvent: AnimationGraphEvent | undefined = undefined;
+
+    public transitionOutFinishedEvent: AnimationGraphEvent | undefined = undefined;
+
     /**
      * The absolute weight of this state.
      */
@@ -1129,10 +1169,17 @@ class InstantiatedComponents {
 
 interface StateMachineInfo {
     parent: StateMachineInfo | null;
-    entry: NodeEval;
-    exit: NodeEval;
-    any: NodeEval;
+    entry: SpecialStateEval;
+    exit: SpecialStateEval;
+    any: SpecialStateEval;
     components: InstantiatedComponents | null;
+}
+
+function assignEvents (stateEval: StateEval, node: EventifiedState) {
+    stateEval.transitionInEvent = node.transitionInEvent;
+    stateEval.transitionOutEvent = node.transitionOutEvent;
+    stateEval.transitionInFinishedEvent = node.enteredEvent;
+    stateEval.transitionOutFinishedEvent = node.exitedEvent;
 }
 
 /**
@@ -1348,6 +1395,7 @@ class PoseStateEval extends StateEval {
             this._statusCache.__DEBUG_ID__ = state.name;
         }
         this._statusCache.progress = 0.0;
+        assignEvents(this, state);
     }
 
     public settle (context: AnimationGraphSettleContext) {
@@ -1373,6 +1421,10 @@ class PoseStateEval extends StateEval {
         return this._statusCache;
     }
 
+    public countMotionTime () {
+        return this._instantiatedPoseGraph?.countMotionTime() ?? 0.0;
+    }
+
     private _instantiatedPoseGraph: InstantiatedPoseGraph;
 
     private readonly _statusCache: MotionStateStatus = createStateStatusCache();
@@ -1396,10 +1448,9 @@ interface TransitionEval {
      */
     triggers: string[] | undefined;
 
-    /**
-     * Whether the transition is activated, if it has already been activated, it can not be activated(matched) again.
-     */
-    activated: boolean;
+    startEvent: AnimationGraphEvent | undefined;
+
+    endEvent: AnimationGraphEvent | undefined;
 }
 
 class ConditionEvaluationContextImpl implements ConditionEvaluationContext {

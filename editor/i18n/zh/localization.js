@@ -46,6 +46,22 @@ module.exports = {
                         tooltip: '过渡源状态中，动画的（标准化的）流逝时间。',
                     },
                 },
+                'CopyTransform': {
+                    properties: {
+                        'sourceTransformName': {
+                            displayName: '源变换名称',
+                            tooltip: '要复制的变换的名称。',
+                        },
+                        'targetTransformName': {
+                            displayName: '目标变换名称',
+                            tooltip: '要复制的变换的名称。',
+                        },
+                        'transformSpaceRequirement': {
+                            displayName: '变换空间要求',
+                            tooltip: '在拷贝变换时，是否要求输入姿势处于指定的空间下。',
+                        },
+                    },
+                },
             },
         },
     },

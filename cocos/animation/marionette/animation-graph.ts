@@ -22,21 +22,22 @@
  THE SOFTWARE.
 */
 
-import { ccclass, serializable } from 'cc.decorator';
-import { DEBUG } from 'internal:constants';
+import { ccclass, editable, serializable } from 'cc.decorator';
 import { js, clamp, assertIsNonNullable, assertIsTrue, EditorExtendable, shift, Vec3, Quat } from '../../core';
 import type { Condition } from './state-machine/condition';
 import { OwnedBy, assertsOwnedBy, own, markAsDangling, ownerSymbol } from './ownership';
 import { createVariable, VariableDescription, VariableType, VariableTypeValueTypeMap } from './variable';
 import { InvalidTransitionError } from './errors';
+import { createEval } from './create-eval';
 import { MotionState } from './state-machine/motion-state';
-import { State, outgoingsSymbol, incomingsSymbol, InteractiveState } from './state-machine/state';
+import { State, outgoingsSymbol, incomingsSymbol, InteractiveState, EventifiedState } from './state-machine/state';
 import { AnimationMask } from './animation-mask';
 import { onAfterDeserializedTag } from '../../serialization/deserialize-symbols';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
 import { AnimationGraphLike } from './animation-graph-like';
 import { createInstanceofProxy, renameObjectProperty } from '../../core/utils/internal';
 import { PoseGraph } from './pose-graph/pose-graph';
+import { AnimationGraphEvent } from './event';
 
 export { State };
 
@@ -87,8 +88,48 @@ export type { TransitionView as Transition };
 
 export type TransitionInternal = Transition;
 
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}DurationalTransition`)
+class DurationalTransition extends Transition {
+    @serializable
+    @editable
+    public startEvent = new AnimationGraphEvent();
+
+    @serializable
+    @editable
+    public endEvent = new AnimationGraphEvent();
+
+    /**
+     * @en The start time of (final) destination motion state when this transition starts.
+     * Its unit is seconds if `relativeDestinationStart` is `false`,
+     * Otherwise, its unit is the duration of destination motion state.
+     * @zh 此过渡开始时，（最终）目标动作状态的起始时间。
+     * 如果 `relativeDestinationStart`为 `false`，其单位是秒，否则其单位是目标动作状态的周期。
+     */
+    @serializable
+    public destinationStart = 0.0;
+
+    /**
+      * @en Determines the unit of destination start time. See `destinationStart`.
+      * @zh 决定了目标起始时间的单位。见 `destinationStart`。
+      */
+    @serializable
+    public relativeDestinationStart = false;
+
+    public copyTo (that: DurationalTransition) {
+        super.copyTo(that);
+        that.destinationStart = this.destinationStart;
+        that.relativeDestinationStart = this.relativeDestinationStart;
+    }
+}
+
+type DurationalTransition_ = DurationalTransition;
+const DurationalTransition_ = createInstanceofProxy(DurationalTransition);
+export {
+    DurationalTransition_ as DurationalTransition,
+};
+
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}AnimationTransition`)
-class AnimationTransition extends Transition {
+class AnimationTransition extends DurationalTransition {
     /**
      * The transition duration.
      * The unit of the duration is the real duration of transition source
@@ -106,23 +147,6 @@ class AnimationTransition extends Transition {
     @serializable
     public exitConditionEnabled = true;
 
-    /**
-     * @en The start time of (final) destination motion state when this transition starts.
-     * Its unit is seconds if `relativeDestinationStart` is `false`,
-     * Otherwise, its unit is the duration of destination motion state.
-     * @zh 此过渡开始时，（最终）目标动作状态的起始时间。
-     * 如果 `relativeDestinationStart`为 `false`，其单位是秒，否则其单位是目标动作状态的周期。
-     */
-    @serializable
-    public destinationStart = 0.0;
-
-    /**
-     * @en Determines the unit of destination start time. See `destinationStart`.
-     * @zh 决定了目标起始时间的单位。见 `destinationStart`。
-     */
-    @serializable
-    public relativeDestinationStart = false;
-
     get exitCondition () {
         return this._exitCondition;
     }
@@ -138,8 +162,6 @@ class AnimationTransition extends Transition {
         that.relativeDuration = this.relativeDuration;
         that.exitConditionEnabled = this.exitConditionEnabled;
         that.exitCondition = this.exitCondition;
-        that.destinationStart = this.destinationStart;
-        that.relativeDestinationStart = this.relativeDestinationStart;
     }
 
     @serializable
@@ -170,40 +192,21 @@ export class EmptyState extends State {
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}EmptyStateTransition`)
-export class EmptyStateTransition extends Transition {
+export class EmptyStateTransition extends DurationalTransition {
     /**
      * The transition duration, in seconds.
      */
     @serializable
     public duration = 0.3;
 
-    /**
-     * @en The start time of (final) destination motion state when this transition starts.
-     * Its unit is seconds if `relativeDestinationStart` is `false`,
-     * Otherwise, its unit is the duration of destination motion state.
-     * @zh 此过渡开始时，（最终）目标动作状态的起始时间。
-     * 如果 `relativeDestinationStart`为 `false`，其单位是秒，否则其单位是目标动作状态的周期。
-     */
-    @serializable
-    public destinationStart = 0.0;
-
-    /**
-      * @en Determines the unit of destination start time. See `destinationStart`.
-      * @zh 决定了目标起始时间的单位。见 `destinationStart`。
-      */
-    @serializable
-    public relativeDestinationStart = false;
-
     public copyTo (that: EmptyStateTransition) {
         super.copyTo(that);
         that.duration = this.duration;
-        that.destinationStart = this.destinationStart;
-        that.relativeDestinationStart = this.relativeDestinationStart;
     }
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseState`)
-class PoseState extends State {
+class PoseState extends EventifiedState {
     @serializable
     public graph = new PoseGraph();
 
@@ -223,12 +226,17 @@ export {
 };
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}PoseTransition`)
-class PoseTransition extends Transition {
+class PoseTransition extends DurationalTransition {
     /**
      * The transition duration, in seconds.
      */
     @serializable
     public duration = 0.3;
+
+    public copyTo (that: PoseTransition) {
+        super.copyTo(that);
+        that.duration = this.duration;
+    }
 }
 
 type PoseTransition_ = PoseTransition;

@@ -1,0 +1,3 @@
+import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from '../menu-common';
+
+export const POSE_GRAPH_NODE_MENU_PREFIX_CHOOSE = `${POSE_GRAPH_NODE_MENU_PREFIX_POSE}选择/`;

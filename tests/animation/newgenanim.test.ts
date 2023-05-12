@@ -10,7 +10,7 @@ import '../utils/matcher-deep-close-to';
 import { BinaryCondition, UnaryCondition, TriggerCondition } from '../../cocos/animation/marionette/state-machine/condition';
 import { AnimationController } from '../../cocos/animation/marionette/animation-controller';
 import { StateMachineComponent } from '../../cocos/animation/marionette/state-machine/state-machine-component';
-import { VectorTrack } from '../../cocos/animation/animation';
+import { RealTrack, VectorTrack } from '../../cocos/animation/animation';
 import 'jest-extended';
 import { assertIsTrue } from '../../cocos/core/data/utils/asserts';
 import { AnimationClip } from '../../cocos/animation/animation-clip';
@@ -24,6 +24,7 @@ import { NodeTransformValueObserver } from './new-gen-anim/utils/node-transform-
 import { SingleRealValueObserver } from './new-gen-anim/utils/single-real-value-observer';
 import { createAnimationGraph, StateParams, TransitionParams } from './new-gen-anim/utils/factory';
 import { captureWarns } from '../utils/log-capture';
+import { AnimationGraphEvalMock } from './new-gen-anim/utils/eval-mock';
 
 /**
  * Notable changes

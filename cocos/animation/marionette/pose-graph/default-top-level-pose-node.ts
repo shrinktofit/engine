@@ -6,7 +6,8 @@ import { AnimationGraphBindingContext, AnimationGraphEvaluationContext,
 import { AnimationMask } from '../animation-mask';
 import { ReadonlyClipOverrideMap } from '../clip-overriding';
 import { TopLevelStateMachineEvaluation } from '../state-machine/state-machine-eval';
-import { PoseNode } from './pose-node';
+import { RuntimeCoordinator } from './coordination/runtime-coordinator';
+import { AllPreviousLayersResultManager, PoseNode } from './pose-node';
 import { PoseStashAllocator, RuntimeStashManager } from './stash/runtime-stash';
 
 export class DefaultTopLevelPoseNode extends PoseNode {
@@ -24,6 +25,7 @@ export class DefaultTopLevelPoseNode extends PoseNode {
                 bindingContext,
                 clipOverrides,
                 poseStashAllocator,
+                this._allPreviousLayersResultManager,
             );
 
             return record;
@@ -83,15 +85,17 @@ export class DefaultTopLevelPoseNode extends PoseNode {
         const { _layerRecords: layerRecords } = this;
         const nLayers = layerRecords.length;
         for (let iLayer = 0; iLayer < nLayers; ++iLayer) {
-            layerRecords[iLayer].stateMachineEvaluation.update(context);
+            layerRecords[iLayer].update(context);
         }
     }
 
     protected doEvaluate (context: AnimationGraphEvaluationContext): Pose {
+        const { _allPreviousLayersResultManager: allPreviousLayersResultManager } = this;
         const finalPose = context.pushDefaultedPose();
         const { _layerRecords: layerRecords } = this;
         const nLayers = layerRecords.length;
         for (let iLayer = 0; iLayer < nLayers; ++iLayer) {
+            allPreviousLayersResultManager.set(finalPose);
             const layer = layerRecords[iLayer];
             const layerPose = layer.stateMachineEvaluation.evaluate(context);
             const layerActualWeight = layer.weight * layer.stateMachineEvaluation.passthroughWeight;
@@ -104,11 +108,14 @@ export class DefaultTopLevelPoseNode extends PoseNode {
             context.popPose();
 
             layer.postEvaluate();
+
+            allPreviousLayersResultManager.delete();
         }
         return finalPose;
     }
 
     private _layerRecords: LayerEvaluationRecord[];
+    private _allPreviousLayersResultManager = new AllPreviousLayersResultManagerImpl();
 }
 
 class LayerEvaluationRecord {
@@ -117,6 +124,7 @@ class LayerEvaluationRecord {
         bindingContext: AnimationGraphBindingContext,
         clipOverrides: ReadonlyClipOverrideMap | null,
         poseStashAllocator: PoseStashAllocator,
+        allPreviousLayersResultManager: AllPreviousLayersResultManager,
     ) {
         const stashManager = new RuntimeStashManager(poseStashAllocator);
         for (const [stashId, _] of layer.stashes()) {
@@ -124,8 +132,13 @@ class LayerEvaluationRecord {
         }
         this._stashManager = stashManager;
 
+        const coordinator = new RuntimeCoordinator();
+        this._coordinator = coordinator;
+
         bindingContext._setLayerWideContextProperties(
             stashManager,
+            coordinator,
+            allPreviousLayersResultManager,
         );
 
         for (const [stashId, stash] of layer.stashes()) {
@@ -165,6 +178,8 @@ class LayerEvaluationRecord {
 
     public update (context: AnimationGraphUpdateContext) {
         this.stateMachineEvaluation.update(context);
+
+        this._coordinator.coordinate();
     }
 
     public postEvaluate () {
@@ -179,9 +194,32 @@ class LayerEvaluationRecord {
     private _topLevelStateMachineEval: TopLevelStateMachineEvaluation;
 
     private _stashManager: RuntimeStashManager;
+
+    private _coordinator: RuntimeCoordinator;
+
     private _mask: AnimationMask | undefined = undefined;
 
     public transformFilter: TransformFilter | undefined = undefined;
 }
 
 export type { LayerEvaluationRecord };
+
+export class AllPreviousLayersResultManagerImpl implements AllPreviousLayersResultManager {
+    public retrieve (context: AnimationGraphEvaluationContext): Pose {
+        const { _pose: pose } = this;
+        assertIsTrue(pose, `Can not retrieve previous layers pose. You're doing things in wrong order.`);
+        return context.pushDuplicatedPose(pose);
+    }
+
+    public set (pose: Pose) {
+        assertIsTrue(!this._pose);
+        this._pose = pose;
+    }
+
+    public delete () {
+        assertIsTrue(this._pose);
+        this._pose = null;
+    }
+
+    private _pose: Pose | null = null;
+}

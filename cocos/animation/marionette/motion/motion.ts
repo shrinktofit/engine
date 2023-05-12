@@ -45,7 +45,6 @@ export interface CreateClipEvalContext {
 }
 
 export interface MotionEvalContext extends BindContext, CreateClipEvalContext {
-    clipOverrides: ReadonlyClipOverrideMap | null;
 }
 
 export interface MotionEval {
