@@ -35,6 +35,7 @@ import {
     AnimationGraphPoseLayoutMaintainer, defaultTransformsTag, LayoutChangeFlag, AuxiliaryCurveRegistry,
     AnimationGraphUpdateContext, AnimationGraphUpdateContextGenerator,
     AnimationGraphSettleContext,
+    DeferredPoseStashAllocator,
 } from './animation-graph-context';
 import { DefaultTopLevelPoseNode } from './pose-graph/default-top-level-pose-node';
 import {
@@ -91,10 +92,14 @@ export class AnimationGraphEval {
 
         poseLayoutMaintainer.startBind();
 
+        const poseStashAllocator = new DeferredPoseStashAllocator();
+        this._poseStashAllocator = poseStashAllocator;
+
         this._rootPoseNode = new DefaultTopLevelPoseNode(
             graph,
             bindingContext,
             clipOverrides,
+            poseStashAllocator,
         );
 
         this._root = root;
@@ -132,6 +137,7 @@ export class AnimationGraphEval {
             deltaTime,
             1.0,
         );
+
         rootPoseNode.update(updateContext);
 
         const finalPose = rootPoseNode.evaluate(evaluationContext);
@@ -152,6 +158,7 @@ export class AnimationGraphEval {
 
         if (DEBUG) {
             assertIsTrue(evaluationContext.allocatedPoseCount === 0, `Pose leaked.`);
+            assertIsTrue(this._poseStashAllocator.allocatedPoseCount === 0, `Pose leaked.`);
         }
     }
 
@@ -236,6 +243,7 @@ export class AnimationGraphEval {
      */
     private declare _root: Node;
     private declare _evaluationContext: AnimationGraphEvaluationContext;
+    private declare _poseStashAllocator: DeferredPoseStashAllocator;
     private _rootUpdateContextGenerator = new AnimationGraphUpdateContextGenerator();
 
     private _initializeContexts () {
@@ -254,6 +262,8 @@ export class AnimationGraphEval {
 
         // Capture the default transforms.
         poseLayoutMaintainer.fetchDefaultTransforms(evaluationContext[defaultTransformsTag]);
+
+        poseLayoutMaintainer.resetPoseStashAllocator(this._poseStashAllocator);
     }
 
     private _updateAfterPossiblePoseLayoutChange () {
@@ -282,6 +292,7 @@ export class AnimationGraphEval {
             this._evaluationContext.destroy();
             this._evaluationContext = evaluationContext;
             evaluationContextRecreated = true;
+            poseLayoutMaintainer.resetPoseStashAllocator(this._poseStashAllocator);
         }
 
         // If the eval context was recreated or the layout has changed, we should update the default transforms.
