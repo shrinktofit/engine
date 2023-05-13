@@ -298,3 +298,5 @@ export function* visitStashReferences(layer: Layer, stashId: string): Generator<
 
 export { queryNodeSpecializedOperations, performNodeSpecializedOperation } from './specialized-node-operation';
 export type { NodeSpecializedOperation } from './specialized-node-operation';
+
+export * from './pose-graph/drag';
