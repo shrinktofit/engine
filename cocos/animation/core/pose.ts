@@ -30,7 +30,7 @@ export class Pose {
 export enum PoseTransformSpace {
     LOCAL,
 
-    SKELETAL,
+    COMPONENT,
 }
 
 export class TransformFilter {

@@ -8,7 +8,7 @@ import { TransformHandle, AuxiliaryCurveHandle } from '../core/animation-handle'
 import { Transform, ZERO_DELTA_TRANSFORM } from '../core/transform';
 import { VarInstance } from './variable';
 import { AnimationMask } from './animation-mask';
-import { error } from '../../core';
+import { error, Quat, Vec3 } from '../../core';
 import { partition } from '../../core/algorithm/partition';
 import { AnimationController } from './animation-controller';
 import { AnimationGraphCustomEventEmitter } from './event/custom-event-emitter';
@@ -454,6 +454,7 @@ export class AnimationGraphPoseLayoutMaintainer {
             this.transformCount,
             this.auxiliaryCurveCount,
             this._parentTable.slice(),
+            this._origin,
         );
     }
 
@@ -743,12 +744,15 @@ export class AnimationGraphSettleContext {
 
 const cacheTransform_spaceConversion = new Transform();
 const cacheParentTransform_spaceConversion = new Transform();
+const cacheQuat_spaceConversion = new Quat();
+const cacheQuat2_spaceConversion = new Quat();
 
 class AnimationGraphEvaluationContext {
     constructor (
         transformCount: number,
         metaValueCount: number,
         parentTable: readonly number[],
+        componentNode: Node,
     ) {
         if (DEBUG) {
             assertIsTrue(transformCount === parentTable.length);
@@ -762,6 +766,7 @@ class AnimationGraphEvaluationContext {
         }
         this._poseAllocator = new PoseStackAllocator(transformCount, metaValueCount);
         this._parentTable = parentTable;
+        this._componentNode = componentNode;
         this[defaultTransformsTag] = new TransformArray(transformCount);
     }
 
@@ -841,7 +846,7 @@ class AnimationGraphEvaluationContext {
             transforms.setTransform(iTransform, transform);
         }
 
-        pose._poseTransformSpace = PoseTransformSpace.SKELETAL;
+        pose._poseTransformSpace = PoseTransformSpace.COMPONENT;
     }
 
     /** @internal */
@@ -862,9 +867,221 @@ class AnimationGraphEvaluationContext {
         pose._poseTransformSpace = PoseTransformSpace.LOCAL;
     }
 
+    /**
+     * Transforms a world position to the pose's current space.
+     * @internal
+     */
+    public _transformWorldPositionToSpaceOfPose (
+        out: Vec3,
+        position: Readonly<Vec3>,
+        pose: Pose,
+    ) {
+        const poseTransformSpace = pose._poseTransformSpace;
+        Vec3.copy(out, position);
+        switch (poseTransformSpace) {
+        default:
+            if (DEBUG) {
+                assertIsTrue(false);
+            }
+            break;
+        case PoseTransformSpace.LOCAL:
+            // Identity.
+            break;
+        case PoseTransformSpace.COMPONENT: {
+            // World -> Component.
+            this._componentNode.inverseTransformPoint(out, out);
+            break;
+        }
+        }
+        return out;
+    }
+
+    /**
+     * Transforms a node local rotation to the pose's current space.
+     * @internal
+     */
+    public _transformWorldRotationToSpaceOfPose (
+        out: Quat,
+        rotation: Readonly<Quat>,
+        pose: Pose,
+    ) {
+        const poseTransformSpace = pose._poseTransformSpace;
+        Quat.copy(out, rotation);
+        switch (poseTransformSpace) {
+        default:
+            if (DEBUG) {
+                assertIsTrue(false);
+            }
+            break;
+        case PoseTransformSpace.LOCAL:
+            // Identity.
+            break;
+        case PoseTransformSpace.COMPONENT: {
+            // Apply successive transforms to the position.
+            // r_w = r_p * r_c
+            // r_p^-1 * r_w = r_c
+            const invParent = Quat.invert(cacheQuat_spaceConversion, this._componentNode.parent?.worldRotation ?? Quat.IDENTITY);
+            Quat.multiply(out, invParent, out);
+            break;
+        }
+        }
+        return out;
+    }
+
+    /**
+     * Transforms a node local position to the pose's current space.
+     * @internal
+     */
+    public _transformNodeLocalPositionToSpaceOfPose (
+        out: Vec3,
+        position: Readonly<Vec3>,
+        pose: Pose,
+        nodeTransformHandle: TransformHandle,
+    ) {
+        const poseTransformSpace = pose._poseTransformSpace;
+        Vec3.copy(out, position);
+        switch (poseTransformSpace) {
+        default:
+            if (DEBUG) {
+                assertIsTrue(false);
+            }
+            break;
+        case PoseTransformSpace.LOCAL:
+            // No conversion needed.
+            break;
+        case PoseTransformSpace.COMPONENT: {
+            // Apply successive transforms to the position.
+            const { _parentTable: parentTable } = this;
+            for (let iTransform = nodeTransformHandle.index; iTransform >= 0; iTransform = parentTable[iTransform]) {
+                const transform = pose.transforms.getTransform(iTransform, cacheTransform_spaceConversion);
+                Transform.transformPosition(out, transform, out);
+            }
+            break;
+        }
+        }
+        return out;
+    }
+
+    /**
+     * Transforms a node local rotation to the pose's current space.
+     * @internal
+     */
+    public _transformNodeLocalRotationToSpaceOfPose (
+        out: Quat,
+        rotation: Readonly<Quat>,
+        pose: Pose,
+        nodeTransformHandle: TransformHandle,
+    ) {
+        const poseTransformSpace = pose._poseTransformSpace;
+        Quat.copy(out, rotation);
+        switch (poseTransformSpace) {
+        default:
+            if (DEBUG) {
+                assertIsTrue(false);
+            }
+            break;
+        case PoseTransformSpace.LOCAL:
+            // No conversion needed.
+            break;
+        case PoseTransformSpace.COMPONENT: {
+            // Apply successive transforms to the rotation.
+            const { _parentTable: parentTable } = this;
+            for (let iTransform = nodeTransformHandle.index; iTransform >= 0; iTransform = parentTable[iTransform]) {
+                const transformRotation = pose.transforms.getRotation(iTransform, cacheQuat_spaceConversion);
+                Quat.multiply(out, transformRotation, out);
+            }
+            break;
+        }
+        }
+        return out;
+    }
+
+    /**
+     * Transforms a node local position to the pose's current space.
+     * @internal
+     */
+    public _transformComponentPositionToSpaceOfPose (
+        out: Vec3,
+        position: Readonly<Vec3>,
+        pose: Pose,
+        nodeTransformHandle: TransformHandle,
+    ) {
+        const poseTransformSpace = pose._poseTransformSpace;
+        Vec3.copy(out, position);
+        switch (poseTransformSpace) {
+        default:
+            if (DEBUG) {
+                assertIsTrue(false);
+            }
+            break;
+        case PoseTransformSpace.LOCAL: {
+            // Component -> Local
+
+            // component = parent_component * local
+            // inv(parent_component) * component = local
+
+            const nodeLocalToComponent = Transform.setIdentity(cacheParentTransform_spaceConversion);
+            const { _parentTable: parentTable } = this;
+            for (let iTransform = nodeTransformHandle.index; iTransform >= 0; iTransform = parentTable[iTransform]) {
+                const parentLocalTransform = pose.transforms.getTransform(iTransform, cacheTransform_spaceConversion);
+                Transform.multiply(nodeLocalToComponent, nodeLocalToComponent, parentLocalTransform);
+            }
+            Transform.invert(nodeLocalToComponent, nodeLocalToComponent);
+            Transform.transformPosition(out, nodeLocalToComponent, out);
+            break;
+        }
+        case PoseTransformSpace.COMPONENT: {
+            // No conversion needed.
+            break;
+        }
+        }
+        return out;
+    }
+
+    /**
+     * Transforms a node local rotation to the pose's current space.
+     * @internal
+     */
+    public _transformComponentRotationToSpaceOfPose (
+        out: Quat,
+        rotation: Readonly<Quat>,
+        pose: Pose,
+        nodeTransformHandle: TransformHandle,
+    ) {
+        const poseTransformSpace = pose._poseTransformSpace;
+        Quat.copy(out, rotation);
+        switch (poseTransformSpace) {
+        default:
+            if (DEBUG) { assertIsTrue(false); }
+            break;
+        case PoseTransformSpace.LOCAL: {
+            // Component -> Local
+
+            // component = parent_component * local
+            // inv(parent_component) * component = local
+            const nodeComponentRotation = Quat.identity(cacheQuat2_spaceConversion);
+            const { _parentTable: parentTable } = this;
+            for (let iTransform = nodeTransformHandle.index; iTransform >= 0; iTransform = parentTable[iTransform]) {
+                const transformRotation = pose.transforms.getRotation(iTransform, cacheQuat_spaceConversion);
+                Quat.multiply(nodeComponentRotation, transformRotation, nodeComponentRotation);
+            }
+            const invNodeComponentRotation = Quat.invert(nodeComponentRotation, nodeComponentRotation);
+            Quat.multiply(out, invNodeComponentRotation, out);
+            break;
+        }
+        case PoseTransformSpace.COMPONENT: {
+            // No conversion needed.
+            break;
+        }
+        }
+        return out;
+    }
+
     private _poseAllocator: PoseStackAllocator;
 
     private _parentTable: readonly number[];
+
+    private _componentNode: Node;
 }
 
 export type { AnimationGraphEvaluationContext };

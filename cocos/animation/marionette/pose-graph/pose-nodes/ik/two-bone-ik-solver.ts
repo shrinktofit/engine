@@ -137,7 +137,7 @@ export class TwoBoneIKSolver extends SkeletalSpaceSinglePoseModifier {
 
             // Calculate local transforms of these 3 bones.
             context._poseTransformsSpaceSkeletalToLocal(inputPose);
-            inputPose._poseTransformSpace = PoseTransformSpace.SKELETAL; // TODO:!!
+            inputPose._poseTransformSpace = PoseTransformSpace.COMPONENT; // TODO:!!
             const rootLocalTransform = inputPose.transforms.getTransform(iRootTransform, cacheRootTransform);
             const middleLocalTransform = inputPose.transforms.getTransform(iMiddleTransform, cacheMiddleTransform);
             const endEffectorLocalTransform = inputPose.transforms.getTransform(iEndEffectorTransform, cacheEndEffectorTransform);

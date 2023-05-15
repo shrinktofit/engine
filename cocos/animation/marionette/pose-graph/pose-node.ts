@@ -21,7 +21,7 @@ export enum PoseTransformSpaceRequirement {
 
     LOCAL,
 
-    SKELETAL,
+    COMPONENT,
 }
 ccenum(PoseTransformSpaceRequirement);
 
@@ -114,17 +114,17 @@ export abstract class PoseNode extends PoseGraphNode {
         case PoseTransformSpaceRequirement.NO:
             break;
         case PoseTransformSpaceRequirement.LOCAL: {
-            if (currentSpace === PoseTransformSpace.SKELETAL) {
+            if (currentSpace === PoseTransformSpace.COMPONENT) {
                 context._poseTransformsSpaceSkeletalToLocal(pose);
             }
             assertIsTrue(pose._poseTransformSpace === PoseTransformSpace.LOCAL);
             break;
         }
-        case PoseTransformSpaceRequirement.SKELETAL: {
+        case PoseTransformSpaceRequirement.COMPONENT: {
             if (currentSpace === PoseTransformSpace.LOCAL) {
                 context._poseTransformsSpaceLocalToSkeletal(pose);
             }
-            assertIsTrue(pose._poseTransformSpace === PoseTransformSpace.SKELETAL);
+            assertIsTrue(pose._poseTransformSpace === PoseTransformSpace.COMPONENT);
             break;
         }
         }
@@ -140,7 +140,7 @@ export abstract class PoseNode extends PoseGraphNode {
         case PoseTransformSpaceRequirement.NO:
         case PoseTransformSpaceRequirement.LOCAL:
             return context.pushDefaultedPose();
-        case PoseTransformSpaceRequirement.SKELETAL:
+        case PoseTransformSpaceRequirement.COMPONENT:
             return context.pushDefaultedPoseInSkeletalSpace();
         }
     }

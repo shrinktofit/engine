@@ -52,6 +52,6 @@ export abstract class AnySpaceSinglePoseModifier extends SinglePoseModifier {
 
 export abstract class SkeletalSpaceSinglePoseModifier extends SinglePoseModifier {
     protected getPoseTransformSpaceRequirement () {
-        return PoseTransformSpaceRequirement.SKELETAL;
+        return PoseTransformSpaceRequirement.COMPONENT;
     }
 }

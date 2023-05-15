@@ -6,6 +6,7 @@ const CACHE_VECTOR_A = new Vec3();
 const CACHE_VECTOR_B = new Vec3();
 const CACHE_QUAT_A = new Quat();
 const CACHE_QUAT_B = new Quat();
+const CACHE_MAT4 = new Mat4();
 
 // Can not use `Readonly<Transform>`.
 // See: https://github.com/microsoft/TypeScript/issues/50668
@@ -157,6 +158,20 @@ export class Transform {
             return out;
         };
     })();
+
+    public static invert (out: Transform, transform: ReadonlyTransform) {
+        const mat = Transform.toMatrix(CACHE_MAT4, transform);
+        Mat4.invert(mat, mat);
+        return Transform.fromMatrix(out, mat);
+    }
+
+    public static transformPosition (out: Vec3, transform: ReadonlyTransform, position: Readonly<Vec3>) {
+        Vec3.copy(out, position);
+        Vec3.multiply(out, out, transform._scale);
+        Vec3.transformQuat(out, out, transform._rotation);
+        Vec3.add(out, out, transform._position);
+        return out;
+    }
 
     public static fromMatrix (out: Transform, matrix: Readonly<Mat4>) {
         Mat4.toRTS(

@@ -6,7 +6,7 @@ import {
     AnimationGraphBindingContext, AnimationGraphSettleContext, AnimationGraphUpdateContext, AnimationGraphEvaluationContext,
 } from '../../animation-graph-context';
 import { input } from '../decorator/input';
-import { approx, ccenum, error, Quat, Vec3 } from '../../../../core';
+import { approx, assertIsTrue, ccenum, error, Quat, Vec3 } from '../../../../core';
 import { TransformHandle } from '../../../core/animation-handle';
 import { poseGraphNodeMenu, poseGraphNodeAppearance } from '../decorator/node';
 import { POSE_GRAPH_NODE_MENU_PREFIX_POSE } from './menu-common';
@@ -14,6 +14,7 @@ import { IntensitySpecification } from './intensity-specification';
 import { Pose } from '../../../core/pose';
 import { SinglePoseModifier } from './single-pose-modifier';
 import { PoseGraphType } from '../foundation/type-system';
+import { transformInputPositionIntoSpaceOfPose, transformInputRotationIntoSpaceOfPose, InputTransformSpace } from './input-transform-space';
 
 enum TransformApplyFlag {
     LEAVE_UNCHANGED,
@@ -26,6 +27,9 @@ enum TransformApplyFlag {
 ccenum(TransformApplyFlag);
 
 const APPLY_INTENSITY_EPSILON = 1e-5;
+
+const cachePosition_spaceAligned = new Vec3();
+const cacheRotation_spaceAligned = new Quat();
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}ApplyTransform`)
 @poseGraphNodeMenu(`${POSE_GRAPH_NODE_MENU_PREFIX_POSE}变换`)
@@ -67,8 +71,8 @@ export class ApplyTransform extends SinglePoseModifier {
 
     @serializable
     @editable
-    @type(PoseTransformSpaceRequirement)
-    public transformSpaceRequirement: PoseTransformSpaceRequirement = PoseTransformSpaceRequirement.NO;
+    @type(InputTransformSpace)
+    public transformSpace: InputTransformSpace = InputTransformSpace.WORLD;
 
     @input({ type: PoseGraphType.FLOAT, displayName: '强度值' })
     public get intensityValue () {
@@ -102,7 +106,7 @@ export class ApplyTransform extends SinglePoseModifier {
     }
 
     protected getPoseTransformSpaceRequirement () {
-        return this.transformSpaceRequirement;
+        return PoseTransformSpaceRequirement.NO;
     }
 
     protected modifyPose (context: AnimationGraphEvaluationContext, inputPose: Pose) {
@@ -129,30 +133,56 @@ export class ApplyTransform extends SinglePoseModifier {
 
         const { index: transformIndex } = transformHandle;
 
-        switch (positionApplyFlag) {
-        default:
-        case TransformApplyFlag.LEAVE_UNCHANGED:
-            break;
-        case TransformApplyFlag.REPLACE:
-            replacePosition(inputPose, transformIndex, position, intensity, fullIntensity);
-            break;
-        case TransformApplyFlag.ADD: {
-            addPosition(inputPose, transformIndex, position, intensity, fullIntensity);
-            break;
-        }
+        {
+            const spaceAlignedPosition = cachePosition_spaceAligned;
+            if (positionApplyFlag !== TransformApplyFlag.LEAVE_UNCHANGED) {
+                transformInputPositionIntoSpaceOfPose(
+                    spaceAlignedPosition,
+                    position,
+                    this.transformSpace,
+                    transformHandle,
+                    inputPose,
+                    context,
+                );
+            }
+            switch (positionApplyFlag) {
+            default:
+            case TransformApplyFlag.LEAVE_UNCHANGED:
+                break;
+            case TransformApplyFlag.REPLACE:
+                replacePosition(inputPose, transformIndex, spaceAlignedPosition, intensity, fullIntensity);
+                break;
+            case TransformApplyFlag.ADD: {
+                addPosition(inputPose, transformIndex, spaceAlignedPosition, intensity, fullIntensity);
+                break;
+            }
+            }
         }
 
-        switch (rotationApplyFlag) {
-        default:
-        case TransformApplyFlag.LEAVE_UNCHANGED:
-            break;
-        case TransformApplyFlag.REPLACE:
-            replaceRotation(inputPose, transformIndex, rotation, intensity, fullIntensity);
-            break;
-        case TransformApplyFlag.ADD: {
-            addRotation(inputPose, transformIndex, rotation, intensity, fullIntensity);
-            break;
-        }
+        {
+            const spaceAlignedRotation = cacheRotation_spaceAligned;
+            if (rotationApplyFlag !== TransformApplyFlag.LEAVE_UNCHANGED) {
+                transformInputRotationIntoSpaceOfPose(
+                    spaceAlignedRotation,
+                    rotation,
+                    this.transformSpace,
+                    transformHandle,
+                    inputPose,
+                    context,
+                );
+            }
+            switch (rotationApplyFlag) {
+            default:
+            case TransformApplyFlag.LEAVE_UNCHANGED:
+                break;
+            case TransformApplyFlag.REPLACE:
+                replaceRotation(inputPose, transformIndex, spaceAlignedRotation, intensity, fullIntensity);
+                break;
+            case TransformApplyFlag.ADD: {
+                addRotation(inputPose, transformIndex, spaceAlignedRotation, intensity, fullIntensity);
+                break;
+            }
+            }
         }
 
         return inputPose;

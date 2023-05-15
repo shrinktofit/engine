@@ -38,7 +38,7 @@ export class CopyTransform extends SinglePoseModifier {
     @serializable
     @editable
     @type(PoseTransformSpaceRequirement)
-    public transformSpaceRequirement: PoseTransformSpaceRequirement = PoseTransformSpaceRequirement.SKELETAL;
+    public transformSpaceRequirement: PoseTransformSpaceRequirement = PoseTransformSpaceRequirement.COMPONENT;
 
     public bind (context: AnimationGraphBindingContext): void {
         super.bind(context);
