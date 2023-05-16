@@ -18,18 +18,24 @@ jobs:
         with:
           node-version: '14.19'
 
-      - name: clone REPO
-        run: |
-          git config --global user.name "test"
-          git config --global user.email "test@test.com"
-          git clone https://github.com/cocos-creator/engine.git
+      - uses: actions/checkout@v3
+        name: clone REPO
+        with:
+          ref: ${{ github.base_ref }}
+          path: './engine'
+
+      # - name: clone REPO
+      #   run: |
+      #     git config --global user.name "test"
+      #     git config --global user.email "test@test.com"
+      #     git clone https://github.com/cocos-creator/engine.git
       
-      - name: checkout BASE branch
-        working-directory: ./engine
-        run: |
-          git fetch origin ${{ github.base_ref }}
-          git checkout -b ${{ github.base_ref }}_BASE remotes/origin/${{ github.base_ref }}
-          git branch
+      # - name: checkout BASE branch
+      #   working-directory: ./engine
+      #   run: |
+      #     git fetch origin ${{ github.base_ref }}
+      #     git checkout -b ${{ github.base_ref }}_BASE remotes/origin/${{ github.base_ref }}
+      #     git branch
 
       - name: npm install BASE branch
         working-directory: ./engine
@@ -50,12 +56,19 @@ jobs:
           npm cache clean --force
           ls -la
 
-      - name: merge HEAD branch
-        working-directory: ./engine
-        run: |
-          git remote add HEAD_REPO https://github.com/${{ github.event.pull_request.head.repo.full_name }}.git
-          git fetch HEAD_REPO ${{ github.head_ref }}
-          git merge remotes/HEAD_REPO/${{ github.head_ref }}
+      - uses: actions/checkout@v3
+        name: merge HEAD branch
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.head_ref }}
+          path: './engine'
+
+      # - name: merge HEAD branch
+      #   working-directory: ./engine
+      #   run: |
+      #     git remote add HEAD_REPO https://github.com/${{ github.event.pull_request.head.repo.full_name }}.git
+      #     git fetch HEAD_REPO ${{ github.head_ref }}
+      #     git merge remotes/HEAD_REPO/${{ github.head_ref }}
 
       - name: npm install HEAD branch
         working-directory: ./engine
