@@ -103,6 +103,9 @@ export class AudioSource extends Component {
     get clip () {
         return this._clip;
     }
+    test () {
+
+    }
     private _syncPlayer () {
         const clip = this._clip;
         if (this._lastSetClip === clip) {
