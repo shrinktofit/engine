@@ -1,0 +1,68 @@
+name: Report Code Size Impact
+
+on: [pull_request_target]
+
+# github.head_ref is only defined on pull_request events
+concurrency:
+  group: ${{ github.workflow }}-${{ github.actor }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+    check:
+        name: Check flags
+        runs-on: ubuntu-latest
+        env:
+            pull_request_body: ${{ github.event.pull_request.body }}
+        steps:
+            - run: |
+                $pull_request_body = "$env:pull_request_body"
+                $pattern_head = "\[[Xx]\] Show me the code size impact"
+                $pattern_no_feature_spec = "\s*$"
+                $pattern_feature_spec = "\s+on\s*\:?\s*(?<features>.*)"
+                $pattern = $pattern_head + "($($pattern_no_feature_spec)|$($pattern_feature_spec))"
+
+                $match = [regex]::Match($pull_request_body, $pattern)
+                if ($match.Value) {
+                    $feature_spec = $match.Groups["features"].Value | % { if ($_) { $_ } else { "" } }
+                    $features =  ($feature_spec -split ',' | ForEach-Object { $_.Trim() }) -join ","
+                    Write-Host "Reported enabled. Features to report: $features"
+                    Write-Output "ReportEnabled=true" >> $env:GITHUB_OUTPUT
+                    Write-Output "ReportFeatures=$features" >> $env:GITHUB_OUTPUT
+                } else {
+                    Write-Output "ReportEnabled=false" >> $env:GITHUB_OUTPUT
+                    Write-Output "ReportFeatures=''" >> $env:GITHUB_OUTPUT
+                }
+              shell: pwsh
+              id: check
+        outputs:
+            ReportEnabled: ${{ steps.check.outputs.ReportEnabled }}
+            ReportFeatures: ${{ steps.check.outputs.ReportFeatures }}
+
+    build_base:
+        name: Build Base Ref
+        needs: check
+        if: needs.check.outputs.ReportEnabled == 'true'
+        runs-on: ubuntu-latest
+        steps:
+            - run: |
+                Write-Host "Hello Base:${{ needs.check.outputs.ReportFeatures }}"
+              shell: pwsh
+              
+    build_merge:
+        name: Build Merge Ref
+        needs: check
+        if: needs.check.outputs.ReportEnabled == 'true'
+        runs-on: ubuntu-latest
+        steps:
+            - run: |
+                Write-Host "Hello Merge:${{ needs.check.outputs.ReportFeatures }}"
+              shell: pwsh
+
+    analyze:
+        name: Analyze Code Size Impact
+        needs: [check, build_base, build_merge]
+        runs-on: ubuntu-latest
+        steps:
+            - run: |
+                Write-Host "Hello Analyze:${{ needs.check.outputs.ReportFeatures }}"
+              shell: pwsh
