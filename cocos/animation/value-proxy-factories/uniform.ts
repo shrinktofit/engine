@@ -29,9 +29,15 @@ import { SpriteFrame } from '../../2d/assets/sprite-frame';
 import { TextureBase } from '../../asset/assets/texture-base';
 import { deviceManager, Type } from '../../gfx';
 import { Pass } from '../../render-scene/core/pass';
-import { getDefaultFromType, getStringFromType } from '../../render-scene/core/pass-utils';
+import { getDefaultFromType, getStringFromType, MaterialProperty } from '../../render-scene/core/pass-utils';
 import { IValueProxy, IValueProxyFactory } from '../value-proxy';
 import { warn, warnID } from '../../core';
+
+type Value = MaterialProperty | TextureBase | SpriteFrame;
+
+function isMaterialProperty (value: Value): value is MaterialProperty {
+    return !(value instanceof TextureBase || value instanceof SpriteFrame);
+}
 
 /**
  * @en
@@ -40,7 +46,7 @@ import { warn, warnID } from '../../core';
  * 用于设置材质目标上指定 Uniform 的曲线值代理工厂。
  */
 @ccclass('cc.animation.UniformProxyFactory')
-export class UniformProxyFactory implements IValueProxyFactory {
+export class UniformProxyFactory implements IValueProxyFactory<Value> {
     /**
      * @en Pass index.
      * @zh Pass 索引。
@@ -73,7 +79,7 @@ export class UniformProxyFactory implements IValueProxyFactory {
         this.uniformName = uniformName || '';
     }
 
-    public forTarget (target: unknown): IValueProxy | undefined {
+    public forTarget (target: unknown): IValueProxy<Value> | undefined {
         if (!(target instanceof Material)) {
             warnID(3940, target);
             return undefined;
@@ -112,8 +118,19 @@ export class UniformProxyFactory implements IValueProxyFactory {
                 };
             }
             return {
-                set: (value: any) => {
+                set: (value) => {
+                    if (!isMaterialProperty(value)) {
+                        return;
+                    }
                     pass.setUniform(realHandle, value);
+                },
+                get: (out) => {
+                    if (out && !isMaterialProperty(out)) {
+                        return undefined;
+                    }
+                    out ??= 0.0;
+                    pass.getUniform(realHandle, out);
+                    return out;
                 },
             };
         } else {
@@ -126,7 +143,10 @@ export class UniformProxyFactory implements IValueProxyFactory {
                 dftTex = builtinResMgr.get<TextureBase>('default-texture');
             }
             return {
-                set: (value: TextureBase | SpriteFrame) => {
+                set: (value: Value) => {
+                    if (isMaterialProperty(value)) {
+                        return;
+                    }
                     if (!value) { value = dftTex; }
                     const texture = value.getGFXTexture();
                     if (!texture || !texture.width || !texture.height) { return; }

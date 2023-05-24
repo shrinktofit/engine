@@ -30,7 +30,7 @@
  * 曲线值代理用来设置曲线值到目标，是广义的赋值。
  * 每个曲线值代理都关联着一个目标对象。
  */
-export interface IValueProxy {
+export interface IValueProxy<T = any> {
     /**
      * @en
      * Gets the value from the target.
@@ -38,7 +38,7 @@ export interface IValueProxy {
      * @zh
      * 从目标中获取值。某些情况下可能需要这个接口来实现分量动画。
      */
-    get?: () => any;
+    get?: (out?: T) => T | undefined;
 
     /**
      * @en
@@ -46,10 +46,10 @@ export interface IValueProxy {
      * @zh
      * 设置曲线值到目标对象上。
      */
-    set: (value: any) => void;
+    set: (value: T) => void;
 }
 
-export interface IValueProxyFactory {
+export interface IValueProxyFactory<T = any> {
     /**
      * @en
      * Returns a value proxy for specific target.
@@ -59,5 +59,5 @@ export interface IValueProxyFactory {
      * @returns The value proxy, or undefined if the proxy could not be created.
      * In later case, a warn should be given before returning.
      */
-    forTarget (target: any): IValueProxy | undefined;
+    forTarget (target: any): IValueProxy<T> | undefined;
 }
