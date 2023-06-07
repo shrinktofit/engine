@@ -8,6 +8,8 @@ module.exports = {
             pose_nodes_blend: 'Blend',
             pose_nodes_ik: 'Inverse Kinematic',
             pose_nodes_choose: 'Choose',
+
+            math: 'Math',
         },
         pose_graph_node_sub_menus: {
             play_or_sample_clip_motion: 'Animation Clip',
@@ -339,10 +341,32 @@ module.exports = {
                         },
                     },
                 },
+                'PoseNodeGetAllPreviousLayersResult': {
+                    displayName: 'All Previous Layers Result',
+                },
 
                 'PVNodeGetVariableBase': {
                     displayName: 'Get Variable',
                     title: 'Variable {variableName}',
+                },
+
+                'PVNodeMin': {
+                    displayName: 'Min',
+                },
+                'PVNodeMax': {
+                    displayName: 'Max',
+                },
+                'PVNodeAbs': {
+                    displayName: 'Abs',
+                },
+                'PVNodeClamp': {
+                    displayName: 'Clamp',
+                },
+                'PVNodeCosine': {
+                    displayName: 'Cosine',
+                },
+                'PVNodeSine': {
+                    displayName: 'Sine',
                 },
             },
         },
