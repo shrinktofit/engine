@@ -16,6 +16,7 @@ import { PoseStashAllocator, RuntimeStashView } from './pose-graph/stash/runtime
 import { PoseHeapAllocator } from '../core/pose-heap-allocator';
 import { RuntimeMotionSyncManager } from './pose-graph/motion-sync/runtime-motion-sync';
 import { ReadonlyClipOverrideMap } from './clip-overriding';
+import { AllPreviousLayersResultManager } from './pose-graph/pose-node';
 
 /**
  * This module contains stuffs related to animation graph's evaluation.
@@ -186,17 +187,24 @@ export class AnimationGraphBindingContext {
         return this._motionSyncManager;
     }
 
+    public get allPreviousLayersResultManager (): AllPreviousLayersResultManager {
+        assertIsTrue(this._allPreviousLayersResultManager);
+        return this._allPreviousLayersResultManager;
+    }
+
     /**
      * @internal
      */
     public _setLayerWideContextProperties (
         stashView: RuntimeStashView,
         motionSyncManager: RuntimeMotionSyncManager,
+        allPreviousLayersResultManager: AllPreviousLayersResultManager,
     ): void {
         assertIsTrue(!this._isLayerWideContextPropertiesSet);
         this._isLayerWideContextPropertiesSet = true;
         this._stashView = stashView;
         this._motionSyncManager = motionSyncManager;
+        this._allPreviousLayersResultManager = allPreviousLayersResultManager;
     }
 
     /**
@@ -207,6 +215,7 @@ export class AnimationGraphBindingContext {
         this._isLayerWideContextPropertiesSet = false;
         this._stashView = undefined;
         this._motionSyncManager = undefined;
+        this._allPreviousLayersResultManager = undefined;
     }
 
     /**
@@ -230,6 +239,8 @@ export class AnimationGraphBindingContext {
     private _isLayerWideContextPropertiesSet = false;
     private _stashView: RuntimeStashView | undefined;
     private _motionSyncManager: RuntimeMotionSyncManager | undefined;
+    private _allPreviousLayersResultManager: AllPreviousLayersResultManager | undefined;
+
     private _clipOverrides: ReadonlyClipOverrideMap | undefined = undefined;
 
     private _resetTrigger (triggerName: string): void {
@@ -1146,6 +1157,7 @@ export class DeferredPoseStashAllocator implements PoseStashAllocator {
     public allocatePose (): Pose {
         assertIsTrue(this._allocator);
         const pose = this._allocator.allocatePose();
+        pose._poseTransformSpace = PoseTransformSpace.LOCAL;
         return pose;
     }
 
