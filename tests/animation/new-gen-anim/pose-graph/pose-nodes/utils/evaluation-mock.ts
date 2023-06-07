@@ -13,7 +13,8 @@ import {
     AnimationGraphSettleContext,
     AnimationGraphUpdateContext,
 } from '../../../../../../cocos/animation/marionette/animation-graph-context';
-import { BindContext } from '../../../../../../cocos/animation/marionette/parametric';;
+import { BindContext } from '../../../../../../cocos/animation/marionette/parametric';
+import { AllPreviousLayersResultManagerImpl } from '../../../../../../cocos/animation/marionette/pose-graph/default-top-level-pose-node';
 import { PoseGraph } from '../../../../../../cocos/animation/marionette/pose-graph/pose-graph';
 import { PoseNode, PoseTransformSpaceRequirement } from '../../../../../../cocos/animation/marionette/pose-graph/pose-node';
 import { RuntimeStashManager } from '../../../../../../cocos/animation/marionette/pose-graph/stash/runtime-stash';
@@ -116,6 +117,7 @@ export class PoseNodeEvaluationMock<TAnimationResult> {
         bindContext._setLayerWideContextProperties(
             stashManager,
             new RuntimeMotionSyncManager(),
+            new AllPreviousLayersResultManagerImpl(),
         );
 
         this._resultObserver = resultFactory.create(origin, bindContext);
