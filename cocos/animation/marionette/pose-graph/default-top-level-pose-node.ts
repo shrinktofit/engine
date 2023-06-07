@@ -9,6 +9,7 @@ import { TopLevelStateMachineEvaluation } from '../state-machine/state-machine-e
 import { PoseNode } from './pose-node';
 import { RuntimeMotionSyncManager } from './motion-sync/runtime-motion-sync';
 import { PoseStashAllocator, RuntimeStashManager } from './stash/runtime-stash';
+import { AllPreviousLayersResultManager } from './pose-node';
 
 export class DefaultTopLevelPoseNode extends PoseNode {
     constructor (
@@ -25,6 +26,7 @@ export class DefaultTopLevelPoseNode extends PoseNode {
                 bindingContext,
                 clipOverrides,
                 poseStashAllocator,
+                this._allPreviousLayersResultManager,
             );
 
             return record;
@@ -89,10 +91,12 @@ export class DefaultTopLevelPoseNode extends PoseNode {
     }
 
     protected doEvaluate (context: AnimationGraphEvaluationContext): Pose {
+        const { _allPreviousLayersResultManager: allPreviousLayersResultManager } = this;
         const finalPose = context.pushDefaultedPose();
         const { _layerRecords: layerRecords } = this;
         const nLayers = layerRecords.length;
         for (let iLayer = 0; iLayer < nLayers; ++iLayer) {
+            allPreviousLayersResultManager.set(finalPose);
             const layer = layerRecords[iLayer];
             const layerPose = layer.stateMachineEvaluation.evaluate(context);
             const layerActualWeight = layer.weight * layer.stateMachineEvaluation.passthroughWeight;
@@ -105,11 +109,14 @@ export class DefaultTopLevelPoseNode extends PoseNode {
             context.popPose();
 
             layer.postEvaluate();
+
+            allPreviousLayersResultManager.delete();
         }
         return finalPose;
     }
 
     private _layerRecords: LayerEvaluationRecord[];
+    private _allPreviousLayersResultManager = new AllPreviousLayersResultManagerImpl();
 }
 
 class LayerEvaluationRecord {
@@ -118,6 +125,7 @@ class LayerEvaluationRecord {
         bindingContext: AnimationGraphBindingContext,
         clipOverrides: ReadonlyClipOverrideMap | null,
         poseStashAllocator: PoseStashAllocator,
+        allPreviousLayersResultManager: AllPreviousLayersResultManager,
     ) {
         const stashManager = new RuntimeStashManager(poseStashAllocator);
         for (const [stashId, _] of layer.stashes()) {
@@ -131,6 +139,7 @@ class LayerEvaluationRecord {
         bindingContext._setLayerWideContextProperties(
             stashManager,
             motionSyncManager,
+            allPreviousLayersResultManager,
         );
 
         for (const [stashId, stash] of layer.stashes()) {
@@ -195,3 +204,23 @@ class LayerEvaluationRecord {
 }
 
 export type { LayerEvaluationRecord };
+
+export class AllPreviousLayersResultManagerImpl implements AllPreviousLayersResultManager {
+    public retrieve (context: AnimationGraphEvaluationContext): Pose {
+        const { _pose: pose } = this;
+        assertIsTrue(pose, `Can not retrieve previous layers pose. You're doing things in wrong order.`);
+        return context.pushDuplicatedPose(pose);
+    }
+
+    public set (pose: Pose) {
+        assertIsTrue(!this._pose);
+        this._pose = pose;
+    }
+
+    public delete () {
+        assertIsTrue(this._pose);
+        this._pose = null;
+    }
+
+    private _pose: Pose | null = null;
+}
