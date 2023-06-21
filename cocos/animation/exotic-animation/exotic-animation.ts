@@ -239,7 +239,6 @@ type MayBeQuantized = FloatArray | QuantizedFloatArray;
 class ExoticVectorLikeTrackValues {
     constructor (values: FloatArray) {
         this._values = values;
-        this._isQuantized = false;
     }
 
     get precision () {
@@ -270,7 +269,7 @@ class ExoticVectorLikeTrackValues {
     protected _values: MayBeQuantized;
 
     @serializable
-    protected _isQuantized: boolean;
+    protected _isQuantized = false;
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}ExoticVec3TrackValues`)
