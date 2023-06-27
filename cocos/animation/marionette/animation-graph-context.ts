@@ -889,7 +889,7 @@ class AnimationGraphEvaluationContext {
                 // Local -> World.
                 Transform.multiply(
                     transform,
-                    this._getLocalToWorldTransform(cacheParentTransform_spaceConversion, pose, poseTransformIndex),
+                    this._getLocalToWorldTransformOfParent(cacheParentTransform_spaceConversion, pose, poseTransformIndex),
                     transform,
                 );
             }
@@ -902,7 +902,7 @@ class AnimationGraphEvaluationContext {
                 // Local -> Component.
                 Transform.multiply(
                     transform,
-                    this._getLocalToComponentTransform(cacheParentTransform_spaceConversion, pose, poseTransformIndex),
+                    this._getLocalToComponentTransformOfParent(cacheParentTransform_spaceConversion, pose, poseTransformIndex),
                     transform,
                 );
             }
@@ -926,9 +926,18 @@ class AnimationGraphEvaluationContext {
             break;
         }
         case TransformSpace.LOCAL: { // Local -> *
-            const nodeComponentTransform = pose.transforms.getTransform(poseTransformIndex, cacheParentTransform_spaceConversion);
-            const invNodeComponentTransform = Transform.invert(nodeComponentTransform, nodeComponentTransform);
-            Transform.multiply(transform, invNodeComponentTransform, transform);
+            if (poseSpace === PoseTransformSpace.COMPONENT) {
+                const nodeComponentTransform = pose.transforms.getTransform(poseTransformIndex, cacheParentTransform_spaceConversion);
+                const invNodeComponentTransform = Transform.invert(nodeComponentTransform, nodeComponentTransform);
+                Transform.multiply(transform, invNodeComponentTransform, transform);
+            } else {
+                assertIsTrue(poseSpace === PoseTransformSpace.LOCAL);
+                // Bone_Local_Transform * result = input
+                // result = inv(Bone_Local_Transform) * input
+                const boneTransform = pose.transforms.getTransform(poseTransformIndex, cacheParentTransform_spaceConversion);
+                const invBoneTransform = Transform.invert(boneTransform, boneTransform);
+                Transform.multiply(transform, invBoneTransform, transform);
+            }
             break;
         }
         }
@@ -955,7 +964,7 @@ class AnimationGraphEvaluationContext {
             } else {
                 assertIsTrue(poseSpace === PoseTransformSpace.LOCAL);
                 // World -> Local.
-                const localToWorld = this._getLocalToWorldTransform(cacheParentTransform_spaceConversion, pose, poseTransformIndex);
+                const localToWorld = this._getLocalToWorldTransformOfParent(cacheParentTransform_spaceConversion, pose, poseTransformIndex);
                 const worldToLocal = Transform.invert(localToWorld, localToWorld);
                 Transform.multiply(transform, worldToLocal, transform);
             }
@@ -966,7 +975,7 @@ class AnimationGraphEvaluationContext {
             } else {
                 assertIsTrue(poseSpace === PoseTransformSpace.LOCAL);
                 // Component -> Local.
-                const localToComponent = this._getLocalToComponentTransform(cacheParentTransform_spaceConversion, pose, poseTransformIndex);
+                const localToComponent = this._getLocalToComponentTransformOfParent(cacheParentTransform_spaceConversion, pose, poseTransformIndex);
                 const componentToLocal = Transform.invert(localToComponent, localToComponent);
                 Transform.multiply(transform, componentToLocal, transform);
             }
@@ -986,8 +995,21 @@ class AnimationGraphEvaluationContext {
             break;
         }
         case TransformSpace.LOCAL: {
-            const currentTransform = pose.transforms.getTransform(poseTransformIndex, cacheParentTransform_spaceConversion);
-            Transform.multiply(transform, currentTransform, transform);
+            if (poseSpace === PoseTransformSpace.COMPONENT) {
+                // Local -> Component.
+                const currentTransform = pose.transforms.getTransform(poseTransformIndex, cacheParentTransform_spaceConversion);
+                Transform.multiply(transform, currentTransform, transform);
+            } else {
+                // Local -> Local.
+                assertIsTrue(poseSpace === PoseTransformSpace.LOCAL);
+                // // Bone_Local_Transform * result = input
+                // // result = inv(Bone_Local_Transform) * input
+                // const boneTransform = pose.transforms.getTransform(poseTransformIndex, cacheParentTransform_spaceConversion);
+                // const invBoneTransform = Transform.invert(boneTransform, boneTransform);
+                // Transform.multiply(transform, invBoneTransform, transform);
+                const currentTransform = pose.transforms.getTransform(poseTransformIndex, cacheParentTransform_spaceConversion);
+                Transform.multiply(transform, currentTransform, transform);
+            }
             break;
         }
         }
@@ -1026,6 +1048,16 @@ class AnimationGraphEvaluationContext {
 
     private _getLocalToWorldTransform (out: Transform, pose: Pose, transformIndex: number) {
         this._getLocalToComponentTransform(out, pose, transformIndex);
+        Transform.multiply(out, this._getComponentToWorldTransform(), out);
+        return out;
+    }
+
+    private _getLocalToComponentTransformOfParent (out: Transform, pose: Pose, transformIndex: number) {
+        return this._getLocalToComponentTransform(out, pose, this._parentTable[transformIndex]);
+    }
+
+    private _getLocalToWorldTransformOfParent (out: Transform, pose: Pose, transformIndex: number) {
+        this._getLocalToComponentTransformOfParent(out, pose, transformIndex);
         Transform.multiply(out, this._getComponentToWorldTransform(), out);
         return out;
     }
