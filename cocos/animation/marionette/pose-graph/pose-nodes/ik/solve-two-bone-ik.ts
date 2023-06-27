@@ -4,6 +4,7 @@ import { Transform } from '../../../../core/transform';
 import { debugTwoBoneIKDraw } from './two-bone-ik-debugger';
 
 const SANITY_CHECK_ENABLED = DEBUG;
+const ZERO_SEGMENT_LENGTH = 1e-5;
 
 class TwoBoneIKPositionSanityChecker {
     public reset (a: Readonly<Vec3>, b: Readonly<Vec3>, c: Readonly<Vec3>) {
@@ -133,6 +134,34 @@ export const solveTwoBoneIKPositions = (() => {
         ? new TwoBoneIKPositionSanityChecker()
         : undefined;
 
+    const isAlmostColinear = (() => {
+        const cacheCross = new Vec3();
+        const EPSILON = 1e-5;
+        const EPSILON_SQUARED = EPSILON ** 2;
+        return (a: Readonly<Vec3>, b: Readonly<Vec3>) => {
+            const cross = Vec3.cross(cacheCross, a, b);
+            return Vec3.lengthSqr(cross) < EPSILON_SQUARED;
+        };
+    })();
+
+    function chooseAnyPerpendicular (out: Vec3, v: Readonly<Vec3>) {
+        const { x, y, z } = v;
+        // 1. Drop the component with minimal magnitude.
+        // 2. Negate one of the remain components.
+        // 3. Swap the remain components.
+        const absX = Math.abs(x);
+        const absY = Math.abs(y);
+        const absZ = Math.abs(z);
+        if (absX < absY && absX < absZ) {
+            Vec3.set(out, 0.0, z, -y);
+        } else if (absY < absZ) {
+            Vec3.set(out, z, 0.0, -x);
+        } else {
+            Vec3.set(out, y, -x, 0.0);
+        }
+        return Vec3.normalize(out, out);
+    }
+
     return (
         a: Readonly<Vec3>,
         b: Readonly<Vec3>,
@@ -156,19 +185,39 @@ export const solveTwoBoneIKPositions = (() => {
         const dirAT = Vec3.subtract(cacheDirAT, target, a);
         dirAT.normalize();
 
-        const chainLength = dAB + dBC;
-        if (dAT >= chainLength) {
-            // Target is too far
+        // If we can not form a triangle from the three sides AB, BC, AT,
+        // straighten the chain so that:
+        // - let AB point to T,
+        // - **THEN** let BC point to T.
+        // This exclusion also includes not only the following cases:
+        // - either of the sides is zero.
+        // - the target is too far to reach.
+        if (dAB + dBC <= dAT || dAB + dAT <= dBC || dBC + dAT <= dAB) {
             Vec3.scaleAndAdd(bSolved, a, dirAT, dAB);
-            Vec3.scaleAndAdd(cSolved, a, dirAT, chainLength);
+            Vec3.scaleAndAdd(cSolved, a, dirAT, dAB + (dAB < dAT ? dBC : -dBC));
             sanityCheck?.();
             return;
+        }
+
+        const dirAB = Vec3.subtract(cacheDirAB, middleTarget, a);
+        const dirHeightLine = cacheDirHeightLine;
+        // Let height line to be the line AB's projection onto the plane having normal line AT,
+        // if AB and AT are not colinear.
+        // Otherwise, let it be an arbitrary vector perpend to the AT.
+        if (isAlmostColinear(dirAB, dirAT)) {
+            chooseAnyPerpendicular(dirHeightLine, dirAT);
+        } else {
+            Vec3.projectOnPlane(dirHeightLine, dirAB, dirAT);
+            Vec3.normalize(dirHeightLine, dirHeightLine);
         }
 
         // Now we should have a solution with target reached.
         // And then solve the middle joint B as Ḃ.
         Vec3.copy(cSolved, target);
         // Calculate ∠BAC's cosine.
+        // Since we checked the triangle's validity,
+        // the cosine should be ideally in [-1, 1].
+        // But still do clamp here to avoid rounding error.
         const cosḂAT = clamp(
             (dAB * dAB + dAT * dAT - dBC * dBC) / (2 * dAB * dAT),
             -1.0,
@@ -176,9 +225,6 @@ export const solveTwoBoneIKPositions = (() => {
         );
         // Then use basic trigonometry(instead of rotation) to solve Ḃ.
         // Let D the intersect point of the height line passing Ḃ.
-        const dirAB = Vec3.subtract(cacheDirAB, middleTarget, a);
-        const dirHeightLine = Vec3.projectOnPlane(cacheDirHeightLine, dirAB, dirAT);
-        dirHeightLine.normalize();
         const dAD = dAB * cosḂAT;
         const hSqr = dAB * dAB - dAD * dAD;
         if (hSqr < 0) {
