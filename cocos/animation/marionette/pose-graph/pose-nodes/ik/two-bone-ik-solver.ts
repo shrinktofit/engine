@@ -22,7 +22,7 @@ const cacheEndEffectorTargetPosition = new Vec3();
 const cachePoleTargetPosition = new Vec3();
 const cacheTransform_evaluateTarget = new Transform();
 
-enum TargetSpecificationType {
+export enum TargetSpecificationType {
     /**
      * Targets nothing.
      */
