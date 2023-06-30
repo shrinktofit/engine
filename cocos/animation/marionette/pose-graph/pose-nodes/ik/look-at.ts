@@ -15,12 +15,12 @@ import { TransformSpace } from '../transform-space';
 import { POSE_GRAPH_NODE_MENU_PREFIX_IK } from './menu';
 import { getDebugger } from './look-at-debugging';
 
-const cacheRootTransform = new Transform();
 const cacheBoneTransform = new Transform();
 const cacheTargetPosition = new Vec3();
 const cacheTransform_evaluateTarget = new Transform();
 const cacheForwardAxisTransformed = new Vec3();
-const cacheUpAxisTransformed = new Vec3();
+const cacheRefUpAxisTransformed = new Vec3();
+const cacheLookAtRotation = new Quat();
 
 export enum TargetSpecificationType {
     /**
@@ -122,7 +122,7 @@ export class PoseNodeLookAt extends PoseNodeModifyPoseBase {
 
     @serializable
     @editable
-    public readonly upAxis = new Vec3(0, 1, 0);
+    public readonly referenceUpAxis = new Vec3(0, 1, 0);
 
     @input({ type: PoseGraphType.VEC3 })
     @visible(function visible (this: PoseNodeLookAt) { return this.target.type === TargetSpecificationType.VALUE; })
@@ -169,7 +169,7 @@ export class PoseNodeLookAt extends PoseNodeModifyPoseBase {
 
         const targetPosition = this.target.evaluate(cacheTargetPosition, inputPose, context);
         const forwardAxisTransformed = Vec3.transformQuat(cacheForwardAxisTransformed, this.forwardAxis, boneTransform.rotation);
-        const upAxisTransformed = Vec3.transformQuat(cacheUpAxisTransformed, this.upAxis, boneTransform.rotation);
+        const refUpAxisTransformed = Vec3.transformQuat(cacheRefUpAxisTransformed, this.referenceUpAxis, boneTransform.rotation);
 
         if (DEBUG && this.debug) {
             getDebugger(this)?.drawInputs(
@@ -177,12 +177,20 @@ export class PoseNodeLookAt extends PoseNodeModifyPoseBase {
                 boneTransform,
                 targetPosition,
                 forwardAxisTransformed,
-                upAxisTransformed,
+                refUpAxisTransformed,
             );
         }
 
         // Solve.
-        solveLookAt(boneTransform, forwardAxisTransformed, upAxisTransformed, targetPosition);
+        const lookAtRotation = solveLookAt(
+            boneTransform.position,
+            forwardAxisTransformed,
+            refUpAxisTransformed,
+            targetPosition,
+            cacheLookAtRotation,
+        );
+        Quat.multiply(lookAtRotation, lookAtRotation, boneTransform.rotation);
+        boneTransform.rotation = lookAtRotation;
 
         if (DEBUG && this.debug) {
             getDebugger(this)?.drawResult(boneTransform);
@@ -213,23 +221,66 @@ class Workspace {
 }
 
 const solveLookAt = (() => {
-    const cacheTargetDir = new Vec3();
-    const cacheLookAtRotation = new Quat();
+    const cacheDesiredForward = new Vec3();
+    const cacheInputUp = new Vec3();
+    const cacheDesiredUp = new Vec3();
+    const cacheSwingedUp = new Vec3();
+    const cacheSwing = new Quat();
+    const cacheTwist = new Quat();
+
+    function normalizeIfNotZero (v: Vec3, threshold = 1e-5) {
+        const len = Vec3.len(v);
+        if (len < threshold) {
+            return false;
+        } else {
+            Vec3.multiplyScalar(v, v, 1.0 / len);
+            return true;
+        }
+    }
+
+    const calculateRealUp = (() => {
+        const cacheRight = new Vec3();
+        return (out: Vec3, forward: Readonly<Vec3>, referenceUp: Readonly<Vec3>): boolean => {
+            const right = Vec3.cross(cacheRight, referenceUp, forward);
+            if (!normalizeIfNotZero(right)) {
+                return false;
+            } else {
+                Vec3.cross(out, forward, right);
+                Vec3.normalize(out, out);
+                return true;
+            }
+        };
+    })();
 
     return (
-        transform: Transform,
-        forwardAxis: Readonly<Vec3>,
-        upAxis: Readonly<Vec3>,
+        position: Readonly<Vec3>,
+        forward: Readonly<Vec3>,
+        referenceUp: Readonly<Vec3>,
         targetPosition: Readonly<Vec3>,
-    ): void => {
-        const targetDir = Vec3.subtract(cacheTargetDir, targetPosition, transform.position);
-        const len = Vec3.len(targetDir);
-        if (approx(len, 1e-5)) {
-            return;
+        out: Quat,
+    ): Quat => {
+        const desiredForward = Vec3.subtract(cacheDesiredForward, targetPosition, position);
+        if (!normalizeIfNotZero(desiredForward)) {
+            // Target is overlapped with us.
+            return Quat.identity(out);
         }
-        Vec3.multiplyScalar(targetDir, targetDir, 1.0 / len);
-        const lookAtRotation = Quat.rotationTo(cacheLookAtRotation, forwardAxis, targetDir);
-        Quat.multiply(lookAtRotation, lookAtRotation, transform.rotation);
-        transform.rotation = lookAtRotation;
+
+        const swing = Quat.rotationTo(cacheSwing, forward, desiredForward);
+
+        // If desired forward or input forward is colinear with reference up.
+        // We can not deduce either of the "true up vectors".
+        // So swing only.
+        const inputUp = cacheInputUp;
+        if (!calculateRealUp(inputUp, forward, referenceUp)) {
+            return Quat.copy(out, swing);
+        }
+        const desiredUp = cacheDesiredUp;
+        if (!calculateRealUp(desiredUp, desiredForward, referenceUp)) {
+            return Quat.copy(out, swing);
+        }
+
+        const swingedUp = Vec3.transformQuat(cacheSwingedUp, inputUp, swing);
+        const twist = Quat.rotationTo(cacheTwist, swingedUp, desiredUp);
+        return Quat.multiply(out, twist, swing);
     };
 })();

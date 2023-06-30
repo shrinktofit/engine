@@ -352,8 +352,8 @@ module.exports = {
                         'forwardAxis': {
                             displayName: '前向轴',
                         },
-                        'upAxis': {
-                            displayName: '向上轴',
+                        'referenceUpAxis': {
+                            displayName: '参考向上轴',
                         },
                     },
                     inputs: {
