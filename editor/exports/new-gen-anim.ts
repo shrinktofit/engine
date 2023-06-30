@@ -45,3 +45,5 @@ export {
 } from '../src/marionette/get-variable-value-attributes';
 
 export * from '../src/marionette/pose-graph-editor-api';
+
+export * from '../src/marionette/pose-graph/gizmo';
