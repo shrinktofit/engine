@@ -30,6 +30,7 @@ import { sampleFreeformCartesian, blendSimpleDirectional, PolarSpaceGradientBand
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import type { ReadonlyClipOverrideMap } from '../clip-overriding';
 import { AnimationGraphBindingContext } from '../animation-graph-context';
+import { AnimationBlendParam } from './animation-blend-param';
 
 const { ccclass, serializable } = _decorator;
 
@@ -87,6 +88,12 @@ export class AnimationBlend2D extends AnimationBlend {
     @serializable
     public paramY = new BindableNumber();
 
+    @serializable
+    public __paramX: AnimationBlendParam | null = null;
+
+    @serializable
+    public __paramY: AnimationBlendParam | null = null;
+
     get items (): Iterable<AnimationBlend2DItem> {
         return this._items;
     }
@@ -131,7 +138,7 @@ export class AnimationBlend2D extends AnimationBlend {
                 this,
                 this._items,
                 this._polarSpaceGBI,
-                [0.0, 0.0],
+                [this.__paramX ?? this.paramX, this.__paramY ?? this.paramY],
             );
             break;
         default:
@@ -147,29 +154,10 @@ export class AnimationBlend2D extends AnimationBlend {
                 this._items,
                 this._items.map(({ threshold }) => threshold),
                 algorithm,
-                [0.0, 0.0],
+                [this.__paramX ?? this.paramX, this.__paramY ?? this.paramY],
             );
             break;
         }
-
-        const initialValueX = bindOr(
-            context,
-            this.paramX,
-            VariableType.FLOAT,
-            evaluation.setInput,
-            evaluation,
-            0,
-        );
-        const initialValueY = bindOr(
-            context,
-            this.paramY,
-            VariableType.FLOAT,
-            evaluation.setInput,
-            evaluation,
-            1,
-        );
-        evaluation.setInput(initialValueX, 0);
-        evaluation.setInput(initialValueY, 1);
         return evaluation;
     }
 
@@ -206,12 +194,11 @@ class AnimationBlend2DEval extends AnimationBlendEval {
         items: AnimationBlendItem[],
         thresholds: readonly Vec2[],
         algorithm: Algorithm.SIMPLE_DIRECTIONAL | Algorithm.FREEFORM_CARTESIAN,
-        inputs: [number, number],
+        inputs: [AnimationBlendParam | BindableNumber, AnimationBlendParam | BindableNumber],
     ) {
         super(context, clipOverrides, ignoreEmbeddedPlayers, base, items, inputs);
         this._thresholds = thresholds;
         this._algorithm = algorithm;
-        this.doEval();
     }
 
     protected eval (weights: number[], [x, y]: [number, number]) {
@@ -241,11 +228,10 @@ class PolarSpaceGradientBandBlend2DEval extends AnimationBlendEval {
         base: AnimationBlend,
         items: AnimationBlendItem[],
         interpolator: PolarSpaceGradientBandInterpolator2D,
-        inputs: [number, number],
+        inputs: [AnimationBlendParam | BindableNumber, AnimationBlendParam | BindableNumber],
     ) {
         super(context, clipOverrides, ignoreEmbeddedPlayers, base, items, inputs);
         this._interpolator = interpolator;
-        this.doEval();
     }
 
     protected eval (weights: number[], [x, y]: [number, number]) {

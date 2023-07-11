@@ -61,6 +61,8 @@ export interface MotionEval {
     overrideClips(clipOverrides: ReadonlyClipOverrideMap, context: AnimationGraphBindingContext): void;
 
     createPort(): MotionPort;
+
+    update(deltaTime: number): void;
 }
 
 // Note: the ccclass name mismatch

@@ -30,6 +30,7 @@ import { blend1D } from './blend-1d';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import type { ReadonlyClipOverrideMap } from '../clip-overriding';
 import { AnimationGraphBindingContext } from '../animation-graph-context';
+import { AnimationBlendParam } from './animation-blend-param';
 
 const { ccclass, serializable } = _decorator;
 
@@ -61,6 +62,9 @@ export class AnimationBlend1D extends AnimationBlend {
     @serializable
     public param = new BindableNumber();
 
+    @serializable
+    public __param: AnimationBlendParam | null = null;
+
     get items (): Iterable<AnimationBlend1DItem> {
         return this._items;
     }
@@ -85,17 +89,8 @@ export class AnimationBlend1D extends AnimationBlend {
     ) {
         const evaluation = new AnimationBlend1DEval(
             context, clipOverrides, ignoreEmbeddedPlayers,
-            this, this._items, this._items.map(({ threshold }) => threshold), 0.0,
+            this, this._items, this._items.map(({ threshold }) => threshold), this.__param ?? this.param,
         );
-        const initialValue = bindOr(
-            context,
-            this.param,
-            VariableType.FLOAT,
-            evaluation.setInput,
-            evaluation,
-            0,
-        );
-        evaluation.setInput(initialValue, 0);
         return evaluation;
     }
 }
@@ -111,11 +106,10 @@ class AnimationBlend1DEval extends AnimationBlendEval {
         context: AnimationGraphBindingContext,
         overrides: ReadonlyClipOverrideMap | null,
         ignoreEmbeddedPlayers: boolean,
-        base: AnimationBlend, items: AnimationBlendItem[], thresholds: readonly number[], input: number,
+        base: AnimationBlend, items: AnimationBlendItem[], thresholds: readonly number[], input: AnimationBlendParam | BindableNumber,
     ) {
         super(context, overrides, ignoreEmbeddedPlayers, base, items, [input]);
         this._thresholds = thresholds;
-        this.doEval();
     }
 
     protected eval (weights: number[], [value]: readonly [number]) {

@@ -22,7 +22,7 @@
  THE SOFTWARE.
 */
 
-import { _decorator, EditorExtendable, editorExtrasTag } from '../../../core';
+import { _decorator, EditorExtendable, editorExtrasTag, assertIsTrue } from '../../../core';
 import { Motion, MotionEval, MotionPort } from './motion';
 import { createEval } from '../create-eval';
 import { VariableTypeMismatchedError } from '../errors';
@@ -34,6 +34,9 @@ import { getMotionRuntimeID, RUNTIME_ID_ENABLED } from '../graph-debug';
 import { cloneAnimationGraphEditorExtrasFrom } from '../animation-graph-editor-extras-clone-helper';
 import { AnimationGraphBindingContext, AnimationGraphEvaluationContext } from '../animation-graph-context';
 import { blendPoseInto, Pose } from '../../core/pose';
+import { AnimationBlendParam, AnimationBlendParamEvaluation } from './animation-blend-param';
+import { BindableNumber, bindOr } from '../parametric';
+import { VariableType } from '../variable';
 
 const { ccclass, serializable } = _decorator;
 
@@ -79,6 +82,7 @@ export class AnimationBlendEval implements MotionEval {
     private declare _childEvaluators: (MotionEval | null)[];
     private declare _weights: number[];
     private declare _inputs: number[];
+    private declare _inputParams: AnimationBlendParamEvaluation[];
 
     constructor (
         context: AnimationGraphBindingContext,
@@ -86,13 +90,50 @@ export class AnimationBlendEval implements MotionEval {
         ignoreEmbeddedPlayers: boolean,
         base: AnimationBlend,
         children: AnimationBlendItem[],
-        inputs: number[],
+        inputs: readonly (BindableNumber | AnimationBlendParam)[],
     ) {
         this._childEvaluators = children.map((child) => child.motion?.[createEval](context, overrides, ignoreEmbeddedPlayers) ?? null);
         this._weights = new Array(this._childEvaluators.length).fill(0);
-        this._inputs = [...inputs];
+        this._inputs = new Array<number>(inputs.length).fill(Number.NaN);
+        this._inputParams = inputs.map((param, i) => {
+            if (!(param instanceof AnimationBlendParam)) {
+                const p = new AnimationBlendParam();
+                p.variableName = param.variable;
+                param = p;
+            }
+            const p = new BindableNumber();
+            p.variable = param.variableName;
+            const initialValue = bindOr(
+                context,
+                p,
+                VariableType.FLOAT,
+                this.setInput,
+                this,
+                0,
+            );
+            const evaluation = param.createEvaluation(initialValue);
+            return evaluation;
+        });
         if (RUNTIME_ID_ENABLED) {
             this.runtimeId = getMotionRuntimeID(base);
+        }
+    }
+
+    public update (deltaTime: number): void {
+        let anyParamDirty = false;
+        const { _inputParams, _inputs } = this;
+        const nInputParams = _inputParams.length;
+        for (let iInputParam = 0; iInputParam < nInputParams; ++iInputParam) {
+            const inputParam = _inputParams[iInputParam];
+            inputParam.update(deltaTime);
+            const value = inputParam.value;
+            if (value !== _inputs[iInputParam]) {
+                _inputs[iInputParam] = value;
+                anyParamDirty = true;
+            }
+        }
+        if (anyParamDirty) {
+            this._evaluateWeights();
         }
     }
 
@@ -189,16 +230,15 @@ export class AnimationBlendEval implements MotionEval {
     }
 
     public setInput (value: number, index: number) {
-        this._inputs[index] = value;
-        this.doEval();
-    }
-
-    protected doEval () {
-        this.eval(this._weights, this._inputs);
+        this._inputParams[index].set(value);
     }
 
     protected eval (_weights: number[], _inputs: readonly number[]) {
 
+    }
+
+    private _evaluateWeights () {
+        this.eval(this._weights, this._inputs);
     }
 }
 
