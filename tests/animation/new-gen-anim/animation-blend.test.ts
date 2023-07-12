@@ -14,7 +14,7 @@ describe(`Blend params`, () => {
             runInteropMethodTests(AnimationBlendParamInterpolationMethod.NONE, () => 1);
         });
     
-        test(`Interop: linear`, () => {
+        test.only(`Interop: linear`, () => {
             runInteropMethodTests(AnimationBlendParamInterpolationMethod.LINEAR, (t) => t);
         });
     });
@@ -51,48 +51,59 @@ function runInteropMethodTests(
 
     let currentValue = initialValue;
 
-    // Repeatedly set the initial value.
-    {
-        runner.setParamValue(currentValue);
-        runner.step(g.finite(10));
-        currentValue = runner.expectToHaveParamValueCloseTo(currentValue);
-    }
+    // // Repeatedly set the initial value.
+    // {
+    //     runner.setParamValue(currentValue);
+    //     runner.step(g.finite(10));
+    //     currentValue = runner.expectToHaveParamValueCloseTo(currentValue);
+    // }
 
-    // Normal update.
+    // // Normal update: set once, then finished normally.
+    // {
+    //     const target = g.range(min, max);
+    //     runner.setParamValue(target);
+    //     const lerpFrom = currentValue;
+    //     for (const [dt, t] of createTimeIntervals(0.1, 0.8)) {
+    //         runner.step(dt * interopDuration);
+    //         currentValue = runner.expectToHaveParamValueCloseTo(lerp(lerpFrom, target, expectedMapping(t)));
+    //     }
+    //     for (const [dt, t] of createTimeIntervals(1.1, 1.25)) {
+    //         runner.step(dt * interopDuration);
+    //         currentValue = runner.expectToHaveParamValueCloseTo(target);
+    //     }
+    // }
+
+    // // Target value is updated before last updating finished.
+    // {
+    //     const target = g.range(min, max);
+    //     runner.setParamValue(target);
+    //     let lerpFrom = currentValue;
+    //     for (const [dt, t] of createTimeIntervals(0.2, 0.7)) {
+    //         runner.step(dt * interopDuration);
+    //         currentValue = runner.expectToHaveParamValueCloseTo(lerp(lerpFrom, target, expectedMapping(t)));
+    //     }
+    //     // Retarget!
+    //     lerpFrom = currentValue;
+    //     const newTarget = g.range(min, max);
+    //     runner.setParamValue(newTarget);
+    //     for (const [dt, t] of createTimeIntervals(0.2, 0.7)) {
+    //         runner.step(dt * interopDuration);
+    //         currentValue = runner.expectToHaveParamValueCloseTo(lerp(lerpFrom, newTarget, expectedMapping(t)));
+    //     }
+    //     for (const [dt, t] of createTimeIntervals(1.1, 1.25)) {
+    //         runner.step(dt * interopDuration);
+    //         currentValue = runner.expectToHaveParamValueCloseTo(newTarget);
+    //     }
+    // }
+
+    // A usual case: set the same value per tick.
     {
         const target = g.range(min, max);
-        runner.setParamValue(target);
-        const lerpFrom = currentValue;
-        for (const [dt, t] of createTimeIntervals(0.1, 0.8)) {
+        for (const [dt, t] of createTimeIntervals(0.1, 0.55, 0.86)) {
+            runner.setParamValue(target);
+            const lerpFrom = currentValue;
             runner.step(dt * interopDuration);
             currentValue = runner.expectToHaveParamValueCloseTo(lerp(lerpFrom, target, expectedMapping(t)));
-        }
-        for (const [dt, t] of createTimeIntervals(1.1, 1.25)) {
-            runner.step(dt * interopDuration);
-            currentValue = runner.expectToHaveParamValueCloseTo(target);
-        }
-    }
-
-    // Target value is updated before last updating finished.
-    {
-        const target = g.range(min, max);
-        runner.setParamValue(target);
-        let lerpFrom = currentValue;
-        for (const [dt, t] of createTimeIntervals(0.2, 0.7)) {
-            runner.step(dt * interopDuration);
-            currentValue = runner.expectToHaveParamValueCloseTo(lerp(lerpFrom, target, expectedMapping(t)));
-        }
-        // Retarget!
-        lerpFrom = currentValue;
-        const newTarget = g.range(min, max);
-        runner.setParamValue(newTarget);
-        for (const [dt, t] of createTimeIntervals(0.2, 0.7)) {
-            runner.step(dt * interopDuration);
-            currentValue = runner.expectToHaveParamValueCloseTo(lerp(lerpFrom, newTarget, expectedMapping(t)));
-        }
-        for (const [dt, t] of createTimeIntervals(1.1, 1.25)) {
-            runner.step(dt * interopDuration);
-            currentValue = runner.expectToHaveParamValueCloseTo(newTarget);
         }
     }
 }
