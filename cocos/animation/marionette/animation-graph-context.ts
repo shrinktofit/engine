@@ -926,9 +926,12 @@ class AnimationGraphEvaluationContext {
             break;
         }
         case TransformSpace.LOCAL: { // Local -> *
-            const nodeComponentTransform = pose.transforms.getTransform(poseTransformIndex, cacheParentTransform_spaceConversion);
-            const invNodeComponentTransform = Transform.invert(nodeComponentTransform, nodeComponentTransform);
-            Transform.multiply(transform, invNodeComponentTransform, transform);
+            // Bone_Local_Transform * result = input
+            // result = inv(Bone_Local_Transform) * input
+            assertIsTrue(poseSpace === PoseTransformSpace.COMPONENT || poseSpace === PoseTransformSpace.LOCAL);
+            const boneTransform = pose.transforms.getTransform(poseTransformIndex, cacheParentTransform_spaceConversion);
+            const invBoneTransform = Transform.invert(boneTransform, boneTransform);
+            Transform.multiply(transform, invBoneTransform, transform);
             break;
         }
         }
@@ -986,6 +989,9 @@ class AnimationGraphEvaluationContext {
             break;
         }
         case TransformSpace.LOCAL: {
+            assertIsTrue(poseSpace === PoseTransformSpace.COMPONENT || poseSpace === PoseTransformSpace.LOCAL);
+            // Bone_Local_Transform * result = input
+            // result = inv(Bone_Local_Transform) * input
             const currentTransform = pose.transforms.getTransform(poseTransformIndex, cacheParentTransform_spaceConversion);
             Transform.multiply(transform, currentTransform, transform);
             break;
@@ -1016,7 +1022,7 @@ class AnimationGraphEvaluationContext {
         const { _parentTable: parentTable } = this;
 
         Transform.setIdentity(out);
-        for (let iTransform = transformIndex; iTransform >= 0; iTransform = parentTable[iTransform]) {
+        for (let iTransform = parentTable[transformIndex]; iTransform >= 0; iTransform = parentTable[iTransform]) {
             const localTransform = pose.transforms.getTransform(iTransform, cacheTransform_spaceConversion);
             Transform.multiply(out, localTransform, out);
         }
