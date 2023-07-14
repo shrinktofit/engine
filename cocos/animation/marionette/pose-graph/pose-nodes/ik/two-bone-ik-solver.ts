@@ -22,7 +22,7 @@ const cacheEndEffectorTargetPosition = new Vec3();
 const cachePoleTargetPosition = new Vec3();
 const cacheTransform_evaluateTarget = new Transform();
 
-enum TargetSpecificationType {
+export enum TargetSpecificationType {
     /**
      * Targets nothing.
      */
@@ -214,7 +214,9 @@ export class PoseNodeTwoBoneIKSolver extends PoseNodeModifyPoseBase {
 }
 
 if (EDITOR) {
-    PoseNodeTwoBoneIKSolver.prototype.getTitle = function getTitle (this: PoseNodeTwoBoneIKSolver): string | [string, Record<string, string>] | undefined {
+    PoseNodeTwoBoneIKSolver.prototype.getTitle = function getTitle (
+        this: PoseNodeTwoBoneIKSolver,
+    ): ReturnType<NonNullable<PoseNodeTwoBoneIKSolver['getTitle']>> {
         if (this.endEffectorBoneName) {
             return [`ENGINE.classes.${CLASS_NAME_PREFIX_ANIM}PoseNodeTwoBoneIKSolver.title`, {
                 endEffectorBoneName: this.endEffectorBoneName,

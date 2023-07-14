@@ -6,7 +6,7 @@ import { BinaryCondition, TriggerCondition, UnaryCondition } from "../../../../c
 import { MotionState } from "../../../../cocos/animation/marionette/state-machine/motion-state";
 import { Bindable } from "../../../../cocos/animation/marionette/parametric";
 import { TriggerResetMode, VariableType } from "../../../../cocos/animation/marionette/variable";
-import { assertIsTrue, Vec2 } from "../../../../exports/base";
+import { assertIsTrue, Quat, Vec2, Vec3 } from "../../../../exports/base";
 import { TCVariableBinding } from "../../../../cocos/animation/marionette/state-machine/condition/binding/variable-binding";
 import { TCAuxiliaryCurveBinding } from "../../../../cocos/animation/marionette/state-machine/condition/binding/auxiliary-curve-binding";
 import { TCStateWeightBinding } from "../../../../cocos/animation/marionette/state-machine/condition/binding/state-weight-binding";
@@ -31,6 +31,8 @@ export function createAnimationGraph(params: AnimationGraphParams): AnimationGra
                     }
                     break;
                 }
+                case 'vec3': animationGraph.addVariable(id, VariableType.VEC3_experimental, variableDeclarationParams.value); break;
+                case 'quat': animationGraph.addVariable(id, VariableType.QUAT_experimental, variableDeclarationParams.value); break;
             }
         }
     }
@@ -299,6 +301,12 @@ export type VariableDeclarationParams = {
 } | {
     type: 'trigger',
     resetMode?: 'after-consumed' | 'next-frame-or-after-consumed';
+} | {
+    type: 'vec3';
+    value?: Vec3;
+} | {
+    type: 'quat';
+    value?: Quat;
 };
 
 interface LayerParams {
