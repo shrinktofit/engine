@@ -337,6 +337,52 @@ module.exports = {
                         },
                     },
                 },
+                'PoseNodeLookAt': {
+                    displayName: '看向',
+                    title: '{boneName} 看向目标',
+                    properties: {
+                        'boneName': {
+                            displayName: '骨骼',
+                            tooltip: '进行追随的骨骼的名称。',
+                        },
+                        'target': {
+                            displayName: '目标',
+                            tooltip: '看向目标。',
+                        },
+                        'forwardAxis': {
+                            displayName: '前向轴',
+                        },
+                        'referenceUpAxis': {
+                            displayName: '参考向上轴',
+                        },
+                    },
+                    inputs: {
+                        __extends__: 'classes.cc.animation.PoseNodeModifyPoseBase.inputs',
+                        'targetPosition': {
+                            displayName: '目标位置',
+                        },
+                    },
+                    'TargetSpecification': {
+                        properties: {
+                            'type': {
+                                displayName: '类型',
+                                tooltip: '目标类型。',
+                            },
+                            'targetPosition': {
+                                displayName: '目标位置',
+                                tooltip: '目标位置。',
+                            },
+                            'targetPositionSpace': {
+                                displayName: '目标位置空间',
+                                tooltip: '目标位置的空间。',
+                            },
+                            'targetBone': {
+                                displayName: '目标骨骼',
+                                tooltip: '目标骨骼的名称。',
+                            },
+                        },
+                    },
+                },
                 'PoseNodeGetAllPreviousLayersResult': {
                     displayName: '前序所有层级结果',
                 },

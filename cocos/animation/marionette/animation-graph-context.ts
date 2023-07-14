@@ -785,6 +785,10 @@ class AnimationGraphEvaluationContext {
         return this._parentTable;
     }
 
+    get componentToWorldTransform () {
+        return this._getComponentToWorldTransform();
+    }
+
     public pushDefaultedPose (): Pose {
         const pose = this._poseAllocator.push();
         pose.transforms.set(this[defaultTransformsTag]);
