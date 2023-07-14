@@ -20,5 +20,6 @@ import './copy-transform';
 import './set-auxiliary-curve';
 
 import './ik/two-bone-ik-solver';
+import './ik/look-at';
 
 export {};
