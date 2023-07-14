@@ -5,7 +5,10 @@ import { PoseNode, PoseTransformSpaceRequirement } from '../pose-node';
 import { input } from '../decorator/input';
 import { poseGraphNodeHide } from '../decorator/node';
 import { Pose, PoseTransformSpace } from '../../../core/pose';
-import { AnimationGraphBindingContext, AnimationGraphEvaluationContext, AnimationGraphSettleContext, AnimationGraphUpdateContext } from '../../animation-graph-context';
+import {
+    AnimationGraphBindingContext, AnimationGraphEvaluationContext,
+    AnimationGraphSettleContext, AnimationGraphUpdateContext,
+} from '../../animation-graph-context';
 import { PoseGraphType } from '../foundation/type-system';
 import { assertIsTrue, CachedArray, Pool } from '../../../../core';
 import { Transform } from '../../../core/transform';
