@@ -6,10 +6,25 @@ if (!tsConfig.config) {
     throw new Error(`Failed to read tsconfig`);
 }
 const { compilerOptions } = tsConfig.config;
+/** @type {import('@swc/core').Options} */
+const swcOptions = {
+    jsc: {
+        parser: {
+            syntax: 'typescript',
+            decorators: true,
+        },
+        transform: {
+            legacyDecorator: true,
+        },
+    },
+};
 module.exports = {
     testEnvironment: './tests/test-environment.ts',
     testRegex: '/tests/.*\\.(test|spec)?\\.(ts|tsx)$',
     moduleNameMapper: pathsToModuleNameMapper(compilerOptions.paths, { prefix: `${__dirname}/` }),
+    transform: {
+        "^.+\\.(t|j)sx?$": ["@swc/jest", swcOptions],
+    },
     transformIgnorePatterns: [
         // ignore everything in the node_modules EXCEPT for:
         // - @cocos/dragonbones-js
