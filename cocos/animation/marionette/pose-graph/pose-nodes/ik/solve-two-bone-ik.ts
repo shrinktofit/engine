@@ -4,6 +4,7 @@ import { Transform } from '../../../../core/transform';
 import { debugTwoBoneIKDraw } from './two-bone-ik-debugger';
 
 const SANITY_CHECK_ENABLED = DEBUG;
+const ZERO_SEGMENT_LENGTH = 1e-5;
 
 class TwoBoneIKPositionSanityChecker {
     public reset (a: Readonly<Vec3>, b: Readonly<Vec3>, c: Readonly<Vec3>): void {
@@ -48,19 +49,21 @@ class TwoBoneIKPositionSanityChecker {
  * @param target 末端关节要抵达的目标位置（世界空间）。
  * @param hint 中间关节的提示位置（世界空间），用于决定中间关节的朝向。
  */
-export const solveTwoBoneIK = ((): (root: Transform, middle: Transform, end: Transform, target: Vec3, middlePositionHint?: Vec3, debugKey?: unknown | undefined) => void => {
+export const solveTwoBoneIK = (() => {
     const cacheQuat = new Quat();
     const cacheHint = new Vec3();
     const cacheBSolved = new Vec3();
     const cacheCSolved = new Vec3();
 
-    const calculateRotationBetweenRays = ((): (out: Quat, sourceOrigin: Readonly<Vec3>, sourceDestination: Readonly<Vec3>, targetOrigin: Readonly<Vec3>, targetDestination: Readonly<Vec3>) => Quat => {
+    const calculateRotationBetweenRays = (() => {
         const cacheVec3_1 = new Vec3();
         const cacheVec3_2 = new Vec3();
         return (
             out: Quat,
-            sourceOrigin: Readonly<Vec3>, sourceDestination: Readonly<Vec3>,
-            targetOrigin: Readonly<Vec3>, targetDestination: Readonly<Vec3>,
+            sourceOrigin: Readonly<Vec3>,
+            sourceDestination: Readonly<Vec3>,
+            targetOrigin: Readonly<Vec3>,
+            targetDestination: Readonly<Vec3>,
         // eslint-disable-next-line arrow-body-style
         ): Quat => {
             return Quat.rotationTo(
@@ -87,7 +90,7 @@ export const solveTwoBoneIK = ((): (root: Transform, middle: Transform, end: Tra
         const qC = end.rotation;
 
         if (DEBUG) {
-            if (typeof debugKey !== undefined) {
+            if (typeof debugKey !== 'undefined') {
                 debugTwoBoneIKDraw(debugKey, pA, pB, pC);
             }
         }
@@ -106,16 +109,20 @@ export const solveTwoBoneIK = ((): (root: Transform, middle: Transform, end: Tra
 
         const qA = calculateRotationBetweenRays(
             cacheQuat,
-            pA, pB,
-            pA, bSolved,
+            pA,
+            pB,
+            pA,
+            bSolved,
         );
         Quat.multiply(qA, qA, root.rotation);
         root.rotation = qA;
 
         const qB = calculateRotationBetweenRays(
             cacheQuat,
-            pB, pC,
-            bSolved, cSolved,
+            pB,
+            pC,
+            bSolved,
+            cSolved,
         );
         Quat.multiply(qB, qB, middle.rotation);
         middle.rotation = qB;
@@ -125,13 +132,23 @@ export const solveTwoBoneIK = ((): (root: Transform, middle: Transform, end: Tra
     };
 })();
 
-export const solveTwoBoneIKPositions = ((): (a: Readonly<Vec3>, b: Readonly<Vec3>, c: Readonly<Vec3>, target: Readonly<Vec3>, middleTarget: Readonly<Vec3>, bSolved: Vec3, cSolved: Vec3) => void => {
+export const solveTwoBoneIKPositions = (() => {
     const cacheDirAT = new Vec3();
     const cacheDirAB = new Vec3();
     const cacheDirHeightLine = new Vec3();
     const cacheSanityChecker = SANITY_CHECK_ENABLED
         ? new TwoBoneIKPositionSanityChecker()
         : undefined;
+
+    const isAlmostColinear = (() => {
+        const cacheCross = new Vec3();
+        const EPSILON = 1e-5;
+        const EPSILON_SQUARED = EPSILON ** 2;
+        return (a: Readonly<Vec3>, b: Readonly<Vec3>): boolean => {
+            const cross = Vec3.cross(cacheCross, a, b);
+            return Vec3.lengthSqr(cross) < EPSILON_SQUARED;
+        };
+    })();
 
     return (
         a: Readonly<Vec3>,
@@ -156,19 +173,39 @@ export const solveTwoBoneIKPositions = ((): (a: Readonly<Vec3>, b: Readonly<Vec3
         const dirAT = Vec3.subtract(cacheDirAT, target, a);
         dirAT.normalize();
 
-        const chainLength = dAB + dBC;
-        if (dAT >= chainLength) {
-            // Target is too far
+        // If we can not form a triangle from the three sides AB, BC, AT,
+        // straighten the chain so that:
+        // - let AB point to T,
+        // - **THEN** let BC point to T.
+        // This exclusion also includes not only the following cases:
+        // - either of the sides is zero.
+        // - the target is too far to reach.
+        if (dAB + dBC <= dAT || dAB + dAT <= dBC || dBC + dAT <= dAB) {
             Vec3.scaleAndAdd(bSolved, a, dirAT, dAB);
-            Vec3.scaleAndAdd(cSolved, a, dirAT, chainLength);
+            Vec3.scaleAndAdd(cSolved, a, dirAT, dAB + (dAB < dAT ? dBC : -dBC));
             sanityCheck?.();
             return;
+        }
+
+        const dirAB = Vec3.subtract(cacheDirAB, middleTarget, a);
+        const dirHeightLine = cacheDirHeightLine;
+        // Let height line to be the line AB's projection onto the plane having normal line AT,
+        // if AB and AT are not colinear.
+        // Otherwise, let it be an arbitrary vector perpend to the AT.
+        if (isAlmostColinear(dirAB, dirAT)) {
+            Vec3.generateOrthogonal(dirHeightLine, dirAT);
+        } else {
+            Vec3.projectOnPlane(dirHeightLine, dirAB, dirAT);
+            Vec3.normalize(dirHeightLine, dirHeightLine);
         }
 
         // Now we should have a solution with target reached.
         // And then solve the middle joint B as Ḃ.
         Vec3.copy(cSolved, target);
         // Calculate ∠BAC's cosine.
+        // Since we checked the triangle's validity,
+        // the cosine should be ideally in [-1, 1].
+        // But still do clamp here to avoid rounding error.
         const cosḂAT = clamp(
             (dAB * dAB + dAT * dAT - dBC * dBC) / (2 * dAB * dAT),
             -1.0,
@@ -176,9 +213,6 @@ export const solveTwoBoneIKPositions = ((): (a: Readonly<Vec3>, b: Readonly<Vec3
         );
         // Then use basic trigonometry(instead of rotation) to solve Ḃ.
         // Let D the intersect point of the height line passing Ḃ.
-        const dirAB = Vec3.subtract(cacheDirAB, middleTarget, a);
-        const dirHeightLine = Vec3.projectOnPlane(cacheDirHeightLine, dirAB, dirAT);
-        dirHeightLine.normalize();
         const dAD = dAB * cosḂAT;
         const hSqr = dAB * dAB - dAD * dAD;
         if (hSqr < 0) {

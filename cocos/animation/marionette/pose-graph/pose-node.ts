@@ -1,5 +1,5 @@
 import { TEST } from 'internal:constants';
-import { assertIsTrue, ccenum } from '../../../core';
+import { assertIsTrue } from '../../../core';
 import { ccclass } from '../../../core/data/decorators';
 import { Pose, PoseTransformSpace } from '../../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../../define';
@@ -12,6 +12,10 @@ import {
 import { PoseGraphNode } from './foundation/pose-graph-node';
 import type { PoseNodeDependencyEvaluation } from './instantiation';
 
+export interface AllPreviousLayersResultManager {
+    retrieve(context: AnimationGraphEvaluationContext): Pose;
+}
+
 export enum PoseTransformSpaceRequirement {
     NO,
 
@@ -19,7 +23,6 @@ export enum PoseTransformSpaceRequirement {
 
     COMPONENT,
 }
-ccenum(PoseTransformSpaceRequirement);
 
 const POSE_NODE_EVALUATION_STACK_ORDER_DEBUG_ENABLED = !!TEST;
 

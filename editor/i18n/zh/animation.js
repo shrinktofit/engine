@@ -8,6 +8,8 @@ module.exports = {
             pose_nodes_blend: '混合',
             pose_nodes_ik: '反向动力学',
             pose_nodes_choose: '选择',
+
+            math: '数学',
         },
         pose_graph_node_sub_menus: {
             play_or_sample_clip_motion: '动画剪辑',
@@ -18,7 +20,44 @@ module.exports = {
 
     classes: {
         'cc': {
+            'Animation': {
+                'properties': {
+                    'clips': {
+                        displayName: '剪辑列表',
+                        tooltip: '此组件管理的所有剪辑。',
+                    },
+                    'defaultClip': {
+                        displayName: '默认剪辑',
+                        tooltip: '默认播放的剪辑。',
+                    },
+                    'playOnLoad': {
+                        displayName: '加载后播放',
+                        tooltip: '是否在组件加载完成后自动播放默认剪辑。',
+                    },
+                },
+            },
+            'SkeletalAnimation': {
+                'properties': {
+                    __extends__: 'classes.cc.Animation.properties',
+                    'sockets': {
+                        displayName: '挂点列表',
+                        tooltip: '当前动画组件维护的挂点列表。要挂载自定义节点到受动画驱动的骨骼上，必须先在此注册挂点。',
+                    },
+                    'useBakedAnimation': {
+                        displayName: '预烘培动画',
+                        tooltip: '是否预烘焙动画，默认启用，可以大幅提高运行效时率，但所有动画效果会被彻底固定，不支持任何形式的编辑和混合。',
+                    },
+                },
+            },
             'animation': {
+                'AnimationController': {
+                    properties: {
+                        'graph': {
+                            displayName: '图',
+                            tooltip: '此动画控制器所关联的动画图或动画图变体。',
+                        },
+                    },
+                },
                 'PoseGraphOutputNode': {
                     displayName: '输出姿态',
                 },
@@ -298,10 +337,78 @@ module.exports = {
                         },
                     },
                 },
+                'PoseNodeLookAt': {
+                    displayName: '看向',
+                    title: '{boneName} 看向目标',
+                    properties: {
+                        'boneName': {
+                            displayName: '骨骼',
+                            tooltip: '进行追随的骨骼的名称。',
+                        },
+                        'target': {
+                            displayName: '目标',
+                            tooltip: '看向目标。',
+                        },
+                        'forwardAxis': {
+                            displayName: '前向轴',
+                        },
+                        'referenceUpAxis': {
+                            displayName: '参考向上轴',
+                        },
+                    },
+                    inputs: {
+                        __extends__: 'classes.cc.animation.PoseNodeModifyPoseBase.inputs',
+                        'targetPosition': {
+                            displayName: '目标位置',
+                        },
+                    },
+                    'TargetSpecification': {
+                        properties: {
+                            'type': {
+                                displayName: '类型',
+                                tooltip: '目标类型。',
+                            },
+                            'targetPosition': {
+                                displayName: '目标位置',
+                                tooltip: '目标位置。',
+                            },
+                            'targetPositionSpace': {
+                                displayName: '目标位置空间',
+                                tooltip: '目标位置的空间。',
+                            },
+                            'targetBone': {
+                                displayName: '目标骨骼',
+                                tooltip: '目标骨骼的名称。',
+                            },
+                        },
+                    },
+                },
+                'PoseNodeGetAllPreviousLayersResult': {
+                    displayName: '前序所有层级结果',
+                },
 
                 'PVNodeGetVariableBase': {
                     displayName: '获取变量',
                     title: '变量 {variableName}',
+                },
+
+                'PVNodeMin': {
+                    displayName: '取最小值',
+                },
+                'PVNodeMax': {
+                    displayName: '取最小值',
+                },
+                'PVNodeAbs': {
+                    displayName: '取绝对值',
+                },
+                'PVNodeClamp': {
+                    displayName: '钳制',
+                },
+                'PVNodeCosine': {
+                    displayName: '取余弦（cos）',
+                },
+                'PVNodeSine': {
+                    displayName: '取正弦（sin）',
                 },
             },
         },
