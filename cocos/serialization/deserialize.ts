@@ -23,13 +23,14 @@
 */
 
 import { EDITOR, TEST, PREVIEW, DEBUG, JSB, DEV } from 'internal:constants';
-import { cclegacy, ValueType, Vec2, Vec3, Vec4, Color, Size, Rect, Quat, Mat4, errorID, getError, js } from '../core';
+import { cclegacy, ValueType, Vec2, Vec3, Vec4, Color, Size, Rect, Quat, Mat4, errorID, getError, js, assertIsTrue } from '../core';
 
-import { deserializeDynamic, parseUuidDependenciesDynamic } from './deserialize-dynamic';
+import { deserializeDynamic, DeserializeDynamicOptions, parseUuidDependenciesDynamic } from './deserialize-dynamic';
 import { Asset } from '../asset/assets/asset';
 
-import type { CCON } from './ccon';
+import { CCON } from './ccon';
 import type { CompiledDeserializeFn } from './deserialize-dynamic';
+import { typedArrayTypeTable, ITypedArrayData, TypedArrayDataTailSpan } from './protocol-compiled';
 
 import { reportMissingClass as defaultReportMissingClass } from './report-missing-class';
 
@@ -120,24 +121,6 @@ function serializeBuiltinValueTypes (obj: ValueType): IValueTypeData | null {
     }
 }
 
-// // TODO: Used for Data.TypedArray.
-// const TypedArrays = [
-//     Float32Array,
-//     Float64Array,
-//
-//     Int8Array,
-//     Int16Array,
-//     Int32Array,
-//
-//     Uint8Array,
-//     Uint16Array,
-//     Uint32Array,
-//
-//     Uint8ClampedArray,
-//     // BigInt64Array,
-//     // BigUint64Array,
-// ];
-
 /** **************************************************************************
  * TYPE DECLARATIONS
  *************************************************************************** */
@@ -217,11 +200,11 @@ const enum DataTypeID {
     // Common TypedArray for legacyCC.Node only. Never be null.
     TRS,
 
-    // // From the point of view of simplified implementation,
-    // // it is not supported to deserialize TypedArray that is initialized to null in the constructor.
-    // // Also, the length of TypedArray cannot be changed.
-    // // Developers will rarely manually assign a null.
-    // TypedArray,
+    // From the point of view of simplified implementation,
+    // it is not supported to deserialize TypedArray that is initialized to null in the constructor.
+    // Also, the length of TypedArray cannot be changed.
+    // Developers will rarely manually assign a null.
+    TypedArray,
 
     // ValueType without default value (in arrays, dictionaries).
     // Developers will rarely manually assign a null.
@@ -257,7 +240,7 @@ interface DataTypes {
     [DataTypeID.ValueTypeCreated]: IValueTypeData;
     [DataTypeID.AssetRefByInnerObj]: number;
     [DataTypeID.TRS]: ITRSData;
-    // [DataTypeID.TypedArray]: Array<InstanceOrReverseIndex>;
+    [DataTypeID.TypedArray]: ITypedArrayData;
     [DataTypeID.ValueType]: IValueTypeData;
     [DataTypeID.Array_Class]: DataTypes[DataTypeID.Class][];
     [DataTypeID.CustomizedClass]: ICustomObjectData;
@@ -398,14 +381,8 @@ export declare namespace deserialize.Internal {
     export type ITRSData_ = ITRSData;
     export type IDictData_ = IDictData;
     export type IArrayData_ = IArrayData;
+    export type ITypedArrayData_ = ITypedArrayData;
 }
-
-// const TYPEDARRAY_TYPE = 0;
-// const TYPEDARRAY_ELEMENTS = 1;
-// interface ITypedArrayData extends Array<number|number[]> {
-//     [TYPEDARRAY_TYPE]: number,
-//     [TYPEDARRAY_ELEMENTS]: number[],
-// }
 
 const enum Refs {
     EACH_RECORD_LENGTH = 3,
@@ -504,8 +481,10 @@ type ClassFinder = (type: string) => AnyCtor;
 
 interface IOptions extends Partial<ICustomHandler> {
     classFinder?: ClassFinder;
-    reportMissingClass: deserialize.ReportMissingClass;
+    reportMissingClass?: deserialize.ReportMissingClass;
     _version?: number;
+
+    binary?: Uint8Array;
 }
 interface ICustomClass {
     _deserialize?: (content: any, context: ICustomHandler) => void;
@@ -808,16 +787,29 @@ function parseArray (data: IFileData, owner: any, key: string, value: IArrayData
     owner[key] = array;
 }
 
-// function parseTypedArray (data: IFileData, owner: any, key: string, value: ITypedArrayData) {
-//     let val: ValueType = new TypedArrays[value[TYPEDARRAY_TYPE]]();
-//     BuiltinValueTypeSetters[value[VALUETYPE_SETTER]](val, value);
-//     // obj = new window[serialized.ctor](array.length);
-//     // for (let i = 0; i < array.length; ++i) {
-//     //     obj[i] = array[i];
-//     // }
-//     // return obj;
-//     owner[key] = val;
-// }
+function parseTypedArray (data: IFileData, owner: any, key: string, value: ITypedArrayData) {
+    const [typeIndex, elementsOrByteOffset] = value;
+
+    assertIsTrue(typeIndex >= 0 && typeIndex < typedArrayTypeTable.length);
+    const constructor = typedArrayTypeTable[typeIndex];
+
+    let result: ArrayBufferView;
+    if (Array.isArray(elementsOrByteOffset)) {
+        result = new constructor(elementsOrByteOffset);
+    } else {
+        const byteOffset = elementsOrByteOffset;
+        const context = data[File.Context] as FileInfo & IOptions;
+        assertIsTrue(context.binary, `Incorrect data: binary is expected.`);
+        const [_1, _elements, length] = value as [ITypedArrayData[0], ...TypedArrayDataTailSpan];
+        result = new constructor(
+            context.binary.buffer,
+            context.binary.byteOffset + byteOffset,
+            length,
+        );
+    }
+
+    owner[key] = result;
+}
 
 const ASSIGNMENTS: {
     [K in keyof DataTypes]?: ParseFunction<DataTypes[K]>;
@@ -836,7 +828,7 @@ ASSIGNMENTS[DataTypeID.Array_Class] = genArrayParser(parseClass);
 ASSIGNMENTS[DataTypeID.CustomizedClass] = parseCustomClass;
 ASSIGNMENTS[DataTypeID.Dict] = parseDict;
 ASSIGNMENTS[DataTypeID.Array] = parseArray;
-// ASSIGNMENTS[DataTypeID.TypedArray] = parseTypedArray;
+ASSIGNMENTS[DataTypeID.TypedArray] = parseTypedArray;
 
 function parseInstances (data: IFileData): RootInstanceIndex {
     const instances = data[File.Instances];
@@ -996,6 +988,12 @@ function parseResult (data: IFileData): void {
 }
 
 export function isCompiledJson (json: unknown): boolean {
+    if (json instanceof CCON) {
+        // This is a very verbose check.
+        // Make sure we won't ran in infinite loop due to data error.
+        assertIsTrue(!(json.document instanceof CCON));
+        return isCompiledJson(json.document);
+    }
     if (Array.isArray(json)) {
         const version = json[0];
         // array[0] will not be a number in the editor version
@@ -1013,23 +1011,34 @@ export function isCompiledJson (json: unknown): boolean {
  * @en Deserializes a previously serialized object to reconstruct it to the original.
  * @zh 将序列化后的对象进行反序列化以使其复原。
  *
- * @param data Serialized data.
+ * @param input Serialized data.
  * @param details - Additional loading result.
  * @param options Deserialization Options.
  * @return The original object.
  */
-export function deserialize (data: IFileData | string | CCON | any, details: Details | any, options?: IOptions | any): unknown {
-    if (typeof data === 'string') {
-        data = JSON.parse(data);
+export function deserialize (input: IFileData | string | CCON | any, details: Details | any, options?: IOptions & DeserializeDynamicOptions): unknown {
+    if (typeof input === 'string') {
+        input = JSON.parse(input);
     }
 
     const borrowDetails = !details;
     details = details || Details.pool.get();
     let res;
 
-    if (!FORCE_COMPILED && !isCompiledJson(data)) {
-        res = deserializeDynamic(data, details, options);
+    if (!FORCE_COMPILED && !isCompiledJson(input)) {
+        res = deserializeDynamic(input, details, options);
     } else {
+        let data: IFileData;
+        let binary: Uint8Array | undefined = undefined;
+        if (input instanceof CCON) {
+            data = input.document as IFileData;
+            // Currently, a ccon should have only one chunk at most.
+            assertIsTrue(input.chunks.length === 1);
+            binary = input.chunks[0];
+        } else {
+            data = input as IFileData;
+        }
+
         details.init(data);
         options = options || {};
 
@@ -1044,6 +1053,7 @@ export function deserialize (data: IFileData | string | CCON | any, details: Det
         }
         options._version = version;
         options.result = details;
+        options.binary = binary;
         data[File.Context] = options;
 
         if (!preprocessed) {
@@ -1224,7 +1234,7 @@ if (TEST) {
             CustomizedClass: DataTypeID.CustomizedClass,
             Dict: DataTypeID.Dict,
             Array: DataTypeID.Array,
-            // TypedArray: DataTypeID.TypedArray,
+            TypedArray: DataTypeID.TypedArray,
         },
         BuiltinValueTypes,
         unpackJSONs,
