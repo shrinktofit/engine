@@ -30,7 +30,7 @@ import { Asset } from '../asset/assets/asset';
 
 import { CCON } from './ccon';
 import type { CompiledDeserializeFn } from './deserialize-dynamic';
-import { typedArrayTypeTable, ITypedArrayData, TypedArrayDataTailSpan } from './protocol-compiled';
+import { typedArrayTypeTable, TypedArrayData } from './protocol-compiled';
 
 import { reportMissingClass as defaultReportMissingClass } from './report-missing-class';
 
@@ -240,7 +240,7 @@ interface DataTypes {
     [DataTypeID.ValueTypeCreated]: IValueTypeData;
     [DataTypeID.AssetRefByInnerObj]: number;
     [DataTypeID.TRS]: ITRSData;
-    [DataTypeID.TypedArray]: ITypedArrayData;
+    [DataTypeID.TypedArray]: TypedArrayData;
     [DataTypeID.ValueType]: IValueTypeData;
     [DataTypeID.Array_Class]: DataTypes[DataTypeID.Class][];
     [DataTypeID.CustomizedClass]: ICustomObjectData;
@@ -381,7 +381,7 @@ export declare namespace deserialize.Internal {
     export type ITRSData_ = ITRSData;
     export type IDictData_ = IDictData;
     export type IArrayData_ = IArrayData;
-    export type ITypedArrayData_ = ITypedArrayData;
+    export type ITypedArrayData_ = TypedArrayData;
 }
 
 const enum Refs {
@@ -479,13 +479,18 @@ interface ICustomHandler {
 }
 type ClassFinder = deserialize.ClassFinder;
 
-interface IOptions extends Partial<ICustomHandler> {
+interface DeserializeContext {
+    attachedBinary?: Uint8Array;
+    attachedBinaryDataViewCache?: DataView;
+    arrayBufferMap?: Map<number, ArrayBuffer>;
+}
+
+interface IOptions extends Partial<ICustomHandler>, DeserializeContext {
     classFinder?: ClassFinder;
     reportMissingClass?: deserialize.ReportMissingClass;
     _version?: number;
-
-    binary?: Uint8Array;
 }
+
 interface ICustomClass {
     _deserialize?: (content: any, context: ICustomHandler) => void;
 }
@@ -787,28 +792,73 @@ function parseArray (data: IFileData, owner: any, key: string, value: IArrayData
     owner[key] = array;
 }
 
-function parseTypedArray (data: IFileData, owner: any, key: string, value: ITypedArrayData) {
-    const [typeIndex, elementsOrByteOffset] = value;
-
+function getTypedArrayConstructor(typeIndex: number) {
     assertIsTrue(typeIndex >= 0 && typeIndex < typedArrayTypeTable.length);
-    const constructor = typedArrayTypeTable[typeIndex];
+    return typedArrayTypeTable[typeIndex];
+}
 
-    let result: ArrayBufferView;
-    if (Array.isArray(elementsOrByteOffset)) {
-        result = new constructor(elementsOrByteOffset);
-    } else {
-        const byteOffset = elementsOrByteOffset;
-        const context = data[File.Context] as FileInfo & IOptions;
-        assertIsTrue(context.binary, `Incorrect data: binary is expected.`);
-        const [_1, _elements, length] = value as [ITypedArrayData[0], ...TypedArrayDataTailSpan];
-        result = new constructor(
-            context.binary.buffer,
-            context.binary.byteOffset + byteOffset,
-            length,
-        );
+function sliceArrayBuffer(source: Uint8Array, offset: number, byteLength: number) {
+    const start = source.byteOffset + offset;
+    return source.buffer.slice(start, start + byteLength);
+}
+
+function getArrayBuffer(
+    context: IOptions,
+    binaryStorage: Uint8Array,
+    binaryStorageDataView: DataView,
+    location: number,
+) {
+    let arrayBuffer = context.arrayBufferMap?.get(location);
+    if (!arrayBuffer) {
+        const arrayBufferSize = binaryStorageDataView.getUint32(location);
+        arrayBuffer = sliceArrayBuffer(binaryStorage, location + 4, arrayBufferSize);
+        if (!context.arrayBufferMap) {
+            context.arrayBufferMap = new Map();
+        }
+        context.arrayBufferMap.set(location, arrayBuffer);
     }
+    return arrayBuffer;
+}
 
-    owner[key] = result;
+function decodeTypedArray(data: IFileData, value: TypedArrayData) {
+    if (Array.isArray(value)) {
+        const [typeIndex, elements] = value;
+        const typedArrayConstructor = getTypedArrayConstructor(typeIndex);
+        return new typedArrayConstructor(elements);
+    } else {
+        const context = data[File.Context] as FileInfo & IOptions;
+        const attachedBinary = context.attachedBinary;
+        assertIsTrue(attachedBinary, `Incorrect data: binary is expected.`);
+        const dataView = new DataView(attachedBinary);
+        let p = value | 0;
+        const header = dataView.getUint32(p);
+        p += 4;
+        const length = dataView.getUint32(p);
+        p += 4;
+        const typeIndex = header & 0xFF;
+        const typedArrayConstructor = getTypedArrayConstructor(typeIndex);
+        const shared = header & (1 << 8);
+        if (!shared) {
+            const arrayBuffer = sliceArrayBuffer(attachedBinary, p, length * typedArrayConstructor.BYTES_PER_ELEMENT);
+            const typedArray = new typedArrayConstructor(arrayBuffer, 0, length);
+            return typedArray;
+        } else {
+            const arrayBufferLocation = dataView.getUint32(p);
+            p += 4;
+            const byteOffset = dataView.getUint32(p);
+            p += 4;
+            const arrayBuffer = getArrayBuffer(context, attachedBinary, dataView, arrayBufferLocation);
+            return new typedArrayConstructor(
+                arrayBuffer,
+                byteOffset,
+                length,
+            );
+        }
+    }
+}
+
+function parseTypedArray (data: IFileData, owner: any, key: string, value: TypedArrayData) {
+    owner[key] = decodeTypedArray(data, value);
 }
 
 const ASSIGNMENTS: {
@@ -1058,7 +1108,7 @@ export function deserialize (input: IFileData | string | CCON | any, details?: D
         }
         options._version = version;
         options.result = details;
-        options.binary = binary;
+        options.attachedBinary = binary;
         data[File.Context] = options;
 
         if (!preprocessed) {
