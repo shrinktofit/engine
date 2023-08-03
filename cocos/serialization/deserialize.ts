@@ -477,7 +477,7 @@ interface ICustomHandler {
     result: Details,
     customEnv: any,
 }
-type ClassFinder = (type: string) => AnyCtor;
+type ClassFinder = deserialize.ClassFinder;
 
 interface IOptions extends Partial<ICustomHandler> {
     classFinder?: ClassFinder;
@@ -1016,15 +1016,20 @@ export function isCompiledJson (json: unknown): boolean {
  * @param options Deserialization Options.
  * @return The original object.
  */
-export function deserialize (input: IFileData | string | CCON | any, details: Details | any, options?: IOptions & DeserializeDynamicOptions): unknown {
+export function deserialize (input: IFileData | string | CCON | any, details?: Details, options?: IOptions & DeserializeDynamicOptions): unknown {
     if (typeof input === 'string') {
         input = JSON.parse(input);
     }
 
-    const borrowDetails = !details;
-    details = details || Details.pool.get();
-    let res;
+    let isBorrowedDetails = false;
+    if (!details) {
+        const borrowedDetails = Details.pool.get();
+        assertIsTrue(borrowedDetails, `Can not allocate deserialization details`);
+        details = borrowedDetails;
+        isBorrowedDetails = true;
+    }
 
+    let res;
     if (!FORCE_COMPILED && !isCompiledJson(input)) {
         res = deserializeDynamic(input, details, options);
     } else {
@@ -1075,7 +1080,7 @@ export function deserialize (input: IFileData | string | CCON | any, details: De
         res = instances[rootIndex];
     }
 
-    if (borrowDetails) {
+    if (isBorrowedDetails) {
         Details.pool.put(details);
     }
 
