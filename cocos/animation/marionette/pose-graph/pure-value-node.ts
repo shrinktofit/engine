@@ -1,3 +1,5 @@
+import { DEBUG } from 'internal:constants';
+import { assertIsTrue } from '../../../core';
 import { VarInstance } from '../variable';
 import { PoseGraphNode } from './foundation/pose-graph-node';
 import { PoseGraphType } from './foundation/type-system';
@@ -35,6 +37,9 @@ export abstract class PureValueNode extends PoseGraphNode {
 
 export abstract class SingleOutputPVNode<TValue = unknown> extends PureValueNode {
     constructor (outputType: PoseGraphType) {
+        if (DEBUG) {
+            assertIsTrue(typeof outputType !== 'undefined');
+        }
         super([outputType]);
     }
 

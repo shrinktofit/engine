@@ -21,9 +21,8 @@ import {
     TriggerResetter,
 } from '../animation-graph-context';
 import { blendPoseInto, Pose } from '../../core/pose';
-import { PoseNode } from '../pose-graph/pose-node';
-import { instantiatePoseGraph, InstantiatedPoseGraph } from '../pose-graph/instantiation';
-import { ConditionEvaluationContext } from './condition/condition-base';
+import { InstantiatedPoseGraph, instantiatePoseGraph } from '../pose-graph/instantiation';
+import { ConditionBindingContext, ConditionEvaluationContext } from './condition/condition-base';
 import { ReadonlyClipOverrideMap } from '../clip-overriding';
 import { AnimationGraphEventBinding } from '../event/event-binding';
 
@@ -405,7 +404,6 @@ class TopLevelStateMachineEvaluation {
                     relativeDestinationStart: false,
                     exitCondition: 0.0,
                     exitConditionEnabled: false,
-                    activated: false,
                     startEventBinding: undefined,
                     endEventBinding: undefined,
                 };
@@ -688,9 +686,6 @@ class TopLevelStateMachineEvaluation {
         const nTransitions = outgoingTransitions.length;
         for (let iTransition = 0; iTransition < nTransitions; ++iTransition) {
             const transition = outgoingTransitions[iTransition];
-            if (transition.activated) {
-                continue;
-            }
 
             const { conditions } = transition;
             const nConditions = conditions.length;
@@ -795,7 +790,6 @@ class TopLevelStateMachineEvaluation {
     /**
      * Update transitions, also update states within(includes the case of no transition).
      * @param deltaTime Time piece.
-     * @returns
      */
     private _updateActivatedTransitions (deltaTime: number): void {
         const {
@@ -1473,11 +1467,6 @@ interface TransitionEval {
      * Bound triggers, once this transition satisfied. All triggers would be reset.
      */
     triggers: string[] | undefined;
-
-    /**
-     * Whether the transition is activated, if it has already been activated, it can not be activated(matched) again.
-     */
-    activated: boolean;
 
     startEventBinding: AnimationGraphEventBinding | undefined;
     endEventBinding: AnimationGraphEventBinding | undefined;
