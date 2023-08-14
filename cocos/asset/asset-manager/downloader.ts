@@ -68,14 +68,15 @@ const downloadArrayBuffer = (url: string, options: Record<string, any>, onComple
 };
 
 const downloadCCON = (url: string, options: Record<string, any>, onComplete: ((err: Error | null, data?: CCON | null) => void)): void => {
-    downloader._downloadJson(url, options, (err, json): void => {
+    const mainFileName = path.mainFileName(url);
+    downloader._downloadJson(`${mainFileName}.json`, options, (err, json): void => {
         if (err) {
             onComplete(err);
             return;
         }
         const cconPreface = parseCCONJson(json);
         const chunkPromises = Promise.all(cconPreface.chunks.map((chunk): Promise<Uint8Array> => new Promise<Uint8Array>((resolve, reject): void => {
-            downloader._downloadArrayBuffer(`${path.mainFileName(url)}${chunk}`, {}, (errChunk, chunkBuffer: ArrayBuffer): void => {
+            downloader._downloadArrayBuffer(`${mainFileName}${chunk}`, {}, (errChunk, chunkBuffer: ArrayBuffer): void => {
                 if (err) {
                     reject(err);
                 } else {
@@ -93,7 +94,8 @@ const downloadCCON = (url: string, options: Record<string, any>, onComplete: ((e
 };
 
 const downloadCCONB = (url: string, options: Record<string, any>, onComplete: ((err: Error | null, data?: CCON | null) => void)): void => {
-    downloader._downloadArrayBuffer(url, options, (err, arrayBuffer: ArrayBuffer): void => {
+    const mainFileName = path.mainFileName(url);
+    downloader._downloadArrayBuffer(`${mainFileName}.cconb`, options, (err, arrayBuffer: ArrayBuffer): void => {
         if (err) {
             onComplete(err);
             return;
