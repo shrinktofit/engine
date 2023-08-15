@@ -1281,7 +1281,17 @@ class VMSMEval {
         this._privateState.addTransition(transition);
     }
 
-    public getClipStatuses (baseWeight: number): Iterable<Readonly<ClipStatus>> {
+    public performCommonUpdate (thread: VMSMInternalState, deltaTime: number): void {
+        assertIsTrue(thread === this._publicState || thread === this._privateState);
+        const copartner = thread === this._publicState ? this._privateState
+            : this._publicState;
+        if (copartner.activeReferenceCount && copartner.testTickFlag(StateTickFlag.UPDATED)) {
+            return;
+        }
+        this._source?.update(deltaTime);
+    }
+
+    public getClipStatuses (baseWeight: number): Iterable<ClipStatus> {
         const { _source: source } = this;
         if (!source) {
             return emptyClipStatusesIterable;
@@ -1357,6 +1367,7 @@ class VMSMInternalState extends EventifiedStateEval {
     }
 
     public update (deltaTime: number, controller: AnimationController): void {
+        this._container.performCommonUpdate(this, deltaTime);
         this._progress = calcProgressUpdate(
             this._progress,
             this.duration,

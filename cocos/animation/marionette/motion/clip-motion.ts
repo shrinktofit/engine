@@ -89,7 +89,10 @@ class ClipMotionEval implements MotionEval {
         this._setClip(overriding, context);
     }
 
-    get duration (): number {
+    update (deltaTime: number): void {
+    }
+
+    get duration () {
         return this._duration;
     }
 

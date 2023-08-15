@@ -29,6 +29,7 @@ import { CLASS_NAME_PREFIX_ANIM } from '../../define';
 import type { ReadonlyClipOverrideMap } from '../clip-overriding';
 import { BindableNumber, bindOr, VariableType } from '../parametric';
 import { AnimationGraphBindingContext } from '../animation-graph-context';
+import { AnimationBlendParam } from './animation-blend-param';
 
 const { ccclass, serializable } = _decorator;
 
@@ -37,7 +38,10 @@ class AnimationBlendDirectItem extends AnimationBlendItem {
     @serializable
     public weight = new BindableNumber(0.0);
 
-    public clone (): AnimationBlendDirectItem {
+    @serializable
+    public __weight: AnimationBlendParam | null = null;
+
+    public clone () {
         const that = new AnimationBlendDirectItem();
         this._copyTo(that);
         return that;
@@ -81,20 +85,8 @@ export class AnimationBlendDirect extends AnimationBlend {
             ignoreEmbeddedPlayers,
             this,
             this._items,
-            new Array<number>(this._items.length).fill(0.0),
+            this._items.map((item) => item.__weight ?? item.weight),
         );
-        for (let iItem = 0; iItem < this._items.length; ++iItem) {
-            const item = this._items[iItem];
-            const initialValue = bindOr(
-                context,
-                item.weight,
-                VariableType.FLOAT,
-                myEval.setInput,
-                myEval,
-                iItem,
-            );
-            myEval.setInput(initialValue, iItem);
-        }
         return myEval;
     }
 }
@@ -106,7 +98,6 @@ export declare namespace AnimationBlendDirect {
 class AnimationBlendDirectEval extends AnimationBlendEval {
     constructor (...args: ConstructorParameters<typeof AnimationBlendEval>) {
         super(...args);
-        this.doEval();
     }
 
     protected eval (weights: number[], inputs: readonly number[]): void {
