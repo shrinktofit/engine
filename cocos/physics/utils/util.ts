@@ -65,6 +65,7 @@ export const CollisionEventObject = {
     otherCollider: null as unknown as Collider,
     contacts: [] as IContactEquation[],
     impl: null as any,
+    isFirst: true,
 };
 
 export function shrinkPositions (buffer: Float32Array | number[]): number[] {

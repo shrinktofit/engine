@@ -210,6 +210,14 @@ export interface ICollisionEvent {
     readonly otherCollider: Collider;
 
     /**
+     * @zh
+     * 是否是第一个收到此碰撞事件的碰撞参与方。
+     * @en
+     * True if this collider is the first one received the collision event.
+     */
+    readonly isFirst: boolean;
+
+    /**
      * @en
      * Information about all points of impact in a collision event.
      * @zh

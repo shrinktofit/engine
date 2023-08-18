@@ -566,14 +566,18 @@ export class BulletWorld implements IPhysicsWorld {
                             CollisionEventObject.contacts.push(c);
                         }
                     }
+                    let isFirst = true;
                     CollisionEventObject.impl = data.impl; //btPersistentManifold
                     CollisionEventObject.selfCollider = collider0;
                     CollisionEventObject.otherCollider = collider1;
+                    CollisionEventObject.isFirst = isFirst;
+                    isFirst = false;
                     collider0.emit(CollisionEventObject.type, CollisionEventObject);
 
                     CollisionEventObject.selfCollider = collider1;
                     CollisionEventObject.otherCollider = collider0;
                     collider1.emit(CollisionEventObject.type, CollisionEventObject);
+                    CollisionEventObject.isFirst = isFirst;
                     this._needSyncAfterEvents = true;
                 }
 

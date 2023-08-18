@@ -40,6 +40,7 @@ export const CollisionEventObject = {
     otherCollider: null as unknown as Collider,
     contacts: [] as IContactEquation[],
     impl: null,
+    isFirst: true,
 };
 
 export const CharacterTriggerEventObject = {

@@ -491,14 +491,18 @@ const PhysXCallback = {
                         c.impl = getContactDataOrByteOffset(i, o); contacts.push(c);
                     }
                 }
+                let isFirst = true;
                 if (colliderA.needCollisionEvent) {
                     CollisionEventObject.selfCollider = colliderA;
                     CollisionEventObject.otherCollider = colliderB;
+                    CollisionEventObject.isFirst = isFirst;
+                    isFirst = false;
                     colliderA.emit(CollisionEventObject.type, CollisionEventObject);
                 }
                 if (colliderB.needCollisionEvent) {
                     CollisionEventObject.selfCollider = colliderB;
                     CollisionEventObject.otherCollider = colliderA;
+                    CollisionEventObject.isFirst = isFirst;
                     colliderB.emit(CollisionEventObject.type, CollisionEventObject);
                 }
             }
