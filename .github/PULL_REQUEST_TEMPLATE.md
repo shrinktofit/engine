@@ -14,6 +14,12 @@ This pull request:
   > Manual trigger with `@cocos-robot run test cases` afterward.
 * [ ] does not change any runtime related code or build configuration
   > If any reviewer thinks the CI checks are needed, please uncheck this option, then close and reopen the issue.
+* about testing, either:
+
+  - [ ] 💬is not test-able or does not need test, or
+  - [ ] 💪has provided testing code, or
+  - [ ] 🆗the historic code base is containing related tests, or
+  - [ ] 🙏even I did not provide a test, I by myself believe it could work well in future.
 
 -------
 
