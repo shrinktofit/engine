@@ -23,7 +23,7 @@
 */
 
 /* eslint-disable @typescript-eslint/no-unsafe-return */
-import { IVec3Like, Quat, Vec3, geometry } from '../../../core';
+import { IVec3Like, Quat, Vec3, geometry, assertIsTrue, assertsUnreachable } from '../../../core';
 import { Collider, RigidBody, PhysicsMaterial, PhysicsSystem } from '../../framework';
 import { IBaseShape } from '../../spec/i-physics-shape';
 import {
@@ -34,6 +34,7 @@ import { EFilterDataWord3 } from '../physx-enum';
 import { PhysXSharedBody } from '../physx-shared-body';
 import { PhysXWorld } from '../physx-world';
 import { PhysXInstance } from '../physx-instance';
+import { PhysicsMaterialCombineMode } from '../../framework/assets/physics-material';
 
 export enum EPhysXShapeType {
     SPHERE,
@@ -133,8 +134,8 @@ export class PhysXShape implements IBaseShape {
         if (!PX.CACHE_MAT[v1.id]) {
             const physics = PhysXInstance.physics;
             const mat = physics.createMaterial(v1.friction, v1.friction, v1.restitution);
-            mat.setFrictionCombineMode(PX.CombineMode.eMULTIPLY);
-            mat.setRestitutionCombineMode(PX.CombineMode.eMULTIPLY);
+            mat.setFrictionCombineMode(toPhysXCombineMode(v1.frictionCombineMode));
+            mat.setRestitutionCombineMode(toPhysXCombineMode(v1.restitutionCombineMode));
             PX.CACHE_MAT[v1.id] = mat;
             return mat;
         }
@@ -246,5 +247,15 @@ export class PhysXShape implements IBaseShape {
     // virtual
     removeFromBody (): void {
         this._sharedBody.removeShape(this);
+    }
+}
+
+function toPhysXCombineMode (combineMode: PhysicsMaterialCombineMode): unknown {
+    switch (combineMode) {
+    case PhysicsMaterialCombineMode.AVERAGE: return PX.CombineMode.eAVERAGE;
+    case PhysicsMaterialCombineMode.MIN: return PX.CombineMode.eMIN;
+    case PhysicsMaterialCombineMode.MAX: return PX.CombineMode.eMAX;
+    case PhysicsMaterialCombineMode.MULTIPLY: return PX.CombineMode.eMULTIPLY;
+    default: return assertsUnreachable();
     }
 }
