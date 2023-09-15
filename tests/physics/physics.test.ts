@@ -19,6 +19,7 @@ import ConstraintTest from "./constraint";
 import CharacterControllerTest from "./character-controller";
 import { Node, Scene } from "../../cocos/scene-graph";
 import { builtinResMgr } from "../../exports/base";
+import physicsMaterialTest from "./physics-material";
 
 waitForAmmoInstantiation();
 InitPhysXLibs();
@@ -96,4 +97,6 @@ describe.each(Object.keys(physics.selector.backend))(
     ConstraintTest(env);
 
     CharacterControllerTest(env);
+
+    physicsMaterialTest(env);
 });
