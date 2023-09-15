@@ -81,7 +81,7 @@ jest.mock(
 
 jest.mock(
     'pal/wasm',
-    () => jest.requireActual('../pal/wasm/wasm-native'),  // NOTE: fix CI, we used import.meta in wasm-web.ts
+    () => jest.requireActual('./utils/pal-wasm-testing'),  // NOTE: fix CI, we used import.meta in wasm-web.ts
     { virtual: true, },
 );
 
@@ -99,11 +99,11 @@ jest.mock(
     'external:emscripten/physx/physx.release.wasm.wasm',
     'external:emscripten/spine/spine.wasm',
     'external:emscripten/box2d/box2d.release.wasm.wasm',
-].forEach(moduleId => {
-    jest.mock(moduleId, 
+].forEach(mockModuleId => {
+    jest.mock(mockModuleId, 
         () => ({
             __esModule: true,
-            default: 'this should be a wasm url',
+            default: mockModuleId,
         }),
         { virtual: true, },
     );
@@ -115,62 +115,6 @@ jest.mock('external:emscripten/meshopt/meshopt_decoder.wasm.wasm',
         default: 'this should be a wasm url',
     }),
     { virtual: true, },
-);
-
-// Mock external wasm js module here
-[
-    'external:emscripten/webgpu/webgpu_wasm.js',
-    'external:emscripten/webgpu/glslang.js',
-    'external:emscripten/physx/physx.release.wasm.js',
-    'external:emscripten/spine/spine.js',
-    'external:emscripten/box2d/box2d.release.wasm.js',
-].forEach(moduleId => {
-    jest.mock(moduleId, 
-        () => ({
-            __esModule: true,
-            default: function factory () { return Promise.resolve({}); },
-        }),
-        { virtual: true, },
-    );
-});
-
-jest.mock('external:emscripten/meshopt/meshopt_decoder.wasm.js',
-    () => ({
-        __esModule: true,
-        default: function factory () { return Promise.resolve({}); },
-    }),
-    { virtual: true, },
-);
-
-jest.mock(
-    'external:emscripten/physx/physx.release.asm.js', 
-    () => jest.requireActual('../native/external/emscripten/physx/physx.release.asm.js'),
-    { virtual: true },
-);
-
-
-jest.mock(
-    'external:emscripten/bullet/bullet.asm.js', 
-    () => jest.requireActual('../native/external/emscripten/bullet/bullet.asm.js'),
-    { virtual: true },
-);
-
-jest.mock(
-    'external:emscripten/meshopt/meshopt_decoder.asm.js', 
-    () => jest.requireActual('../native/external/emscripten/meshopt/meshopt_decoder.asm.js'),
-    { virtual: true },
-);
-
-jest.mock(
-    'external:emscripten/spine/spine.asm.js', 
-    () => jest.requireActual('../native/external/emscripten/spine/spine.asm.js'),
-    { virtual: true },
-);
-
-jest.mock(
-    'external:emscripten/box2d/box2d.release.asm.js',
-    () => jest.requireActual('../native/external/emscripten/box2d/box2d.release.asm.js'),
-    { virtual: true },
 );
 
 jest.mock('@base/debug', () => {
