@@ -27,6 +27,7 @@
 import { ccclass, editable, help, menu, serializable, tooltip, type } from 'cc.decorator';
 import { Asset } from '../../../asset/assets/asset';
 import { ccenum, CCFloat, math } from '../../../core';
+import { instantiate } from '../../../serialization/instantiate';
 
 /**
  * @zh
@@ -236,12 +237,7 @@ export class PhysicsMaterial extends Asset {
      * 克隆。
      */
     public clone (): PhysicsMaterial {
-        const c = new PhysicsMaterial();
-        c._friction = this._friction;
-        c._restitution = this._restitution;
-        c._rollingFriction = this._rollingFriction;
-        c._spinningFriction = this._spinningFriction;
-        return c;
+        return instantiate(this);
     }
 
     /**
