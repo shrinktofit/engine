@@ -50,4 +50,4 @@ export async function ensureWasmModuleReady() {
     return Promise.resolve();
 }
 
-checkPalIntegrity<typeof import('pal/wasm')>(withImpl<typeof import('./pal-wasm-testing')>());
+checkPalIntegrity<typeof import('@pal/wasm')>(withImpl<typeof import('./pal-wasm-testing')>());
