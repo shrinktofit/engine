@@ -6,7 +6,7 @@ import "../../exports/physics-builtin";
 import waitForAmmoInstantiation from "../../exports/wait-for-ammo-instantiation";
 import "../../exports/physics-ammo";
 import "../../exports/physics-cannon";
-import { InitPhysXLibs } from '../../cocos/physics/physx/physx-adapter';
+import { InitPhysXLibs, PX } from '../../cocos/physics/physx/physx-adapter';
 import EventTest from "./event";
 import RaycastTest from "./raycast";
 import SweepTest from "./sweep";
@@ -20,10 +20,22 @@ import CharacterControllerTest from "./character-controller";
 import { Node, Scene } from "../../cocos/scene-graph";
 import { builtinResMgr } from "../../exports/base";
 import physicsMaterialTest from "./physics-material";
+import { openPvdWebsocket } from "./utils/pvd-websocket";
+
+let pvdWs_: WebSocket | undefined;
 
 beforeAll(async () => {
+    const pvdWs = await openPvdWebsocket();
+    globalThis.pvdWs = pvdWs;
+    pvdWs_ = pvdWs;
+
     await waitForAmmoInstantiation();
     await InitPhysXLibs();
+});
+
+afterAll(async () => {
+    pvdWs_?.close();
+    pvdWs_ = undefined;
 });
 
 game.emit(Game.EVENT_PRE_SUBSYSTEM_INIT);

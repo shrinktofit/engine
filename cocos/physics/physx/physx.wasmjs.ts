@@ -25,7 +25,7 @@
 /**
  * export PhysX from internal module
  */
-import wasmFactory from 'external:emscripten/physx/physx.release.wasm.js';
-import PhysXWasmUrl from 'external:emscripten/physx/physx.release.wasm.wasm';
+import wasmFactory from 'external:emscripten/physx/physx.debug.wasm.js';
+import PhysXWasmUrl from 'external:emscripten/physx/physx.debug.wasm.wasm';
 
 export { wasmFactory, PhysXWasmUrl };
