@@ -38,22 +38,6 @@ import { instantiate } from '../../../serialization/instantiate';
 export enum PhysicsMaterialCombineMode {
     /**
      * @zh
-     * 使用两种材质值的均值。
-     * @en
-     * TODO:
-     */
-    AVERAGE,
-
-    /**
-     * @zh
-     * 使用较小的材质值。
-     * @en
-     * TODO:
-     */
-    MIN,
-
-    /**
-     * @zh
      * 使用较大的材质值。
      * @en
      * TODO:
@@ -67,6 +51,22 @@ export enum PhysicsMaterialCombineMode {
      * TODO:
      */
     MULTIPLY,
+
+        /**
+     * @zh
+     * 使用较小的材质值。
+     * @en
+     * TODO:
+     */
+    MIN,
+
+    /**
+     * @zh
+     * 使用两种材质值的均值。
+     * @en
+     * TODO:
+     */
+    AVERAGE,
 }
 
 ccenum(PhysicsMaterialCombineMode);

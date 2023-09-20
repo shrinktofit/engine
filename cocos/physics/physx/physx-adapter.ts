@@ -49,6 +49,7 @@ import { Node } from '../../scene-graph';
 import { Director, director, game } from '../../game';
 import { degreesToRadians } from '../../core/utils/misc';
 import { PhysXCharacterController } from './character-controllers/physx-character-controller';
+import { physXMaterialMap } from './material-mapping';
 
 export const PX = {} as any;
 const globalThis = cclegacy._global;
@@ -128,7 +129,7 @@ function initConfigAndCacheObject (PX: any): void {
     PX.EPSILON = 1e-3;
     PX.MULTI_THREAD = false;
     PX.SUB_THREAD_COUNT = 1;
-    PX.CACHE_MAT = {};
+    physXMaterialMap.clear();
     PX.IMPL_PTR = {};
     PX.MESH_CONVEX = {};
     PX.MESH_STATIC = {};

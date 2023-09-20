@@ -35,6 +35,7 @@ import { PhysXSharedBody } from '../physx-shared-body';
 import { PhysXWorld } from '../physx-world';
 import { PhysXInstance } from '../physx-instance';
 import { PhysicsMaterialCombineMode } from '../../framework/assets/physics-material';
+import { physXMaterialMap } from '../material-mapping';
 
 export enum EPhysXShapeType {
     SPHERE,
@@ -130,19 +131,20 @@ export class PhysXShape implements IBaseShape {
     }
 
     protected getSharedMaterial (v: PhysicsMaterial | null): any {
-        const v1 = (v == null) ? PhysicsSystem.instance.defaultMaterial : v;
-        if (!PX.CACHE_MAT[v1.id]) {
+        const v1 = v ?? PhysicsSystem.instance.defaultMaterial;
+        const { id, friction, restitution } = v1;
+        let mat = physXMaterialMap.get(id);
+        if (!mat) {
             const physics = PhysXInstance.physics;
-            const mat = physics.createMaterial(v1.friction, v1.friction, v1.restitution);
-            mat.setFrictionCombineMode(toPhysXCombineMode(v1.frictionCombineMode));
-            mat.setRestitutionCombineMode(toPhysXCombineMode(v1.restitutionCombineMode));
-            PX.CACHE_MAT[v1.id] = mat;
-            return mat;
+            mat = physics.createMaterial(friction, friction, restitution);
+            physXMaterialMap.set(id, mat);
+        } else {
+            mat.setStaticFriction(friction);
+            mat.setDynamicFriction(friction);
+            mat.setRestitution(restitution);
         }
-        const mat = PX.CACHE_MAT[v1.id];
-        mat.setStaticFriction(v1.friction);
-        mat.setDynamicFriction(v1.friction);
-        mat.setRestitution(v1.restitution);
+        mat.setFrictionCombineMode(toPhysXCombineMode(v1.frictionCombineMode));
+        mat.setRestitutionCombineMode(toPhysXCombineMode(v1.restitutionCombineMode));
         return mat;
     }
 
