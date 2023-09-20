@@ -96,6 +96,7 @@ jest.mock(
     'external:emscripten/bullet/bullet.wasm',
     'external:emscripten/webgpu/webgpu_wasm.wasm',
     'external:emscripten/webgpu/glslang.wasm',
+    'external:emscripten/physx/physx.debug.wasm.wasm',
     'external:emscripten/physx/physx.release.wasm.wasm',
     'external:emscripten/spine/spine.wasm',
     'external:emscripten/box2d/box2d.release.wasm.wasm',

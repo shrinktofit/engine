@@ -33,8 +33,15 @@ export async function instantiateWasm (wasmUrl: string, importObject: WebAssembl
 export async function fetchBuffer (binaryUrl: string): Promise<ArrayBuffer> {
     const relativePathToExternal = /^external:(.*)/.exec(binaryUrl)?.[1];
     if (relativePathToExternal) {
-        const externalHome = join(__dirname, '..', '..', 'native', 'external');
-        const path = join(externalHome, relativePathToExternal);
+        let path = '';
+
+        const physXOverride = /^emscripten\/physx\/physx\.debug\.(.*)/.exec(relativePathToExternal)?.[1];
+        if (physXOverride) {
+            path = join(`X:/Dev/Repos/Cocos/cocos-PhysX/physx/bin/emscripten/debug/physx.debug.${physXOverride}`);
+        } else {
+            const externalHome = join(__dirname, '..', '..', 'native', 'external');
+            path = join(externalHome, relativePathToExternal);
+        }
         try {
             const content = readFileSync(path);
             return content.buffer;

@@ -50,6 +50,7 @@ import { Director, director, game } from '../../game';
 import { degreesToRadians } from '../../core/utils/misc';
 import { PhysXCharacterController } from './character-controllers/physx-character-controller';
 import { physXMaterialMap } from './material-mapping';
+import { createPvd, setupScenePvd } from './pvd';
 
 export const PX = {} as any;
 const globalThis = cclegacy._global;
@@ -104,8 +105,10 @@ function initWASM (): any {
     globalThis.PhysX = globalThis.PHYSX ? globalThis.PHYSX : wasmFactory;
     if (globalThis.PhysX != null) {
         return globalThis.PhysX({
-            instantiateWasm (importObject: WebAssembly.Imports,
-                receiveInstance: (instance: WebAssembly.Instance, module: WebAssembly.Module) => void): any {
+            instantiateWasm (
+                importObject: WebAssembly.Imports,
+                receiveInstance: (instance: WebAssembly.Instance, module: WebAssembly.Module) => void,
+            ): any {
                 return instantiateWasm(PhysXWasmUrl, importObject).then((result: any): void => {
                     receiveInstance(result.instance, result.module);
                 });
@@ -425,11 +428,17 @@ export function createTriangleMesh (vertices: Float32Array | number[], indices: 
     }
 }
 
-export function createBV33TriangleMesh (vertices: number[], indices: Uint32Array, cooking: any, physics: any,
+export function createBV33TriangleMesh (
+    vertices: number[],
+    indices: Uint32Array,
+    cooking: any,
+    physics: any,
     skipMeshCleanUp = false,
     skipEdgeData = false,
     cookingPerformance = false,
-    meshSizePerfTradeoff = true, inserted = true): any {
+    meshSizePerfTradeoff = true,
+    inserted = true,
+): any {
     if (!USE_BYTEDANCE) return;
     const meshDesc = new PX.TriangleMeshDesc();
     meshDesc.setPointsData(vertices);
@@ -451,11 +460,16 @@ export function createBV33TriangleMesh (vertices: number[], indices: Uint32Array
     return cooking.createTriangleMesh(meshDesc);
 }
 
-export function createBV34TriangleMesh (vertices: number[], indices: Uint32Array, cooking: any, physics: any,
+export function createBV34TriangleMesh (
+    vertices: number[],
+    indices: Uint32Array,
+    cooking: any,
+    physics: any,
     skipMeshCleanUp = false,
     skipEdgeData = false,
     numTrisPerLeaf = true,
-    inserted = true): void {
+    inserted = true,
+): void {
     if (!USE_BYTEDANCE) return;
     const meshDesc = new PX.TriangleMeshDesc();
     meshDesc.setPointsData(vertices);
@@ -506,8 +520,13 @@ export function createHeightFieldGeometry (hf: any, flags: number, hs: number, x
     if (USE_BYTEDANCE) {
         return new PX.HeightFieldGeometry(hf, hs, xs, zs);
     }
-    return new PX.PxHeightFieldGeometry(hf, new PX.PxMeshGeometryFlags(flags),
-        hs, xs, zs);
+    return new PX.PxHeightFieldGeometry(
+        hf,
+        new PX.PxMeshGeometryFlags(flags),
+        hs,
+        xs,
+        zs,
+    );
 }
 
 export function simulateScene (scene: any, deltaTime: number): void {
@@ -518,8 +537,13 @@ export function simulateScene (scene: any, deltaTime: number): void {
     }
 }
 
-export function raycastAll (world: PhysXWorld, worldRay: geometry.Ray, options: IRaycastOptions,
-    pool: RecyclePool<PhysicsRayResult>, results: PhysicsRayResult[]): boolean {
+export function raycastAll (
+    world: PhysXWorld,
+    worldRay: geometry.Ray,
+    options: IRaycastOptions,
+    pool: RecyclePool<PhysicsRayResult>,
+    results: PhysicsRayResult[],
+): boolean {
     const maxDistance = options.maxDistance;
     const flags = PxHitFlag.ePOSITION | PxHitFlag.eNORMAL;
     const word3 = EFilterDataWord3.QUERY_FILTER | (options.queryTrigger ? 0 : EFilterDataWord3.QUERY_CHECK_TRIGGER);
@@ -532,8 +556,16 @@ export function raycastAll (world: PhysXWorld, worldRay: geometry.Ray, options: 
         queryfilterData.data.word3 = word3;
         queryfilterData.data.word0 = options.mask >>> 0;
         queryfilterData.flags = queryFlags;
-        const r = PX.SceneQueryExt.raycastMultiple(world.scene, worldRay.o, worldRay.d, maxDistance, flags,
-            mutipleResultSize, queryfilterData, queryFilterCB);
+        const r = PX.SceneQueryExt.raycastMultiple(
+            world.scene,
+            worldRay.o,
+            worldRay.d,
+            maxDistance,
+            flags,
+            mutipleResultSize,
+            queryfilterData,
+            queryFilterCB,
+        );
 
         if (r) {
             for (let i = 0; i < r.length; i++) {
@@ -550,8 +582,17 @@ export function raycastAll (world: PhysXWorld, worldRay: geometry.Ray, options: 
         queryfilterData.setWords(word3, 3);
         queryfilterData.setFlags(queryFlags);
         const blocks = mutipleResults;
-        const r = world.scene.raycastMultiple(worldRay.o, worldRay.d, maxDistance, flags,
-            blocks, blocks.size(), queryfilterData, queryFilterCB, null);
+        const r = world.scene.raycastMultiple(
+            worldRay.o,
+            worldRay.d,
+            maxDistance,
+            flags,
+            blocks,
+            blocks.size(),
+            queryfilterData,
+            queryFilterCB,
+            null,
+        );
 
         if (r > 0) {
             for (let i = 0; i < r; i++) {
@@ -582,8 +623,15 @@ export function raycastClosest (world: PhysXWorld, worldRay: geometry.Ray, optio
         queryfilterData.data.word3 = word3;
         queryfilterData.data.word0 = options.mask >>> 0;
         queryfilterData.flags = queryFlags;
-        const block = PX.SceneQueryExt.raycastSingle(world.scene, worldRay.o, worldRay.d, maxDistance,
-            flags, queryfilterData, queryFilterCB);
+        const block = PX.SceneQueryExt.raycastSingle(
+            world.scene,
+            worldRay.o,
+            worldRay.d,
+            maxDistance,
+            flags,
+            queryfilterData,
+            queryFilterCB,
+        );
         if (block) {
             const collider = getWrapShape<PhysXShape>(block.shapeData).collider;
             result._assign(block.position, block.distance, collider, block.normal);
@@ -594,8 +642,16 @@ export function raycastClosest (world: PhysXWorld, worldRay: geometry.Ray, optio
         queryfilterData.setWords(word3, 3);
         queryfilterData.setFlags(queryFlags);
         const block = PhysXInstance.singleResult;
-        const r = world.scene.raycastSingle(worldRay.o, worldRay.d, options.maxDistance, flags,
-            block, queryfilterData, queryFilterCB, null);
+        const r = world.scene.raycastSingle(
+            worldRay.o,
+            worldRay.d,
+            options.maxDistance,
+            flags,
+            block,
+            queryfilterData,
+            queryFilterCB,
+            null,
+        );
         if (r) {
             const collider = getWrapShape<PhysXShape>(block.getShape()).collider;
             result._assign(block.position, block.distance, collider, block.normal);
@@ -605,8 +661,15 @@ export function raycastClosest (world: PhysXWorld, worldRay: geometry.Ray, optio
     return false;
 }
 
-export function sweepAll (world: PhysXWorld, worldRay: geometry.Ray, geometry: any, geometryRotation: IQuatLike,
-    options: IRaycastOptions, pool: RecyclePool<PhysicsRayResult>, results: PhysicsRayResult[]): boolean {
+export function sweepAll (
+    world: PhysXWorld,
+    worldRay: geometry.Ray,
+    geometry: any,
+    geometryRotation: IQuatLike,
+    options: IRaycastOptions,
+    pool: RecyclePool<PhysicsRayResult>,
+    results: PhysicsRayResult[],
+): boolean {
     const maxDistance = options.maxDistance;
     const flags = PxHitFlag.ePOSITION | PxHitFlag.eNORMAL;
     const word3 = EFilterDataWord3.QUERY_FILTER | (options.queryTrigger ? 0 : EFilterDataWord3.QUERY_CHECK_TRIGGER);
@@ -620,8 +683,19 @@ export function sweepAll (world: PhysXWorld, worldRay: geometry.Ray, geometry: a
     queryfilterData.setWords(word3, 3);
     queryfilterData.setFlags(queryFlags);
     const blocks = mutipleResults;
-    const r = world.scene.sweepMultiple(geometry, getTempTransform(worldRay.o, geometryRotation), worldRay.d, maxDistance, flags,
-        blocks, blocks.size(), queryfilterData, queryFilterCB, null, 0);
+    const r = world.scene.sweepMultiple(
+        geometry,
+        getTempTransform(worldRay.o, geometryRotation),
+        worldRay.d,
+        maxDistance,
+        flags,
+        blocks,
+        blocks.size(),
+        queryfilterData,
+        queryFilterCB,
+        null,
+        0,
+    );
 
     if (r > 0) {
         for (let i = 0; i < r; i++) {
@@ -640,8 +714,14 @@ export function sweepAll (world: PhysXWorld, worldRay: geometry.Ray, geometry: a
     return false;
 }
 
-export function sweepClosest (world: PhysXWorld, worldRay: geometry.Ray, geometry: any, geometryRotation: IQuatLike,
-    options: IRaycastOptions, result: PhysicsRayResult): boolean {
+export function sweepClosest (
+    world: PhysXWorld,
+    worldRay: geometry.Ray,
+    geometry: any,
+    geometryRotation: IQuatLike,
+    options: IRaycastOptions,
+    result: PhysicsRayResult,
+): boolean {
     const maxDistance = options.maxDistance;
     const flags = PxHitFlag.ePOSITION | PxHitFlag.eNORMAL;
     const word3 = EFilterDataWord3.QUERY_FILTER | (options.queryTrigger ? 0 : EFilterDataWord3.QUERY_CHECK_TRIGGER)
@@ -654,8 +734,18 @@ export function sweepClosest (world: PhysXWorld, worldRay: geometry.Ray, geometr
     const queryFilterCB = PhysXInstance.queryFilterCB;
 
     const block = PhysXInstance.singleSweepResult;
-    const r = world.scene.sweepSingle(geometry, getTempTransform(worldRay.o, geometryRotation), worldRay.d, maxDistance,
-        flags, block, queryfilterData, queryFilterCB, null, 0);
+    const r = world.scene.sweepSingle(
+        geometry,
+        getTempTransform(worldRay.o, geometryRotation),
+        worldRay.d,
+        maxDistance,
+        flags,
+        block,
+        queryfilterData,
+        queryFilterCB,
+        null,
+        0,
+    );
     if (r) {
         const collider = getWrapShape<PhysXShape>(block.getShape()).collider;
         result._assign(block.position, block.distance, collider, block.normal);
@@ -702,10 +792,14 @@ export function initializeWorld (world: any): void {
             const defaultErrorCallback = new PX.PxDefaultErrorCallback();
             const foundation = PhysXInstance.foundation = PX.PxCreateFoundation(version, allocator, defaultErrorCallback);
             if (DEBUG) {
-                PhysXInstance.pvd = PX.PxCreatePvd(foundation);
+                const pvd = createPvd(PX, foundation, (globalThis as {
+                    pvdWs?: WebSocket;
+                }).pvdWs);
+                PhysXInstance.pvd = pvd;
             } else {
                 PhysXInstance.pvd = null;
             }
+
             const scale = new PX.PxTolerancesScale();
             PhysXInstance.physics = PX.physics = PX.PxCreatePhysics(version, foundation, scale, false, PhysXInstance.pvd);
             PhysXInstance.cooking = PX.PxCreateCooking(version, foundation, new PX.PxCookingParams(scale));
@@ -724,6 +818,9 @@ export function initializeWorld (world: any): void {
         const sceneDesc = PX.getDefaultSceneDesc(PhysXInstance.physics.getTolerancesScale(), 0, PhysXInstance.simulationCB);
         world.scene = PhysXInstance.physics.createScene(sceneDesc);
         world.controllerManager = PX.PxCreateControllerManager(world.scene, false);
+        if (TEST) {
+            setupScenePvd(PX, world.scene);
+        }
     }
 }
 

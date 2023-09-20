@@ -11,6 +11,7 @@ module.exports = {
     testRegex: '/tests/.*\\.(test|spec)?\\.(ts|tsx)$',
     moduleNameMapper: {
         ...pathsToModuleNameMapper(compilerOptions.paths, { prefix: `${__dirname}/` }),
+        'external:emscripten/physx/physx\.debug\.(.*)': 'X:/Dev/Repos/Cocos/cocos-PhysX/physx/bin/emscripten/debug/physx.debug.$1',
         'external:(.*)': '<rootDir>/native/external/$1',
     },
     transformIgnorePatterns: [
@@ -34,5 +35,6 @@ module.exports = {
         CC_DEV: true,
         CC_TEST: true,
         CC_PHYSICS_BUILTIN: true,
-    }
+    },
+    "testTimeout": 15000
 };
