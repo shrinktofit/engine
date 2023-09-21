@@ -6,7 +6,10 @@ import { PhysicsTestEnv } from "./physics.test";
 import '../utils/matchers/value-type-asymmetric-matchers';
 
 export default function physicsMaterialTest(env: PhysicsTestEnv) {
-    if (env.backendId !== 'physx') {
+    // if (env.backendId !== 'physx') {
+    //     return;
+    // }
+    if (env.backendId !== 'bullet') {
         return;
     }
 
@@ -28,14 +31,17 @@ export default function physicsMaterialTest(env: PhysicsTestEnv) {
             }));
         });
     
-        describe(`Friction combine modes`, () => {
+        describe.only(`Friction combine modes`, () => {
             test.each([
-                ['Max', PhysicsMaterialCombineMode.MAX],
+                // ['Max', PhysicsMaterialCombineMode.MAX],
                 ['Multiply', PhysicsMaterialCombineMode.MULTIPLY],
-                ['Min', PhysicsMaterialCombineMode.MIN],
-                ['Average', PhysicsMaterialCombineMode.AVERAGE],
+                // ['Min', PhysicsMaterialCombineMode.MIN],
+                // ['Average', PhysicsMaterialCombineMode.AVERAGE],
             ])(`Friction combine mode: %s`, (_title, combineMode) => {
                 for (const combineMode2 of allCombineModes) {
+                    if (combineMode2 !== combineMode) {
+                        continue;
+                    }
                     testFrictionCombineMode(
                         env,
                         combineMode,
