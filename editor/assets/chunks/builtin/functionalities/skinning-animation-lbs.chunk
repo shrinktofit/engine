@@ -38,7 +38,25 @@
     }
   #endif
 #else
-  #if CC_USE_REAL_TIME_JOINT_TEXTURE
+  #if defined(CC_FEATURE_TEST_INSTANCED_SKINNING)
+    vec4 fetchRealTimeJointTexture(int vec4Index) {
+        const int textureWidth = 256;
+        const int textureHeight = 256;
+        return texelFetch(cc_realtimeJoint, ivec2(vec4Index % textureWidth, vec4Index / textureWidth), 0);
+    }
+
+    mat4 getJointMatrix (float i) {
+        int jointIndex = int(i);
+        int startPixelIndex = CC_JOINT_DATA_OFFSET;
+        int pixel1Index = startPixelIndex + jointIndex * 3 + 0;
+        int pixel2Index = startPixelIndex + jointIndex * 3 + 1;
+        int pixel3Index = startPixelIndex + jointIndex * 3 + 2;
+        vec4 v1 = fetchRealTimeJointTexture(pixel1Index);
+        vec4 v2 = fetchRealTimeJointTexture(pixel2Index);
+        vec4 v3 = fetchRealTimeJointTexture(pixel3Index);
+        return mat4(vec4(v1.xyz, 0.0), vec4(v2.xyz, 0.0), vec4(v3.xyz, 0.0), vec4(v1.w, v2.w, v3.w, 1.0));
+    }
+  #elif CC_USE_REAL_TIME_JOINT_TEXTURE
     #if CC_DEVICE_SUPPORT_FLOAT_TEXTURE
       mat4 getJointMatrix (float i) {
         float x = i;

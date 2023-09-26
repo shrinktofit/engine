@@ -23,12 +23,13 @@
 */
 
 import { warnID } from '@base/debug';
+import { assertIsTrue } from '@base/debug/internal';
 import { Material } from '../../asset/assets/material';
 import { RenderingSubMesh } from '../../asset/assets/rendering-sub-mesh';
 import { Mesh } from '../assets/mesh';
 import { Skeleton } from '../assets/skeleton';
 import { geometry, Mat4, Vec3 } from '../../core';
-import { BufferUsageBit, MemoryUsageBit, DescriptorSet, Buffer, BufferInfo, Attribute, FormatFeatureBit, Format } from '../../gfx';
+import { BufferUsageBit, MemoryUsageBit, DescriptorSet, Buffer, BufferInfo, Attribute, FormatFeatureBit, Format, Device } from '../../gfx';
 import { UBOSkinning, UNIFORM_REALTIME_JOINT_TEXTURE_BINDING } from '../../rendering/define';
 import { Node } from '../../scene-graph/node';
 import { ModelType } from '../../render-scene/scene/model';
@@ -40,6 +41,7 @@ import { director } from '../../game';
 import { PixelFormat } from '../../asset/assets/asset-enum';
 import { Texture2D, ImageAsset } from '../../asset/assets';
 import { SubModel } from '../../render-scene/scene';
+import { InstanceCard, instanceManager } from './instanced-skinning-model';
 
 const uniformPatches: IMacroPatch[] = [
     { name: 'CC_USE_SKINNING', value: true },
@@ -80,12 +82,188 @@ const v3_2 = new Vec3();
 const m4_1 = new Mat4();
 const ab_1 = new geometry.AABB();
 
+const USE_INSTANCED_SKINNING = true as boolean;
+
 class RealTimeJointTexture {
     public static readonly WIDTH = 256;
     public static readonly HEIGHT = 3;
     public _format = PixelFormat.RGBA32F; // default use float texture
     public _textures: Texture2D[] = [];
     public _buffers: Float32Array[] = [];
+}
+
+interface RemoteJointTransformStorage {
+    destroy(): void;
+    updateUBOs(dataArray: Float32Array[]): void;
+    updateDescriptorSet (idx: number, descriptorSet: DescriptorSet): void;
+    getMacroPatches? (subModelIndex: number): readonly IMacroPatch[];
+}
+
+class TextureStorage implements RemoteJointTransformStorage {
+    constructor (count: number) {
+        const gfxDevice = director.root!.device;
+        let width = RealTimeJointTexture.WIDTH;
+        const height = RealTimeJointTexture.HEIGHT;
+        const hasFeatureFloatTexture = gfxDevice.getFormatFeatures(Format.RGBA32F) & FormatFeatureBit.SAMPLED_TEXTURE;
+        if (hasFeatureFloatTexture === 0) {
+            this._realTimeJointTexture._format = PixelFormat.RGBA8888;
+            width = 4 * RealTimeJointTexture.WIDTH;
+        }
+
+        const textures = this._realTimeJointTexture._textures;
+        const buffers = this._realTimeJointTexture._buffers;
+        const pixelFormat = this._realTimeJointTexture._format;
+        for (let i = 0; i < count; i++) {
+            buffers[i] = new Float32Array(4 * RealTimeJointTexture.HEIGHT * RealTimeJointTexture.WIDTH);
+            const arrayBuffer = buffers[i];
+            const updateView =  pixelFormat === PixelFormat.RGBA32F ? arrayBuffer : new Uint8Array(arrayBuffer.buffer);
+            const image = new ImageAsset({
+                width,
+                height,
+                _data: updateView,
+                _compressed: false,
+                format: pixelFormat,
+            });
+            const texture = new Texture2D();
+            texture.setFilters(Texture2D.Filter.NEAREST, Texture2D.Filter.NEAREST);
+            texture.setMipFilter(Texture2D.Filter.NONE);
+            texture.setWrapMode(Texture2D.WrapMode.CLAMP_TO_EDGE, Texture2D.WrapMode.CLAMP_TO_EDGE, Texture2D.WrapMode.CLAMP_TO_EDGE);
+            texture.image = image;
+            textures[i] = texture;
+        }
+    }
+
+    destroy (): void {
+        this._realTimeJointTexture._textures.forEach((tex) => {
+            tex.destroy();
+        });
+        this._realTimeJointTexture._textures.length = 0;
+        this._realTimeJointTexture._buffers.length = 0;
+    }
+
+    getMacroPatches (subModelIndex: number): IMacroPatch[] {
+        return texturePatches;
+    }
+
+    updateUBOs (dataArray: Float32Array[]): void {
+        const textures = this._realTimeJointTexture._textures;
+        const buffers = this._realTimeJointTexture._buffers;
+        for (let idx = 0; idx < textures.length; idx++) {
+            const arrayBuffer = buffers[idx];
+            const src = dataArray[idx];
+            const count = src.length / 12; // mat3x4
+            let idxSrc = 0;
+            let idxDst = 0;
+            for (let i = 0; i < count; i++) {
+                idxDst = 4 * i;
+                arrayBuffer[idxDst++] = src[idxSrc++];
+                arrayBuffer[idxDst++] = src[idxSrc++];
+                arrayBuffer[idxDst++] = src[idxSrc++];
+                arrayBuffer[idxDst++] = src[idxSrc++];
+                idxDst = 4 * (i + RealTimeJointTexture.WIDTH);
+                arrayBuffer[idxDst++] = src[idxSrc++];
+                arrayBuffer[idxDst++] = src[idxSrc++];
+                arrayBuffer[idxDst++] = src[idxSrc++];
+                arrayBuffer[idxDst++] = src[idxSrc++];
+                idxDst = 4 * (i + 2 * RealTimeJointTexture.WIDTH);
+                arrayBuffer[idxDst++] = src[idxSrc++];
+                arrayBuffer[idxDst++] = src[idxSrc++];
+                arrayBuffer[idxDst++] = src[idxSrc++];
+                arrayBuffer[idxDst++] = src[idxSrc++];
+            }
+            const pixelFormat = this._realTimeJointTexture._format;
+            const updateView = pixelFormat === PixelFormat.RGBA32F ? arrayBuffer : new Uint8Array(arrayBuffer.buffer);
+            textures[idx].uploadData(updateView);
+        }
+    }
+
+    public updateDescriptorSet (idx: number, descriptorSet: DescriptorSet): void {
+        const jointTexture = this._realTimeJointTexture._textures[idx];
+        if (!jointTexture) {
+            return;
+        }
+        const gfxTexture = jointTexture.getGFXTexture();
+        if (!gfxTexture) {
+            return;
+        }
+        const sampler = jointTexture.getGFXSampler();
+        descriptorSet.bindTexture(UNIFORM_REALTIME_JOINT_TEXTURE_BINDING, gfxTexture);
+        descriptorSet.bindSampler(UNIFORM_REALTIME_JOINT_TEXTURE_BINDING, sampler);
+    }
+
+    private _realTimeJointTexture = new RealTimeJointTexture();
+}
+
+class UniformStorage implements RemoteJointTransformStorage {
+    constructor (device: Device, count: number) {
+        for (let i = 0; i < count; i++) {
+            this._buffers[i] = device.createBuffer(new BufferInfo(
+                BufferUsageBit.UNIFORM | BufferUsageBit.TRANSFER_DST,
+                MemoryUsageBit.HOST | MemoryUsageBit.DEVICE,
+                UBOSkinning.SIZE,
+                UBOSkinning.SIZE,
+            ));
+        }
+    }
+
+    public destroy (): void {
+        if (this._buffers.length) {
+            for (let i = 0; i < this._buffers.length; i++) {
+                this._buffers[i].destroy();
+            }
+            this._buffers.length = 0;
+        }
+    }
+
+    getMacroPatches (subModelIndex: number): IMacroPatch[] {
+        return uniformPatches;
+    }
+
+    updateUBOs (dataArray: Float32Array[]): void {
+        for (let b = 0; b < this._buffers.length; b++) {
+            this._buffers[b].update(dataArray[b]);
+        }
+    }
+
+    updateDescriptorSet (idx: number, descriptorSet: DescriptorSet): void {
+        const buffer = this._buffers[idx];
+        if (buffer) { descriptorSet.bindBuffer(UBOSkinning.BINDING, buffer); }
+    }
+
+    private _buffers: Buffer[] = [];
+}
+
+class InstancingStorage implements RemoteJointTransformStorage {
+    constructor (
+        private _instanceCards: InstanceCard[],
+    ) {
+
+    }
+
+    getMacroPatches (subModelIndex: number): IMacroPatch[] {
+        assertIsTrue(subModelIndex >= 0 && subModelIndex < this._instanceCards.length);
+        return this._instanceCards[subModelIndex].getPatches();
+    }
+
+    updateUBOs (dataArray: Float32Array[]): void {
+        const { _instanceCards } = this;
+        for (let iCard = 0; iCard < _instanceCards.length; iCard++) {
+            const card = _instanceCards[iCard];
+            card.update(dataArray[iCard]);
+        }
+    }
+
+    updateDescriptorSet (idx: number, descriptorSet: DescriptorSet): void {
+        this._instanceCards[idx].bindDescriptorSet(descriptorSet);
+    }
+
+    destroy (): void {
+        const { _instanceCards } = this;
+        for (let iCard = 0; iCard < _instanceCards.length; ++iCard) {
+            _instanceCards[iCard].leave();
+        }
+        _instanceCards.length = 0;
+    }
 }
 
 /**
@@ -95,12 +273,10 @@ class RealTimeJointTexture {
  * 实时计算动画的蒙皮模型。
  */
 export class SkinningModel extends MorphModel {
-    private _buffers: Buffer[] = [];
     private _dataArray: Float32Array[] = [];
     private _joints: IJointInfo[] = [];
     private _bufferIndices: number[] | null = null;
-    private _realTimeJointTexture = new RealTimeJointTexture();
-    private _realTimeTextureMode = false;
+    private _remoteJointTransformStorage: RemoteJointTransformStorage | undefined = undefined;
     constructor () {
         super();
         this.type = ModelType.SKINNING;
@@ -108,18 +284,9 @@ export class SkinningModel extends MorphModel {
 
     public destroy (): void {
         this.bindSkeleton();
-        if (this._buffers.length) {
-            for (let i = 0; i < this._buffers.length; i++) {
-                this._buffers[i].destroy();
-            }
-            this._buffers.length = 0;
-        }
+        this._remoteJointTransformStorage?.destroy();
+        this._remoteJointTransformStorage = undefined;
         this._dataArray.length = 0;
-        this._realTimeJointTexture._textures.forEach((tex) => {
-            tex.destroy();
-        });
-        this._realTimeJointTexture._textures.length = 0;
-        this._realTimeJointTexture._buffers.length = 0;
         super.destroy();
     }
 
@@ -127,7 +294,9 @@ export class SkinningModel extends MorphModel {
      * @en Abstract function for [[BakedSkinningModel]], empty implementation.
      * @zh 由 [[BakedSkinningModel]] 继承的空函数。
      */
-    public uploadAnimation () : void {}
+    public uploadAnimation (): void {
+        // Nope.
+    }
 
     /**
      * @en Bind the skeleton with its skinning root node and the mesh data.
@@ -143,14 +312,11 @@ export class SkinningModel extends MorphModel {
         }
         this._bufferIndices = null; this._joints.length = 0;
         if (!skeleton || !skinningRoot || !mesh) { return; }
-        this._realTimeTextureMode = false;
-        if (UBOSkinning.JOINT_UNIFORM_CAPACITY < skeleton.joints.length) { this._realTimeTextureMode = true; }
         this.transform = skinningRoot;
         const boneSpaceBounds = mesh.getBoneSpaceBounds(skeleton);
         const jointMaps = mesh.struct.jointMaps;
-        this._ensureEnoughBuffers(jointMaps && jointMaps.length || 1);
+        this._ensureEnoughBuffers(mesh, jointMaps && jointMaps.length || 1, skeleton.joints.length);
         this._bufferIndices = mesh.jointBufferIndices;
-        this._initRealTimeJointTexture();
         for (let index = 0; index < skeleton.joints.length; index++) {
             const bound = boneSpaceBounds[index];
             const target = skinningRoot.getChildByPath(skeleton.joints[index]);
@@ -202,6 +368,7 @@ export class SkinningModel extends MorphModel {
      */
     public updateUBOs (stamp: number): boolean {
         super.updateUBOs(stamp);
+
         for (let i = 0; i < this._joints.length; i++) {
             const { indices, buffers, transform, bindpose } = this._joints[i];
             Mat4.multiply(m4_1, transform.world, bindpose);
@@ -209,13 +376,8 @@ export class SkinningModel extends MorphModel {
                 uploadJointData(this._dataArray[buffers[b]], indices[b] * 12, m4_1, i === 0);
             }
         }
-        if (this._realTimeTextureMode) {
-            this._updateRealTimeJointTextureBuffer();
-        } else {
-            for (let b = 0; b < this._buffers.length; b++) {
-                this._buffers[b].update(this._dataArray[b]);
-            }
-        }
+
+        this._remoteJointTransformStorage?.updateUBOs(this._dataArray);
         return true;
     }
 
@@ -237,14 +399,14 @@ export class SkinningModel extends MorphModel {
     // override
     public getMacroPatches (subModelIndex: number): IMacroPatch[] | null {
         const superMacroPatches = super.getMacroPatches(subModelIndex);
-        let myPatches = uniformPatches;
-        if (this._realTimeTextureMode) {
-            myPatches = texturePatches;
+        const storagePatches = this._remoteJointTransformStorage?.getMacroPatches?.(subModelIndex);
+        if (!storagePatches) {
+            return superMacroPatches;
         }
-        if (superMacroPatches) {
-            return myPatches.concat(superMacroPatches);
+        if (!superMacroPatches) {
+            return storagePatches.slice();
         }
-        return myPatches;
+        return storagePatches.concat(superMacroPatches);
     }
 
     /**
@@ -253,12 +415,7 @@ export class SkinningModel extends MorphModel {
     public _updateLocalDescriptors (submodelIdx: number, descriptorSet: DescriptorSet): void {
         super._updateLocalDescriptors(submodelIdx, descriptorSet);
         const idx = this._bufferIndices![submodelIdx];
-        if (this._realTimeTextureMode) {
-            this._bindRealTimeJointTexture(idx, descriptorSet);
-        } else {
-            const buffer = this._buffers[idx];
-            if (buffer) { descriptorSet.bindBuffer(UBOSkinning.BINDING, buffer); }
-        }
+        this._remoteJointTransformStorage?.updateDescriptorSet(idx, descriptorSet);
     }
 
     protected _updateInstancedAttributes (attributes: Attribute[], subModel: SubModel): void {
@@ -270,118 +427,43 @@ export class SkinningModel extends MorphModel {
         super._updateInstancedAttributes(attributes, subModel);
     }
 
-    private _ensureEnoughBuffers (count: number): void {
-        if (this._buffers.length) {
-            for (let i = 0; i < this._buffers.length; i++) {
-                this._buffers[i].destroy();
-            }
-            this._buffers.length = 0;
-        }
-
+    private _ensureEnoughBuffers (mesh: Mesh, count: number, jointCount: number): void {
+        this._remoteJointTransformStorage?.destroy();
+        this._remoteJointTransformStorage = undefined;
         if (this._dataArray.length) this._dataArray.length = 0;
 
-        if (!this._realTimeTextureMode) {
+        // Instanced storage.
+        if (USE_INSTANCED_SKINNING) {
+            const instanceCards: InstanceCard[] = [];
             for (let i = 0; i < count; i++) {
-                this._buffers[i] = this._device.createBuffer(new BufferInfo(
-                    BufferUsageBit.UNIFORM | BufferUsageBit.TRANSFER_DST,
-                    MemoryUsageBit.HOST | MemoryUsageBit.DEVICE,
-                    UBOSkinning.SIZE,
-                    UBOSkinning.SIZE,
-                ));
+                const card = instanceManager.hire(this._device, mesh, i, jointCount);
+                instanceCards.push(card);
+            }
+            for (let i = 0; i < count; i++) {
+                this._dataArray[i] = new Float32Array(12 * jointCount);
+            }
+            this._remoteJointTransformStorage = new InstancingStorage(instanceCards);
+            return;
+        }
+
+        // Uniform storage.
+        const shouldUseUniformStorage = UBOSkinning.JOINT_UNIFORM_CAPACITY >= jointCount;
+        if (shouldUseUniformStorage) {
+            for (let i = 0; i < count; i++) {
                 const maxJoints = UBOSkinning.JOINT_UNIFORM_CAPACITY;
                 this._dataArray[i] = new Float32Array(12 * maxJoints);
             }
-        } else {
+            this._remoteJointTransformStorage = new UniformStorage(this._device, count);
+        }
+
+        // Texture storage.
+        // eslint-disable-next-line no-lone-blocks
+        {
             for (let i = 0; i < count; i++) {
                 const maxJoints = RealTimeJointTexture.WIDTH;
                 this._dataArray[i] = new Float32Array(12 * maxJoints);
             }
-        }
-    }
-
-    private _initRealTimeJointTexture (): void {
-        if (this._realTimeJointTexture._textures.length) {
-            this._realTimeJointTexture._textures.forEach((tex) => {
-                tex.destroy();
-            });
-            this._realTimeJointTexture._textures.length = 0;
-        }
-        this._realTimeJointTexture._buffers.length = 0;
-        if (!this._realTimeTextureMode) return;
-
-        const gfxDevice = director.root!.device;
-        let width = RealTimeJointTexture.WIDTH;
-        const height = RealTimeJointTexture.HEIGHT;
-        const hasFeatureFloatTexture = gfxDevice.getFormatFeatures(Format.RGBA32F) & FormatFeatureBit.SAMPLED_TEXTURE;
-        if (hasFeatureFloatTexture === 0) {
-            this._realTimeJointTexture._format = PixelFormat.RGBA8888;
-            width = 4 * RealTimeJointTexture.WIDTH;
-        }
-
-        const textures = this._realTimeJointTexture._textures;
-        const buffers = this._realTimeJointTexture._buffers;
-        const pixelFormat = this._realTimeJointTexture._format;
-        for (let i = 0; i < this._dataArray.length; i++) {
-            buffers[i] = new Float32Array(4 * RealTimeJointTexture.HEIGHT * RealTimeJointTexture.WIDTH);
-            const arrayBuffer = buffers[i];
-            const updateView =  pixelFormat === PixelFormat.RGBA32F ? arrayBuffer : new Uint8Array(arrayBuffer.buffer);
-            const image = new ImageAsset({
-                width,
-                height,
-                _data: updateView,
-                _compressed: false,
-                format: pixelFormat,
-            });
-            const texture = new Texture2D();
-            texture.setFilters(Texture2D.Filter.NEAREST, Texture2D.Filter.NEAREST);
-            texture.setMipFilter(Texture2D.Filter.NONE);
-            texture.setWrapMode(Texture2D.WrapMode.CLAMP_TO_EDGE, Texture2D.WrapMode.CLAMP_TO_EDGE, Texture2D.WrapMode.CLAMP_TO_EDGE);
-            texture.image = image;
-            textures[i] = texture;
-        }
-    }
-
-    private _bindRealTimeJointTexture (idx: number, descriptorSet: DescriptorSet): void {
-        if (!this._realTimeTextureMode) return;
-        const jointTexture = this._realTimeJointTexture._textures[idx];
-        if (jointTexture) {
-            const gfxTexture = jointTexture.getGFXTexture();
-            const sampler = jointTexture.getGFXSampler();
-            descriptorSet.bindTexture(UNIFORM_REALTIME_JOINT_TEXTURE_BINDING, gfxTexture!);
-            descriptorSet.bindSampler(UNIFORM_REALTIME_JOINT_TEXTURE_BINDING, sampler);
-        }
-    }
-
-    private _updateRealTimeJointTextureBuffer (): void {
-        if (!this._realTimeTextureMode) return;
-        const textures = this._realTimeJointTexture._textures;
-        const buffers = this._realTimeJointTexture._buffers;
-        for (let idx = 0; idx < textures.length; idx++) {
-            const arrayBuffer = buffers[idx];
-            const src = this._dataArray[idx];
-            const count = src.length / 12; // mat3x4
-            let idxSrc = 0;
-            let idxDst = 0;
-            for (let i = 0; i < count; i++) {
-                idxDst = 4 * i;
-                arrayBuffer[idxDst++] = src[idxSrc++];
-                arrayBuffer[idxDst++] = src[idxSrc++];
-                arrayBuffer[idxDst++] = src[idxSrc++];
-                arrayBuffer[idxDst++] = src[idxSrc++];
-                idxDst = 4 * (i + RealTimeJointTexture.WIDTH);
-                arrayBuffer[idxDst++] = src[idxSrc++];
-                arrayBuffer[idxDst++] = src[idxSrc++];
-                arrayBuffer[idxDst++] = src[idxSrc++];
-                arrayBuffer[idxDst++] = src[idxSrc++];
-                idxDst = 4 * (i + 2 * RealTimeJointTexture.WIDTH);
-                arrayBuffer[idxDst++] = src[idxSrc++];
-                arrayBuffer[idxDst++] = src[idxSrc++];
-                arrayBuffer[idxDst++] = src[idxSrc++];
-                arrayBuffer[idxDst++] = src[idxSrc++];
-            }
-            const pixelFormat = this._realTimeJointTexture._format;
-            const updateView = pixelFormat === PixelFormat.RGBA32F ? arrayBuffer : new Uint8Array(arrayBuffer.buffer);
-            textures[idx].uploadData(updateView);
+            this._remoteJointTransformStorage = new TextureStorage(this._dataArray.length);
         }
     }
 }

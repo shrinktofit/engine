@@ -24,10 +24,11 @@
 
 import { Pass } from '../render-scene';
 import { SubModel } from '../render-scene/scene';
-import { UNIFORM_LIGHTMAP_TEXTURE_BINDING, UNIFORM_REFLECTION_PROBE_BLEND_CUBEMAP_BINDING, UNIFORM_REFLECTION_PROBE_CUBEMAP_BINDING,
+import { UNIFORM_JOINT_TEXTURE_BINDING, UNIFORM_LIGHTMAP_TEXTURE_BINDING, UNIFORM_REFLECTION_PROBE_BLEND_CUBEMAP_BINDING, UNIFORM_REFLECTION_PROBE_CUBEMAP_BINDING,
     UNIFORM_REFLECTION_PROBE_TEXTURE_BINDING } from './define';
 import { BufferUsageBit, MemoryUsageBit, Device, Texture, InputAssembler, InputAssemblerInfo,
     Attribute, Buffer, BufferInfo, CommandBuffer, Shader, DescriptorSet  } from '../gfx';
+import { todoCommitInstancesJointTexture } from '../3d/models/instanced-skinning-model';
 
 export interface IInstancedItem {
     count: number;
@@ -43,6 +44,7 @@ export interface IInstancedItem {
     reflectionProbePlanarMap: Texture;
     useReflectionProbeType: number;
     reflectionProbeBlendCubemap: Texture;
+    jointTexture?: Texture;
 }
 
 const INITIAL_CAPACITY = 32;
@@ -79,6 +81,7 @@ export class InstancedBuffer {
         const reflectionProbePlanarMap = subModel.descriptorSet.getTexture(UNIFORM_REFLECTION_PROBE_TEXTURE_BINDING);
         const reflectionProbeBlendCubemap = subModel.descriptorSet.getTexture(UNIFORM_REFLECTION_PROBE_BLEND_CUBEMAP_BINDING);
         const useReflectionProbeType = subModel.useReflectionProbeType;
+        const jointTexture = subModel.descriptorSet.getTexture(UNIFORM_JOINT_TEXTURE_BINDING) as Texture | undefined;
         let shader = shaderImplant;
         if (!shader) {
             shader = subModel.shaders[passIdx];
@@ -103,6 +106,9 @@ export class InstancedBuffer {
                 continue;
             }
             if (instance.reflectionProbeBlendCubemap.objectID !== reflectionProbeBlendCubemap.objectID) {
+                continue;
+            }
+            if (instance.jointTexture?.objectID !== jointTexture?.objectID) {
                 continue;
             }
 
@@ -149,11 +155,32 @@ export class InstancedBuffer {
         const iaInfo = new InputAssemblerInfo(attributes, vertexBuffers, indexBuffer);
         const ia = this._device.createInputAssembler(iaInfo);
         // eslint-disable-next-line max-len
-        this.instances.push({ count: 1, capacity: INITIAL_CAPACITY, vb, data, ia, stride, shader, descriptorSet, lightingMap, reflectionProbeCubemap, reflectionProbePlanarMap, useReflectionProbeType, reflectionProbeBlendCubemap });
+        this.instances.push({
+            count: 1,
+            capacity: INITIAL_CAPACITY,
+            vb,
+            data,
+            ia,
+            stride,
+            shader,
+            descriptorSet,
+            lightingMap,
+            reflectionProbeCubemap,
+            reflectionProbePlanarMap,
+            useReflectionProbeType,
+            reflectionProbeBlendCubemap,
+            jointTexture,
+        });
         this.hasPendingModels = true;
     }
 
     public uploadBuffers (cmdBuff: CommandBuffer): void {
+        if (this.instances.length > 0) {
+            const jointTexture = this.instances[0].jointTexture;
+            if (jointTexture) {
+                todoCommitInstancesJointTexture(jointTexture);
+            }
+        }
         for (let i = 0; i < this.instances.length; ++i) {
             const instance = this.instances[i];
             if (!instance.count) { continue; }

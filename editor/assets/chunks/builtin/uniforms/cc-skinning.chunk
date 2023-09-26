@@ -2,6 +2,15 @@
 
 #pragma extension([GL_EXT_shader_explicit_arithmetic_types_int32, __VERSION__ > 310, require])
 
+#pragma define-meta CC_SKINNING_INSTANCE_STRIDE_IN_FLOAT_VEC4
+
+#if __VERSION__ >= 300
+#   define CC_JOINT_DATA_OFFSET (CC_SKINNING_INSTANCE_STRIDE_IN_FLOAT_VEC4 * gl_InstanceID)
+#   define CC_FEATURE_TEST_INSTANCED_SKINNING 1
+#else
+#   define CC_JOINT_DATA_OFFSET 0
+#endif
+
 #if CC_USE_BAKED_ANIMATION
   #pragma builtin(local)
   layout(set = 2, binding = 3) uniform CCSkinningTexture {
