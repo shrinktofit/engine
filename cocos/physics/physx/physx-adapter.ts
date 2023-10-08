@@ -45,6 +45,7 @@ import { Node } from '../../scene-graph';
 import { Director, director, game } from '../../game';
 import { degreesToRadians } from '../../core/utils/misc';
 import { PhysXCharacterController } from './character-controllers/physx-character-controller';
+import { initializePvd, initializeScenePvd, SUPPORT_PX_PVD } from './pvd/pvd';
 
 export let PX = {} as any;
 const globalThis = cclegacy._global;
@@ -67,11 +68,20 @@ export function InitPhysXLibs (): Promise<void> {
             resolve();
         });
     } else {
-        return ensureWasmModuleReady().then(() => Promise.all([
-            import('external:emscripten/physx/physx.release.wasm.js'),
-            import('external:emscripten/physx/physx.release.wasm.wasm'),
-            import('external:emscripten/physx/physx.release.asm.js'),
-        ]).then(([
+        return ensureWasmModuleReady().then(() => Promise.all(
+            SUPPORT_PX_PVD
+                ? [
+                    import('external:emscripten/physx/physx.debug.wasm.js'),
+                    import('external:emscripten/physx/physx.debug.wasm.wasm'),
+                    // Only support PVD in WASM build,
+                    // since debugging asm.js build is too large to be processed by scripting system.
+                    Promise.resolve((): Promise<any> => Promise.reject(new Error('PVD is only supported on platforms supporting WebAssembly.'))),
+                ] : [
+                    import('external:emscripten/physx/physx.release.wasm.js'),
+                    import('external:emscripten/physx/physx.release.wasm.wasm'),
+                    import('external:emscripten/physx/physx.release.asm.js'),
+                ],
+        ).then(([
             { default: physxWasmFactory },
             { default: physxWasmUrl },
             { default: physxAsmFactory },
@@ -811,7 +821,10 @@ export function initializeWorld (world: any): void {
             const allocator = new PX.PxDefaultAllocator();
             const defaultErrorCallback = new PX.PxDefaultErrorCallback();
             const foundation = PhysXInstance.foundation = PX.PxCreateFoundation(version, allocator, defaultErrorCallback);
-            PhysXInstance.pvd = null;
+            const pvd = SUPPORT_PX_PVD
+                ? initializePvd(PX, foundation)
+                : null;
+            PhysXInstance.pvd = pvd;
             const scale = new PX.PxTolerancesScale();
             PhysXInstance.physics = PX.physics = PX.PxCreatePhysics(version, foundation, scale, false, PhysXInstance.pvd);
             PhysXInstance.cooking = PX.PxCreateCooking(version, foundation, new PX.PxCookingParams(scale));
@@ -831,6 +844,9 @@ export function initializeWorld (world: any): void {
         world.scene = PhysXInstance.physics.createScene(sceneDesc);
         world.scene.setVisualizationParameter(PX.PxVisualizationParameter.eSCALE, 1);
         world.controllerManager = PX.PxCreateControllerManager(world.scene, false);
+        if (SUPPORT_PX_PVD) {
+            initializeScenePvd(PX, world.scene);
+        }
     }
 }
 

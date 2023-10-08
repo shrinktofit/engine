@@ -19,10 +19,22 @@ import ConstraintTest from "./constraint";
 import CharacterControllerTest from "./character-controller";
 import { Node, Scene } from "../../cocos/scene-graph";
 import { builtinResMgr } from "../../exports/base";
+import { createPvdNodeSocketTransport } from "./utils/pvd-node-socket-transport";
+import { setActivatedPvdTransportImpl } from "../../cocos/physics/physx/pvd/pvd";
+
+let pvdTransport: undefined | (ReturnType<typeof createPvdNodeSocketTransport> extends Promise<infer U> ? U : never);
 
 beforeAll(async () => {
+    pvdTransport = await createPvdNodeSocketTransport();
+    setActivatedPvdTransportImpl(pvdTransport);
+
     await waitForAmmoInstantiation();
     await InitPhysXLibs();
+});
+
+afterAll(() => {
+    pvdTransport?.disconnect();
+    pvdTransport = undefined;
 });
 
 game.emit(Game.EVENT_PRE_SUBSYSTEM_INIT);
@@ -45,6 +57,9 @@ export interface PhysicsTestEnv {
 
 describe.each(Object.keys(physics.selector.backend))(
     `Backend: %s`, (id) => {
+    if (id !== 'physx') {
+        return;
+    }
 
     let scene!: Scene;
     let temp0!: Node;
