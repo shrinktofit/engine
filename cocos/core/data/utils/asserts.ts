@@ -55,3 +55,10 @@ export function assertIsTrue (expr: unknown, message?: string): asserts expr {
 export function assertsArrayIndex<T> (array: T[], index: number): void {
     assertIsTrue(index >= 0 && index < array.length, `Array index ${index} out of bounds: [0, ${array.length})`);
 }
+
+export function assertsUnreachable (): never {
+    if (DEBUG) {
+        throw new Error('Here should be unreachable!');
+    }
+    return undefined as never;
+}

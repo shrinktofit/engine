@@ -20,6 +20,10 @@ module.exports = {
                         displayName: 'Spinning Friction',
                         tooltip: 'Spinning Friction coefficient. Note this property is only supported on Bullet backend.',
                     },
+                    'frictionCombineMode': {
+                        displayName: 'Friction Combine Mode',
+                        tooltip: '',
+                    },
                     'restitution': {
                         displayName: 'Restitution',
                         tooltip:
@@ -31,6 +35,10 @@ module.exports = {
                             'A restitution of 1 does not looses any energy after collision, ' +
                             'so it keeps the object bouncing forever(if no other forces were applying), ' +
                             'feels like rubber balls.',
+                    },
+                    'restitutionCombineMode': {
+                        displayName: 'Restitution Combine Mode',
+                        tooltip: '',
                     },
                 },
             },

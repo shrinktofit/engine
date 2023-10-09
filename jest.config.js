@@ -34,5 +34,6 @@ module.exports = {
         CC_DEV: true,
         CC_TEST: true,
         CC_PHYSICS_BUILTIN: true,
-    }
+    },
+    "testTimeout": 15000
 };

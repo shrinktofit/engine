@@ -23,7 +23,7 @@
 */
 
 /* eslint-disable @typescript-eslint/no-unsafe-return */
-import { IVec3Like, Quat, Vec3, geometry } from '../../../core';
+import { IVec3Like, Quat, Vec3, geometry, assertIsTrue, assertsUnreachable } from '../../../core';
 import { Collider, RigidBody, PhysicsMaterial, PhysicsSystem } from '../../framework';
 import { IBaseShape } from '../../spec/i-physics-shape';
 import {
@@ -34,6 +34,8 @@ import { EFilterDataWord3 } from '../physx-enum';
 import { PhysXSharedBody } from '../physx-shared-body';
 import { PhysXWorld } from '../physx-world';
 import { PhysXInstance } from '../physx-instance';
+import { PhysicsMaterialCombineMode } from '../../framework/assets/physics-material';
+import { physXMaterialMap } from '../material-mapping';
 
 export enum EPhysXShapeType {
     SPHERE,
@@ -129,19 +131,20 @@ export class PhysXShape implements IBaseShape {
     }
 
     protected getSharedMaterial (v: PhysicsMaterial | null): any {
-        const v1 = (v == null) ? PhysicsSystem.instance.defaultMaterial : v;
-        if (!PX.CACHE_MAT[v1.id]) {
+        const v1 = v ?? PhysicsSystem.instance.defaultMaterial;
+        const { id, friction, restitution } = v1;
+        let mat = physXMaterialMap.get(id);
+        if (!mat) {
             const physics = PhysXInstance.physics;
-            const mat = physics.createMaterial(v1.friction, v1.friction, v1.restitution);
-            mat.setFrictionCombineMode(PX.CombineMode.eMULTIPLY);
-            mat.setRestitutionCombineMode(PX.CombineMode.eMULTIPLY);
-            PX.CACHE_MAT[v1.id] = mat;
-            return mat;
+            mat = physics.createMaterial(friction, friction, restitution);
+            physXMaterialMap.set(id, mat);
+        } else {
+            mat.setStaticFriction(friction);
+            mat.setDynamicFriction(friction);
+            mat.setRestitution(restitution);
         }
-        const mat = PX.CACHE_MAT[v1.id];
-        mat.setStaticFriction(v1.friction);
-        mat.setDynamicFriction(v1.friction);
-        mat.setRestitution(v1.restitution);
+        mat.setFrictionCombineMode(toPhysXCombineMode(v1.frictionCombineMode));
+        mat.setRestitutionCombineMode(toPhysXCombineMode(v1.restitutionCombineMode));
         return mat;
     }
 
@@ -246,5 +249,15 @@ export class PhysXShape implements IBaseShape {
     // virtual
     removeFromBody (): void {
         this._sharedBody.removeShape(this);
+    }
+}
+
+function toPhysXCombineMode (combineMode: PhysicsMaterialCombineMode): unknown {
+    switch (combineMode) {
+    case PhysicsMaterialCombineMode.AVERAGE: return PX.CombineMode.eAVERAGE;
+    case PhysicsMaterialCombineMode.MIN: return PX.CombineMode.eMIN;
+    case PhysicsMaterialCombineMode.MAX: return PX.CombineMode.eMAX;
+    case PhysicsMaterialCombineMode.MULTIPLY: return PX.CombineMode.eMULTIPLY;
+    default: return assertsUnreachable();
     }
 }

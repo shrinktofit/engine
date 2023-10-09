@@ -26,7 +26,49 @@
 
 import { ccclass, editable, help, menu, range, serializable, type } from 'cc.decorator';
 import { Asset } from '../../../asset/assets/asset';
-import { CCFloat, math } from '../../../core';
+import { ccenum, CCFloat, math } from '../../../core';
+
+/**
+ * @zh
+ * 当两种物理材质相互作用时，物理属性的结合模式。
+ * @en
+ * TODO:
+ */
+export enum PhysicsMaterialCombineMode {
+    /**
+     * @zh
+     * 使用较大的材质值。
+     * @en
+     * TODO:
+     */
+    MAX,
+
+    /**
+     * @zh
+     * 使用两种材质值的乘积。
+     * @en
+     * TODO:
+     */
+    MULTIPLY,
+
+        /**
+     * @zh
+     * 使用较小的材质值。
+     * @en
+     * TODO:
+     */
+    MIN,
+
+    /**
+     * @zh
+     * 使用两种材质值的均值。
+     * @en
+     * TODO:
+     */
+    AVERAGE,
+}
+
+ccenum(PhysicsMaterialCombineMode);
 
 /**
  * @en
@@ -68,6 +110,19 @@ export class PhysicsMaterial extends Asset {
     set friction (value) {
         if (!math.equals(this._friction, value)) {
             this._friction = value;
+            this.emit(PhysicsMaterial.EVENT_UPDATE);
+        }
+    }
+
+    @editable
+    @type(PhysicsMaterialCombineMode)
+    get frictionCombineMode (): PhysicsMaterialCombineMode {
+        return this._frictionCombineMode;
+    }
+
+    set frictionCombineMode (value) {
+        if (this._frictionCombineMode !== value) {
+            this._frictionCombineMode = value;
             this.emit(PhysicsMaterial.EVENT_UPDATE);
         }
     }
@@ -130,11 +185,27 @@ export class PhysicsMaterial extends Asset {
         }
     }
 
+    @editable
+    @type(PhysicsMaterialCombineMode)
+    get restitutionCombineMode (): PhysicsMaterialCombineMode {
+        return this._restitutionCombineMode;
+    }
+
+    set restitutionCombineMode (value) {
+        if (this._restitutionCombineMode !== value) {
+            this._restitutionCombineMode = value;
+            this.emit(PhysicsMaterial.EVENT_UPDATE);
+        }
+    }
+
     readonly id: number;
     private static _idCounter = 0;
 
     @serializable
     private _friction = 0.6;
+
+    @serializable
+    private _frictionCombineMode = PhysicsMaterialCombineMode.MULTIPLY;
 
     @serializable
     private _rollingFriction = 0.0;
@@ -144,6 +215,9 @@ export class PhysicsMaterial extends Asset {
 
     @serializable
     private _restitution = 0.0;
+
+    @serializable
+    private _restitutionCombineMode = PhysicsMaterialCombineMode.MULTIPLY;
 
     constructor () {
         super();
@@ -160,10 +234,14 @@ export class PhysicsMaterial extends Asset {
      */
     public clone (): PhysicsMaterial {
         const c = new PhysicsMaterial();
-        c._friction = this._friction;
-        c._restitution = this._restitution;
-        c._rollingFriction = this._rollingFriction;
-        c._spinningFriction = this._spinningFriction;
+        ({
+            _friction: c._friction,
+            _frictionCombineMode: c._frictionCombineMode,
+            _restitution: c._restitution,
+            _restitutionCombineMode: c._restitutionCombineMode,
+            _rollingFriction: c._rollingFriction,
+            _spinningFriction: c._spinningFriction,
+        } = this);
         return c;
     }
 

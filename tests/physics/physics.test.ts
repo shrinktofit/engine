@@ -19,6 +19,7 @@ import ConstraintTest from "./constraint";
 import CharacterControllerTest from "./character-controller";
 import { Node, Scene } from "../../cocos/scene-graph";
 import { builtinResMgr } from "../../exports/base";
+import physicsMaterialTest from "./physics-material";
 import { createPvdNodeSocketTransport } from "./utils/pvd-node-socket-transport";
 import { setActivatedPvdTransportImpl } from "../../cocos/physics/physx/pvd/pvd";
 
@@ -113,4 +114,6 @@ describe.each(Object.keys(physics.selector.backend))(
     ConstraintTest(env);
 
     CharacterControllerTest(env);
+
+    physicsMaterialTest(env);
 });
