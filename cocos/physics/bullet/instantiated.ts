@@ -140,9 +140,9 @@ function shouldUseWasmModule (): boolean {
 export function waitForAmmoInstantiation (): Promise<void> {
     const errorReport = (msg: any): void => { error(msg); };
     return ensureWasmModuleReady().then(() => Promise.all([
-        import('external:emscripten/bullet/bullet.release.wasm.js'),
-        import('external:emscripten/bullet/bullet.release.wasm.wasm'),
-        import('external:emscripten/bullet/bullet.release.asm.js'),
+        import('external:emscripten/bullet/bullet.debug.wasm.js'),
+        import('external:emscripten/bullet/bullet.debug.wasm.wasm'),
+        import('external:emscripten/bullet/bullet.debug.asm.js'),
     ]).then(([
         { default: bulletWasmFactory },
         { default: bulletWasmUrl },
