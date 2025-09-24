@@ -29,6 +29,9 @@ import { getTempTransform, PX, _trans } from '../physx-adapter';
 import { PhysXInstance } from '../physx-instance';
 import { EPhysXShapeType, PhysXShape } from './physx-shape';
 
+const quatCache_1 = new Quat();
+const v3Cache_1 = new Vec3();
+
 /** @mangle */
 export class PhysXPlaneShape extends PhysXShape implements IPlaneShape {
     static PLANE_GEOMETRY: any;
@@ -41,21 +44,13 @@ export class PhysXPlaneShape extends PhysXShape implements IPlaneShape {
     }
 
     setNormal (v: IVec3Like): void {
-        this.setCenter();
+        const rotation = Quat.rotationTo(quatCache_1, Vec3.UNIT_X, v);
+        this.setShapeRotation(rotation);
+        this.setShapeExtraTranslation(Vec3.multiplyScalar(v3Cache_1, v, this.collider.constant));
     }
 
     setConstant (v: number): void {
-        this.setCenter();
-    }
-
-    setCenter (): void {
-        const co = this.collider;
-        const pos = _trans.translation;
-        const rot = _trans.rotation;
-        Vec3.scaleAndAdd(pos, co.center, co.normal, co.constant);
-        Quat.rotationTo(rot, Vec3.UNIT_X, co.normal);
-        const trans = getTempTransform(pos, rot);
-        this._impl.setLocalPose(trans);
+        this.setShapeExtraTranslation(Vec3.multiplyScalar(v3Cache_1, this.collider.normal, v));
     }
 
     get collider (): PlaneCollider {
@@ -66,10 +61,8 @@ export class PhysXPlaneShape extends PhysXShape implements IPlaneShape {
         const co = this.collider;
         const pxmat = this.getSharedMaterial(co.sharedMaterial);
         this._impl = PhysXInstance.physics.createShape(PhysXPlaneShape.PLANE_GEOMETRY, pxmat, true, this._flags);
-        this.setCenter();
     }
 
     updateScale (): void {
-        this.setCenter();
     }
 }

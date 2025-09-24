@@ -62,16 +62,6 @@ export class PhysXTerrainShape extends PhysXShape implements ITerrainShape {
         this.setTerrain(this.collider.terrain);
     }
 
-    updateScale (): void {
-        this.setCenter(this._collider.center);
-    }
-
-    /* override */
-
-    setCenter (v: IVec3Like): void {
-        if (this._impl) this._impl.setLocalPose(getTempTransform(v, this._rotation));
-    }
-
     setMaterial (v: PhysicsMaterial | null): void {
         if (this._impl) super.setMaterial(v);
     }

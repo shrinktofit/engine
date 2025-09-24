@@ -58,12 +58,11 @@ export class PhysXBoxShape extends PhysXShape implements IBoxShape {
     updateScale (): void {
         this.updateGeometry();
         this._impl.setGeometry(PhysXBoxShape.BOX_GEOMETRY);
-        this.setCenter(this._collider.center);
     }
 
     updateGeometry (): void {
         const co = this.collider;
-        const ws = co.node.worldScale;
+        const ws = this.worldScale;
         VEC3_0.set(co.size).multiplyScalar(0.5).multiply(ws);
         PhysXBoxShape.BOX_GEOMETRY.setHalfExtents(absolute(VEC3_0));
     }

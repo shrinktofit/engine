@@ -57,12 +57,11 @@ export class PhysXSphereShape extends PhysXShape implements ISphereShape {
     updateScale (): void {
         this.updateGeometry();
         this._impl.setGeometry(PhysXSphereShape.SPHERE_GEOMETRY);
-        this.setCenter(this._collider.center);
     }
 
     updateGeometry (): void {
         const co = this.collider;
-        const maxSp = Math.abs(absMaxComponent(this.collider.node.worldScale));
+        const maxSp = Math.abs(absMaxComponent(this.worldScale));
         PhysXSphereShape.SPHERE_GEOMETRY.setRadius(Math.max(0.0001, co.radius * maxSp));
     }
 }

@@ -65,12 +65,11 @@ export class PhysXCapsuleShape extends PhysXShape implements ICapsuleShape {
     updateScale (): void {
         this.updateGeometry();
         this._impl.setGeometry(PhysXCapsuleShape.CAPSULE_GEOMETRY);
-        this.setCenter(this._collider.center);
     }
 
     updateGeometry (): void {
         const co = this.collider;
-        const ws = co.node.worldScale;
+        const ws = this.worldScale;
         const upAxis = co.direction;
         let r = 0.5; let hf = 0.5;
         if (upAxis === EAxisDirection.Y_AXIS) {

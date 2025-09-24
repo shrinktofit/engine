@@ -23,7 +23,7 @@
  THE SOFTWARE.
 */
 
-import { ccclass, tooltip, displayOrder, displayName, readOnly, type, serializable } from 'cc.decorator';
+import { ccclass, tooltip, displayOrder, displayName, readOnly, type, serializable, editable } from 'cc.decorator';
 import { EDITOR } from 'internal:constants';
 import { Eventify, Vec3, error, geometry } from '../../../../core';
 import { CharacterTriggerEventType, CollisionEventType, TriggerEventType } from '../../physics-interface';
@@ -74,8 +74,21 @@ export class Collider extends Eventify(Component) {
     @displayOrder(-2)
     @tooltip('i18n:physics3d.collider.attached')
     public get attachedRigidBody (): RigidBody | null {
-        return findAttachedBody(this.node);
-        // return this._attachedRigidBody;
+        if (!this._attachedRigidBodyDecided) {
+            this._attachedRigidBody = this._recursiveSearchForRigidBody ? findAttachedBodyRecursive(this.node) : findAttachedBody(this.node);
+            this._attachedRigidBodyDecided = true;
+        }
+        return this._attachedRigidBody;
+    }
+
+    @editable
+    public get recursiveSearchForRigidBody (): boolean {
+        return this._recursiveSearchForRigidBody;
+    }
+
+    public set recursiveSearchForRigidBody (value: boolean) {
+        this._recursiveSearchForRigidBody = value;
+        this._attachedRigidBodyDecided = false;
     }
 
     /**
@@ -217,7 +230,11 @@ export class Collider extends Eventify(Component) {
     protected _isSharedMaterial = true;
     protected _needTriggerEvent = false;
     protected _needCollisionEvent = false;
-    // protected _attachedRigidBody: RigidBody | null = null;
+    protected _attachedRigidBody: RigidBody | null = null;
+    protected _attachedRigidBodyDecided = false;
+
+    @serializable
+    private _recursiveSearchForRigidBody = false;
 
     @type(PhysicsMaterial)
     protected _material: PhysicsMaterial | null = null;
@@ -490,11 +507,20 @@ export namespace Collider {
 }
 
 function findAttachedBody (node: Node): RigidBody | null {
-    const rb = node.getComponent(RigidBody);
-    if (rb && rb.isValid) {
-        return rb;
+    const rigidBody = node.getComponent(RigidBody);
+    if (rigidBody && rigidBody.isValid) {
+        return rigidBody;
     }
     return null;
-    // if (node.parent == null || node.parent == node.scene) return null;
-    // return findAttachedBody(node.parent);
+}
+
+function findAttachedBodyRecursive (node: Node): RigidBody | null {
+    const rigidBody = node.getComponent(RigidBody);
+    if (rigidBody && rigidBody.isValid) {
+        return rigidBody;
+    }
+    if (!node.parent || node.parent === node.scene) {
+        return null;
+    }
+    return findAttachedBodyRecursive(node.parent);
 }

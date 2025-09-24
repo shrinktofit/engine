@@ -75,7 +75,6 @@ export class PhysXConeShape extends PhysXShape implements IConeShape {
 
     updateScale (): void {
         this.updateGeometry();
-        this.setCenter(this._collider.center);
     }
 
     updateGeometry (): void {
@@ -84,7 +83,7 @@ export class PhysXConeShape extends PhysXShape implements IConeShape {
         const h = collider.height;
         const a = collider.direction;
         const scale = _trans.translation;
-        Vec3.copy(scale, collider.node.worldScale);
+        Vec3.copy(scale, this.worldScale);
         scale.y *= Math.max(0.0001, h / 1);
         const radius = Math.max(0.0001, r / 0.5);
         const xzMaxNorm = Math.max(scale.x, scale.z);

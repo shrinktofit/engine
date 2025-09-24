@@ -292,6 +292,15 @@ export class PhysXSharedBody {
                 this.impl.setGlobalPose(trans, true);
             }
         }
+        for (const shape of this.wrappedShapes) {
+            if (shape.collider.node === node) {
+                continue;
+            }
+            if (!node.hasChangedFlags && !shape.collider.node.hasChangedFlags) {
+                continue;
+            }
+            shape.updateColliderTransform();
+        }
     }
 
     syncSceneWithCheck (): void {

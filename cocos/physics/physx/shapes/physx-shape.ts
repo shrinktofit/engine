@@ -23,7 +23,7 @@
 */
 
 /* eslint-disable @typescript-eslint/no-unsafe-return */
-import { IVec3Like, Quat, Vec3, geometry } from '../../../core';
+import { IVec3Like, Mat4, Quat, Vec3, geometry } from '../../../core';
 import { Collider, RigidBody, PhysicsMaterial, PhysicsSystem } from '../../framework';
 import { IBaseShape } from '../../spec/i-physics-shape';
 import {
@@ -80,8 +80,10 @@ export class PhysXShape implements IBaseShape {
     initialize (v: Collider): void {
         this._collider = v;
         this._flags = getShapeFlags(v.isTrigger);
-        this._sharedBody = (PhysicsSystem.instance.physicsWorld as PhysXWorld).getSharedBody(v.node);
+        this._sharedBody = (PhysicsSystem.instance.physicsWorld as PhysXWorld).getSharedBody(v.attachedRigidBody?.node ?? v.node);
         this._sharedBody.reference = true;
+        Vec3.copy(this._shapeLocalTransform.position, this._collider.center);
+        this._updateLocalTransform();
         this.onComponentSet();
         addReference(this, this._impl);
     }
@@ -161,12 +163,12 @@ export class PhysXShape implements IBaseShape {
     }
 
     setCenter (v: IVec3Like): void {
-        const pos = _trans.translation;
-        const rot = _trans.rotation;
-        Vec3.multiply(pos, v, this._collider.node.worldScale);
-        Quat.copy(rot, this._rotation);
-        const trans = getTempTransform(pos, rot);
-        this._impl.setLocalPose(trans);
+        Vec3.copy(this._shapeLocalTransform.position, v);
+        this._updateLocalTransform();
+    }
+
+    updateColliderTransform (): void {
+        this._updateLocalTransform();
     }
 
     getAABB (v: geometry.AABB): void {
@@ -248,4 +250,81 @@ export class PhysXShape implements IBaseShape {
     removeFromBody (): void {
         this._sharedBody.removeShape(this);
     }
+
+    protected get worldScale (): Readonly<Vec3> {
+        return this._worldScale;
+    }
+
+    protected setShapeRotation (rotation: Quat): void {
+        Quat.copy(this._shapeLocalTransform.rotation, rotation);
+        this._updateLocalTransform();
+    }
+
+    protected setShapeExtraTranslation (v: IVec3Like): void {
+        Vec3.copy(this._shapeLocalTransform.extraTranslation, v);
+        this._updateLocalTransform();
+    }
+
+    private _worldScale = new Vec3(Vec3.ONE);
+
+    private _shapeLocalTransform: ShapeTransform = {
+        position: new Vec3(),
+        extraTranslation: new Vec3(),
+        rotation: new Quat(),
+    };
+
+    private _updateLocalTransform (): void {
+        let iVec3Cache = 0;
+
+        const colliderNode = this._collider.node;
+        const actorNode = this._collider.attachedRigidBody?.node ?? colliderNode;
+
+        // WorldMatrix of final shape:
+        //   W_shape = (T_actor_w * R_actor_w * S_actor_w) * (T_0 * R_0 * S_0) * (T_1 * R_1 * S_1) * ... * (T * R * S) * (T_shape * R_shape)
+        // We want:
+        //   W_shape = (T_actor_w * R_actor_w) * (T_x * R_x * S_x)
+        // So:
+        //   (T_x * R_x * S_x) = (S_actor_w) * (T_0 * R_0 * S_0) * (T_1 * R_1 * S_1) * ... * (T * R * S) * (T_shape * R_shape)
+        //                     = inv(T_actor_w * R_actor_w) * (T_actor_w * R_actor_w * S_actor_w) * (T_0 * R_0 * S_0) * (T_1 * R_1 * S_1) * ... * (T * R * S) * (T_shape * R_shape)
+        //                     = inv(T_actor_w * R_actor_w) * W_collider * (T_shape * R_shape)
+
+        const shapeTransform = this._shapeLocalTransform;
+        const shapeWorldMatrix = Mat4.fromSRT(mat4Cache_1, shapeTransform.rotation, Vec3.add(
+            v3Caches[iVec3Cache++],
+            shapeTransform.position,
+            shapeTransform.extraTranslation,
+        ), Vec3.ONE);
+        Mat4.multiply(shapeWorldMatrix, colliderNode.worldMatrix, shapeWorldMatrix);
+        const inverseActorTR = Mat4.fromSRT(mat4Cache_3, actorNode.worldRotation, actorNode.worldPosition, Vec3.ONE);
+        Mat4.invert(inverseActorTR, inverseActorTR);
+        Mat4.multiply(shapeWorldMatrix, inverseActorTR, shapeWorldMatrix);
+
+        const position = v3Caches[iVec3Cache++];
+        const scale = v3Caches[iVec3Cache++];
+        const rotation = quatCache_1;
+        Mat4.toSRT(shapeWorldMatrix, rotation, position, scale);
+        const pxLocalTransform = pxTransformCache_1;
+        Vec3.copy(pxLocalTransform.translation, position);
+        Quat.copy(pxLocalTransform.rotation, rotation);
+        Vec3.copy(this._worldScale, scale);
+        if (this._impl) {
+            this._impl.setLocalPose(pxLocalTransform);
+        }
+    }
 }
+
+interface ShapeTransform {
+    position: Vec3;
+    extraTranslation: Vec3;
+    rotation: Quat;
+}
+
+const mat4Cache_1 = new Mat4();
+const mat4Cache_2 = new Mat4();
+const mat4Cache_3 = new Mat4();
+const v3Caches = Array.from({ length: 3 }, () => new Vec3());
+const quatCache_1 = new Quat();
+const pxTransformCache_1 = {
+    translation: { x: 0, y: 0, z: 0 },
+    rotation: { x: 0, y: 0, z: 0, w: 1 },
+};

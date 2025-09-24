@@ -94,12 +94,11 @@ export class PhysXTrimeshShape extends PhysXShape implements ITrimeshShape {
 
     updateScale (): void {
         this.updateGeometry();
-        this.setCenter(this._collider.center);
     }
 
     updateGeometry (): void {
         const meshScale = PhysXShape.MESH_SCALE;
-        meshScale.setScale(this.collider.node.worldScale);
+        meshScale.setScale(this.worldScale);
         meshScale.setRotation(Quat.IDENTITY);
         this.geometry.setScale(meshScale);
     }
@@ -108,10 +107,6 @@ export class PhysXTrimeshShape extends PhysXShape implements ITrimeshShape {
 
     setMaterial (v: PhysicsMaterial | null): void {
         if (this._impl) super.setMaterial(v);
-    }
-
-    setCenter (v: IVec3Like): void {
-        if (this._impl) super.setCenter(v);
     }
 
     setAsTrigger (v: boolean): void {
