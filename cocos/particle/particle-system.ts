@@ -28,7 +28,7 @@ import { EDITOR, EDITOR_NOT_IN_PREVIEW } from 'internal:constants';
 import { Renderer } from '../misc/renderer';
 import { ModelRenderer } from '../misc/model-renderer';
 import { Material } from '../asset/assets/material';
-import { Mat4, pseudoRandom, Quat, randomRangeInt, Vec2, Vec3, CCBoolean, CCFloat, bits, geometry, cclegacy, warn } from '../core';
+import { Mat4, pseudoRandom, Quat, randomRangeInt, Vec2, Vec3, CCBoolean, CCFloat, bits, geometry, cclegacy, warn, math } from '../core';
 import { scene } from '../render-scene';
 import ColorOverLifetimeModule from './animator/color-overtime';
 import CurveRange, { Mode } from './animator/curve-range';
@@ -249,6 +249,15 @@ export class ParticleSystem extends ModelRenderer {
     @displayOrder(2)
     @tooltip('i18n:particle_system.loop')
     public loop = true;
+
+    /**
+     * @en Whether the particle system is looping.
+     * @zh 粒子系统是否循环播放。
+     */
+    @serializable
+    @displayOrder(2)
+    @tooltip('i18n:particle_system.alignToVel')
+    public alignToVel = true;
 
     /**
      * @en Play one round before start this particle system.
@@ -1392,6 +1401,13 @@ export class ParticleSystem extends ModelRenderer {
             } else {
                 particle.startEuler.set(0, 0, self.startRotationZ.evaluate(loopDelta, rand));
             }
+
+            if (this.alignToVel) {
+                // vel direction to euler angle
+                const rot = Quat.toEuler(new Vec3(), Quat.fromViewUp(new Quat(), particle.velocity, Vec3.UNIT_Y));
+                particle.startEuler.set(math.toRadian(rot.x), math.toRadian(rot.y), math.toRadian(rot.z));
+            }
+
             particle.rotation.set(particle.startEuler);
 
             // apply startSize.

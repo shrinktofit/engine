@@ -509,7 +509,7 @@ export class Mesh extends Asset {
                     if (dstStride === 4 && !gfxDevice.hasFeature(Feature.ELEMENT_INDEX_UINT)) {
                         const vertexCount = this._struct.vertexBundles[prim.vertexBundelIndices[0]].view.count;
                         if (vertexCount >= 65536) {
-                            warnID(10001, vertexCount, 65536);
+                            warnID(10001, `${this.name}-${this.uuid}-${i}`, vertexCount, 65536);
                             continue; // Ignore this primitive
                         } else {
                             dstStride >>= 1; // Reduce to short.
