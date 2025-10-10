@@ -23,6 +23,7 @@
 */
 
 import { IVec3Like, Vec3 } from '../../core';
+import { Node } from '../../scene-graph';
 import { CharacterController } from './components/character-controllers/character-controller';
 import { Collider } from './components/colliders/collider';
 
@@ -81,6 +82,16 @@ export type TriggerEventType = 'onTriggerEnter' | 'onTriggerStay' | 'onTriggerEx
  * 触发事件的回调函数签名定义。
  */
 export type TriggerCallback = (event?: ITriggerEvent) => void;
+
+export type PhysicsEventMap<TSelf extends Collider | CharacterController> = {
+    [k in CollisionEventType]: (event: ICollisionEvent) => void;
+} & {
+    [k in CollisionEventTypeNew]: (collision: Collision<TSelf>) => void;
+} & {
+    [k in TriggerEventType]: (event: ITriggerEvent) => void;
+} & {
+    [k in CharacterTriggerEventType]: (event: CharacterTriggerEvent) => void;
+};
 
 /**
  * @en
@@ -226,6 +237,111 @@ export interface ICollisionEvent {
     readonly impl: any;
 }
 
+export interface IContactEquation {
+    /**
+     * @en
+     * Gets the lowLevel object, through which all the exposed properties can be accessed.
+     * @zh
+     * 获取实现对象，通过它可以访问到底层暴露的所有属性。
+     */
+    readonly impl: any;
+
+    /**
+     * @en
+     * Gets whether the rigid body bound to the selfCollider is A.
+     * @zh
+     * 获取`selfCollider`所绑定的刚体是否为 A 。
+     */
+    readonly isBodyA: boolean;
+
+    /**
+     * @en
+     * Gets the contact point relative to the rigid body A in the local coordinate system.
+     * @zh
+     * 获取本地坐标系中相对于刚体 A 的碰撞点。
+     * @param out used to storage the output.
+     */
+    getLocalPointOnA (out: IVec3Like): void;
+
+    /**
+     * @en
+     * Gets the contact point relative to the rigid body B in the local coordinate system.
+     * @zh
+     * 获取本地坐标系中相对于刚体 B 的碰撞点。
+     * @param out used to storage the output.
+     */
+    getLocalPointOnB (out: IVec3Like): void;
+
+    /**
+     * @en
+     * Gets the contact point relative to the rigid body A in the world coordinate system.
+     * @zh
+     * 获取世界坐标系中相对于刚体 A 的碰撞点。
+     * @param out used to storage the output.
+     */
+    getWorldPointOnA (out: IVec3Like): void;
+
+    /**
+     * @en
+     * Gets the contact point relative to the rigid body B in the world coordinate system.
+     * @zh
+     * 获取世界坐标系中相对于刚体 B 的碰撞点。
+     * @param out used to storage the output.
+     */
+    getWorldPointOnB (out: IVec3Like): void;
+
+    /**
+     * @en
+     * Gets the contact normal relative to the rigid body A in the local coordinate system.
+     * @zh
+     * 获取本地坐标系中相对于刚体 A 的碰撞法线。
+     * @param out used to storage the output.
+     */
+    getLocalNormalOnA (out: IVec3Like): void;
+
+    /**
+     * @en
+     * Gets the contact normal relative to the rigid body B in the local coordinate system.
+     * @zh
+     * 获取本地坐标系中相对于刚体 B 的碰撞法线。
+     * @param out used to storage the output.
+     */
+    getLocalNormalOnB (out: IVec3Like): void;
+
+    /**
+     * @en
+     * Gets the contact normal relative to the rigid body A in the world coordinate system.
+     * @zh
+     * 获取世界坐标系中相对于刚体 A 的碰撞法线。
+     * @param out used to storage the output.
+     */
+    getWorldNormalOnA (out: IVec3Like): void;
+
+    /**
+     * @en
+     * Gets the contact normal relative to the rigid body B in the world coordinate system.
+     * @zh
+     * 获取世界坐标系中相对于刚体 B 的碰撞法线。
+     * @param out used to storage the output.
+     */
+    getWorldNormalOnB (out: IVec3Like): void;
+}
+
+export interface ContactPoint {
+    readonly position: IVec3Like;
+    readonly normal: IVec3Like;
+    readonly impl: unknown;
+}
+
+export interface Collision<TSelf extends Collider | CharacterController = Collider | CharacterController> {
+    readonly self: TSelf;
+    readonly selfNode: Node;
+    readonly other: Collider | CharacterController;
+    readonly otherNode: Node;
+    readonly contacts: ContactPoint[];
+    readonly impl: unknown;
+}
+
 /**
  * @en
  * Value type definitions for collision events.
@@ -233,6 +349,8 @@ export interface ICollisionEvent {
  * 碰撞事件的值类型定义。
  */
 export type CollisionEventType = 'onCollisionEnter' | 'onCollisionStay' | 'onCollisionExit';
+
+export type CollisionEventTypeNew = 'onCollisionBegin' | 'onCollisionTick' | 'onCollisionEnd';
 
 /**
  * @en
@@ -312,4 +430,9 @@ export class CharacterControllerContact {
      * 移动长度。
      */
     motionLength = 0;
+}
+
+export interface CharacterTriggerEvent {
+    collider: Collider | null;
+    characterController: CharacterController | null;
 }

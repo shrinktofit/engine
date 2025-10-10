@@ -38,12 +38,16 @@ import {
     serializable,
 } from 'cc.decorator';
 import { DEBUG } from 'internal:constants';
-import { Vec3, error, warn } from '../../../core';
+import { Eventify, Vec3, error, warn } from '../../../core';
 import { Component } from '../../../scene-graph';
 import { IRigidBody } from '../../spec/i-rigid-body';
 import { selector, createRigidBody } from '../physics-selector';
 import { ERigidBodyType } from '../physics-enum';
 import { PhysicsSystem } from '../physics-system';
+import { CharacterTriggerEventType, CollisionEventType, CollisionEventTypeNew, PhysicsEventMap, TriggerEventType } from '../physics-interface';
+import { Collider } from './colliders/collider';
+
+type RigidBodyEventType = TriggerEventType | CollisionEventType | CollisionEventTypeNew | CharacterTriggerEventType;
 
 /**
  * @en
@@ -57,7 +61,7 @@ import { PhysicsSystem } from '../physics-system';
 @executeInEditMode
 @disallowMultiple
 @executionOrder(-1)
-export class RigidBody extends Component {
+export class RigidBody extends Eventify(Component) {
     /**
      * @en
      * Enumeration of rigid body types.
@@ -372,6 +376,20 @@ export class RigidBody extends Component {
 
     private _body: IRigidBody | null = null;
 
+    /**
+     * @internal
+     */
+    public get needTriggerEvent_internal (): boolean {
+        return this._needTriggerEvent;
+    }
+
+    /**
+     * @internal
+     */
+    public get needCollisionEvent_internal (): boolean {
+        return this._needCollisionEvent;
+    }
+
     /// PRIVATE PROPERTY ///
 
     @serializable
@@ -401,6 +419,60 @@ export class RigidBody extends Component {
     @serializable
     private _angularFactor: Vec3 = new Vec3(1, 1, 1);
 
+    private _needCollisionEvent = false;
+
+    private _needTriggerEvent = false;
+
+    private _updateNeedEvent (type?: RigidBodyEventType): void {
+        if (!this.isValid) {
+            return;
+        }
+        if (type !== undefined) {
+            switch (type) {
+            default:
+                break;
+            case 'onCollisionEnter':
+            case 'onCollisionStay':
+            case 'onCollisionExit':
+            case 'onCollisionBegin':
+            case 'onCollisionTick':
+            case 'onCollisionEnd':
+                this._needCollisionEvent = true;
+                break;
+            case 'onTriggerEnter':
+            case 'onTriggerStay':
+            case 'onTriggerExit':
+            case 'onControllerTriggerEnter':
+            case 'onControllerTriggerStay':
+            case 'onControllerTriggerExit':
+                this._needTriggerEvent = true;
+                break;
+            }
+        } else {
+            if (!(this.hasEventListener('onTriggerEnter')
+                    || this.hasEventListener('onTriggerStay')
+                    || this.hasEventListener('onTriggerExit')
+                    || this.hasEventListener('onControllerTriggerEnter')
+                    || this.hasEventListener('onControllerTriggerStay')
+                    || this.hasEventListener('onControllerTriggerExit')
+            )) {
+                this._needTriggerEvent = false;
+            }
+            if (!(this.hasEventListener('onCollisionEnter')
+                    || this.hasEventListener('onCollisionStay')
+                    || this.hasEventListener('onCollisionExit'))
+                    || this.hasEventListener('onCollisionBegin')
+                    || this.hasEventListener('onCollisionTick')
+                    || this.hasEventListener('onCollisionEnd')
+            ) {
+                this._needCollisionEvent = false;
+            }
+        }
+        if (this._body) {
+            this._body.sharedBody.updateEventFilters();
+        }
+    }
+
     protected get _isInitialized (): boolean {
         const r = this._body === null;
         if (r) { error('[Physics]: This component has not been call onLoad yet, please make sure the node has been added to the scene.'); }
@@ -425,6 +497,78 @@ export class RigidBody extends Component {
 
     protected onDestroy (): void {
         if (this._body) this._body.onDestroy!();
+    }
+
+    /// EVENT INTERFACE ///
+
+    /**
+     * @en
+     * Registers callbacks associated with triggered or collision events.
+     * @zh
+     * 注册触发或碰撞事件相关的回调。
+     * @param type Event type.
+     * @param callback Event callback.
+     * @param target The event callback target.
+     */
+    public on<TEventType extends RigidBodyEventType, TThis> (
+        type: TEventType,
+        callback: (...args: Parameters<PhysicsEventMap<Collider>[TEventType]>) => void,
+        target?: TThis,
+        once?: boolean,
+    ): any {
+        const ret = super.on(type, callback as ((...args: any[]) => void), target, once);
+        this._updateNeedEvent(type);
+        return ret;
+    }
+
+    /**
+     * @en
+     * Unregisters callbacks associated with trigger or collision events that have been registered.
+     * @zh
+     * 取消已经注册的触发或碰撞事件相关的回调。
+     * @param type Event type.
+     * @param callback Event callback.
+     * @param target The event callback target.
+     */
+    public off<TEventType extends RigidBodyEventType, TThis> (
+        type: TEventType,
+        callback?: (...args: Parameters<PhysicsEventMap<Collider>[TEventType]>) => void,
+        target?: TThis,
+    ): void {
+        super.off(type, callback as ((...args: any[]) => void), target);
+        this._updateNeedEvent(type);
+    }
+
+    /**
+     * @en
+     * Registers a callback associated with a trigger or collision event, which is automatically unregistered once executed.
+     * @zh
+     * 注册触发或碰撞事件相关的回调，执行一次后会自动取消注册。
+     * @param type Event type.
+     * @param callback Event callback.
+     * @param target The event callback target.
+     */
+    public once<TEventType extends RigidBodyEventType, TThis> (
+        type: TEventType,
+        callback: (...args: Parameters<PhysicsEventMap<Collider>[TEventType]>) => void,
+        target?: TThis,
+    ): any {
+        // TODO: callback invoker now is a entity, after `once` will not calling the upper `off`.
+        const ret = super.once(type, callback as ((...args: any[]) => void), target);
+        this._updateNeedEvent(type);
+        return ret;
+    }
+
+    /**
+     * @en
+     * Removes all registered events of the specified target or type.
+     * @zh
+     * 移除所有指定目标或类型的注册事件。
+     * @param typeOrTarget - The event type or target.
+     */
+    public removeAll (typeOrTarget: RigidBodyEventType | Record<string, unknown>): void {
+        super.removeAll(typeOrTarget);
+        this._updateNeedEvent();
     }
 
     /// PUBLIC METHOD ///

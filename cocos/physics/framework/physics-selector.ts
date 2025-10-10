@@ -38,6 +38,7 @@ import { IBoxCharacterController, ICapsuleCharacterController } from '../spec/i-
 import { errorID, IVec3Like, warn, cclegacy, log } from '../../core';
 import { EColliderType, EConstraintType, ECharacterControllerType } from './physics-enum';
 import { PhysicsMaterial } from '.';
+import { ISharedBody } from '../spec/i-shared-body';
 
 // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
 export type IPhysicsEngineId = 'builtin' | 'cannon.js' | 'bullet' | 'physx' | string;
@@ -263,6 +264,7 @@ export function createPhysicsWorld (): IPhysicsWorld {
 const ENTIRE_RIGID_BODY: IRigidBody = {
     impl: null,
     rigidBody: null as unknown as any,
+    sharedBody: undefined as unknown as ISharedBody,
     isAwake: false,
     isSleepy: false,
     isSleeping: false,

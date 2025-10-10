@@ -213,11 +213,11 @@ export class Collider extends Eventify(Component) {
     }
 
     public get needTriggerEvent (): boolean {
-        return this._needTriggerEvent;
+        return this._needTriggerEvent || (this._attachedRigidBody?.needTriggerEvent_internal ?? false);
     }
 
     public get needCollisionEvent (): boolean {
-        return this._needCollisionEvent;
+        return this._needCollisionEvent || (this._attachedRigidBody?.needCollisionEvent_internal ?? false);
     }
 
     readonly type: EColliderType;

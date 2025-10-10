@@ -30,6 +30,7 @@ import { Node } from '../../scene-graph';
 import { BuiltinRigidBody } from './builtin-rigid-body';
 import { PhysicsSystem } from '../framework';
 import { PhysicsGroup } from '../framework/physics-enum';
+import { ISharedBody } from '../spec/i-shared-body';
 
 const m4_0 = new Mat4();
 const v3_0 = new Vec3();
@@ -39,7 +40,7 @@ const quat_0 = new Quat();
 /**
  * Built-in static collider, no physical forces involved
  */
-export class BuiltinSharedBody extends BuiltinObject {
+export class BuiltinSharedBody extends BuiltinObject implements ISharedBody {
     private static readonly sharedBodesMap = new Map<string, BuiltinSharedBody>();
 
     static getSharedBody (node: Node, wrappedWorld: BuiltInWorld, wrappedBody?: BuiltinRigidBody): BuiltinSharedBody {
@@ -163,6 +164,12 @@ export class BuiltinSharedBody extends BuiltinObject {
         v3_1.set(this.node.worldScale);
         for (let i = 0; i < this.shapes.length; i++) {
             this.shapes[i].transform(m4_0, v3_0, quat_0, v3_1);
+        }
+    }
+
+    updateEventFilters (): void {
+        for (let i = 0; i < this.shapes.length; i++) {
+            this.shapes[i].updateEventListener();
         }
     }
 

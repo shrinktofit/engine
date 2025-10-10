@@ -34,6 +34,7 @@ import { EFilterDataWord3 } from '../physx-enum';
 import { PhysXSharedBody } from '../physx-shared-body';
 import { PhysXWorld } from '../physx-world';
 import { PhysXInstance } from '../physx-instance';
+import { PhysXObject } from '../physx-object';
 
 export enum EPhysXShapeType {
     SPHERE,
@@ -47,7 +48,7 @@ export enum EPhysXShapeType {
 }
 
 /** @mangle */
-export class PhysXShape implements IBaseShape {
+export class PhysXShape extends PhysXObject implements IBaseShape {
     private static _MESH_SCALE: any;
     static get MESH_SCALE (): any {
         if (!this._MESH_SCALE) { this._MESH_SCALE = new PX.MeshScale(Vec3.ZERO, Quat.IDENTITY); }
@@ -58,9 +59,6 @@ export class PhysXShape implements IBaseShape {
     get collider (): Collider { return this._collider; }
     get attachedRigidBody (): RigidBody | null { return null; }
 
-    private static idCounter = 0;
-
-    readonly id: number;
     readonly type: EPhysXShapeType;
 
     protected _impl: any = null;
@@ -72,8 +70,8 @@ export class PhysXShape implements IBaseShape {
     protected _isEnabled = false;
 
     constructor (type: EPhysXShapeType) {
+        super();
         this.type = type;
-        this.id = PhysXShape.idCounter++;
     }
 
     initialize (v: Collider): void {

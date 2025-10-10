@@ -36,6 +36,7 @@ import { CannonRigidBody } from './cannon-rigid-body';
 import { commitShapeUpdates } from './cannon-util';
 import { CannonContactEquation } from './cannon-contact-equation';
 import { CannonConstraint } from './constraints/cannon-constraint';
+import { ISharedBody } from '../spec/i-shared-body';
 
 const v3_0 = new Vec3();
 const quat_0 = new Quat();
@@ -52,7 +53,7 @@ const CollisionEventObject = {
   * node : shared-body = 1 : 1
   * static
   */
-export class CannonSharedBody {
+export class CannonSharedBody implements ISharedBody {
     private static readonly sharedBodesMap = new Map<string, CannonSharedBody>();
 
     static getSharedBody (node: Node, wrappedWorld: CannonWorld, wrappedBody?: CannonRigidBody): CannonSharedBody {
@@ -228,6 +229,12 @@ export class CannonSharedBody {
             this.wrappedJoints1[i].updateScale1();
         }
         commitShapeUpdates(this.body);
+    }
+
+    updateEventFilters (): void {
+        for (let i = 0; i < this.wrappedShapes.length; i++) {
+            this.wrappedShapes[i].updateEventListener();
+        }
     }
 
     private destroy (): void {

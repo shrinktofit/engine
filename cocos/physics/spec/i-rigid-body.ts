@@ -27,6 +27,7 @@ import { IGroupMask } from './i-group-mask';
 import { IVec3Like } from '../../core';
 import { RigidBody } from '../framework/components/rigid-body';
 import { ERigidBodyType } from '../framework';
+import { ISharedBody } from './i-shared-body';
 
 export interface IRigidBody extends ILifecycle, IGroupMask {
     readonly impl: any;
@@ -34,6 +35,7 @@ export interface IRigidBody extends ILifecycle, IGroupMask {
     readonly isAwake: boolean;
     readonly isSleepy: boolean;
     readonly isSleeping: boolean;
+    readonly sharedBody: ISharedBody;
 
     initialize (v: RigidBody): void;
 

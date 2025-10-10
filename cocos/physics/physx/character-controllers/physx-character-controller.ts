@@ -32,12 +32,13 @@ import { PhysXShape } from '../shapes/physx-shape';
 import { degreesToRadians } from '../../../core/utils/misc';
 import { TransformBit } from '../../../scene-graph';
 import { PhysXFilterData } from '../filter-data';
+import { PhysXObject } from '../physx-object';
 
 const v3_0 = new Vec3(0, 0, 0);
 const v3_1 = new Vec3(0, 0, 0);
 
 /** @mangle */
-export class PhysXCharacterController implements IBaseCharacterController {
+export class PhysXCharacterController extends PhysXObject implements IBaseCharacterController {
     private _isEnabled = false;
     protected _impl: any = null;
     protected _comp: CharacterController = null as any;
@@ -46,9 +47,6 @@ export class PhysXCharacterController implements IBaseCharacterController {
     private _queryFilterCB: any = null;
     protected _word3 = 0;
     protected _overlapRecovery = true;
-
-    readonly id: number;
-    private static idCounter = 0;
 
     get isEnabled (): boolean { return this._isEnabled; }
     get impl (): any {
@@ -68,7 +66,7 @@ export class PhysXCharacterController implements IBaseCharacterController {
     }
 
     constructor () {
-        this.id = PhysXCharacterController.idCounter++;
+        super();
         this._filterData = { word0: 1, word1: 1, word2: 1, word3: 0 };
     }
 

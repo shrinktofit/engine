@@ -38,9 +38,10 @@ import { PhysXJoint } from './joints/physx-joint';
 import { PhysicsGroup } from '../framework/physics-enum';
 import { Node } from '../../scene-graph';
 import { PhysXFilterData } from './filter-data';
+import { ISharedBody } from '../spec/i-shared-body';
 
 /** @mangle */
-export class PhysXSharedBody {
+export class PhysXSharedBody implements ISharedBody {
     private static idCounter = 0;
     private static readonly sharedBodesMap = new Map<string, PhysXSharedBody>();
 
@@ -382,6 +383,12 @@ export class PhysXSharedBody {
         v >>>= 0; //convert to unsigned int(32bit) for physx
         this._filterData.word1 &= ~v;
         this.updateFilterData();
+    }
+
+    updateEventFilters (): void {
+        for (let i = 0; i < this.wrappedShapes.length; i++) {
+            this.wrappedShapes[i].updateEventListener();
+        }
     }
 
     updateFilterData (): void {

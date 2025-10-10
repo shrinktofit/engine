@@ -26,7 +26,9 @@
 import { IPhysicsWorld, IRaycastOptions } from '../spec/i-physics-world';
 import { PhysicsMaterial, PhysicsRayResult, CollisionEventType, TriggerEventType, CharacterTriggerEventType,
     CharacterControllerContact,
-    EPhysicsDrawFlags } from '../framework';
+    EPhysicsDrawFlags,
+    CollisionEventTypeNew,
+    Collider } from '../framework';
 import { error, RecyclePool, js, IVec3Like, geometry, IQuatLike, Vec3, Quat, Color } from '../../core';
 import { IBaseConstraint } from '../spec/i-physics-constraint';
 import { PhysXRigidBody } from './physx-rigid-body';
@@ -45,6 +47,7 @@ import { Node } from '../../scene-graph';
 import { PhysXCharacterController } from './character-controllers/physx-character-controller';
 import { GeometryRenderer } from '../../rendering/geometry-renderer';
 import { director } from '../../game';
+import { fillGlobalPhysXCollision, freeGlobalPhysXCollision } from './physx-contact-point';
 
 const CC_QUAT_0 = new Quat();
 const CC_V3_0 = new Vec3();
@@ -417,8 +420,8 @@ interface ITriggerEventItem {
 
 interface ICollisionEventItem {
     type: CollisionEventType,
-    a: PhysXShape,
-    b: PhysXShape,
+    a: PhysXShape | PhysXCharacterController,
+    b: PhysXShape | PhysXCharacterController,
     contactCount: number,
     buffer: any,
     offset: number,
@@ -442,23 +445,25 @@ const cctTriggerEventBeginDic = new TupleDictionary();
 const cctTriggerEventEndDic = new TupleDictionary();
 const cctTriggerEventsPool: ITriggerEventItemCCT[] = [];
 
+function handleContactEvent (type: CollisionEventType, a: any, b: any, c: number, d: any, o: number): void {
+    const wpa = getWrapShape<PhysXShape | PhysXCharacterController>(a);
+    const wpb = getWrapShape<PhysXShape | PhysXCharacterController>(b);
+    if (wpa instanceof PhysXShape && wpb instanceof PhysXShape) {
+        PhysXCallback.onCollision(type, wpa, wpb, c, d, o);
+    } else if (wpa instanceof PhysXShape && wpb instanceof PhysXCharacterController) {
+        PhysXCallback.onCharacterControllerColliderCollision(type, wpb, wpa, c, d, o);
+    } else if (wpa instanceof PhysXCharacterController && wpb instanceof PhysXShape) {
+        PhysXCallback.onCharacterControllerColliderCollision(type, wpa, wpb, c, d, o);
+    } else if (wpa instanceof PhysXCharacterController && wpb instanceof PhysXCharacterController) {
+        // nope
+    }
+}
+
 const PhysXCallback = {
     eventCallback: {
-        onContactBegin: (a: any, b: any, c: any, d: any, o: number): void => {
-            const wpa = getWrapShape<PhysXShape>(a);
-            const wpb = getWrapShape<PhysXShape>(b);
-            PhysXCallback.onCollision('onCollisionEnter', wpa, wpb, c, d, o);
-        },
-        onContactEnd: (a: any, b: any, c: any, d: any, o: number): void => {
-            const wpa = getWrapShape<PhysXShape>(a);
-            const wpb = getWrapShape<PhysXShape>(b);
-            PhysXCallback.onCollision('onCollisionExit', wpa, wpb, c, d, o);
-        },
-        onContactPersist: (a: any, b: any, c: any, d: any, o: number): void => {
-            const wpa = getWrapShape<PhysXShape>(a);
-            const wpb = getWrapShape<PhysXShape>(b);
-            PhysXCallback.onCollision('onCollisionStay', wpa, wpb, c, d, o);
-        },
+        onContactBegin: handleContactEvent.bind(undefined, 'onCollisionEnter'),
+        onContactEnd: handleContactEvent.bind(undefined, 'onCollisionExit'),
+        onContactPersist: handleContactEvent.bind(undefined, 'onCollisionStay'),
         onTriggerBegin: (a: any, b: any): void => {
             const wpa = getWrapShape<any>(a);
             const wpb = getWrapShape<any>(b);
@@ -620,46 +625,115 @@ const PhysXCallback = {
         }
     },
 
+    // eslint-disable-next-line max-len
+    onCharacterControllerColliderCollision (type: CollisionEventType, wpa: PhysXCharacterController, wpb: PhysXShape, c: number, d: any, o: number): void {
+        if (contactEventsPool.length > 0) {
+            const cE = contactEventsPool.pop() as ICollisionEventItem;
+            cE.type = type; cE.a = wpa; cE.b = wpb; cE.contactCount = c; cE.buffer = d; cE.offset = o;
+            contactEventDic.set(wpa.id, wpb.id, cE);
+        } else {
+            const cE: ICollisionEventItem = { type, a: wpa, b: wpb, contactCount: c, buffer: d, offset: o };
+            contactEventDic.set(wpa.id, wpb.id, cE);
+        }
+    },
+
     emitCollisionEvent (): void {
         let len = contactEventDic.getLength();
         while (len--) {
             const key = contactEventDic.getKeyByIndex(len);
             const data = contactEventDic.getDataByKey<ICollisionEventItem>(key);
             contactEventsPool.push(data);
-            const colliderA = data.a.collider;
-            const colliderB = data.b.collider;
-            if (colliderA && colliderA.isValid && colliderB && colliderB.isValid) {
-                CollisionEventObject.type = data.type;
-                CollisionEventObject.impl = data.buffer;
-                const c = data.contactCount; const d = data.buffer; const o = data.offset;
-                const contacts = CollisionEventObject.contacts;
-                contactsPool.push.apply(contactsPool, contacts as any);
-                contacts.length = 0;
-                for (let i = 0; i < c; i++) {
-                    if (contactsPool.length > 0) {
-                        const c = contactsPool.pop() as unknown as PhysXContactEquation;
-                        c.colliderA = colliderA; c.colliderB = colliderB;
-                        c.impl = getContactDataOrByteOffset(i, o); contacts.push(c);
-                    } else {
-                        const c = new PhysXContactEquation(CollisionEventObject);
-                        c.colliderA = colliderA; c.colliderB = colliderB;
-                        c.impl = getContactDataOrByteOffset(i, o); contacts.push(c);
+
+            if (data.a instanceof PhysXShape && data.b instanceof PhysXShape) {
+                const colliderA = data.a.collider;
+                const colliderB = data.b.collider;
+                if (colliderA && colliderA.isValid && colliderB && colliderB.isValid) {
+                    CollisionEventObject.type = data.type;
+                    CollisionEventObject.impl = data.buffer;
+                    const c = data.contactCount;
+                    const d = data.buffer;
+                    const o = data.offset;
+                    const contacts = CollisionEventObject.contacts;
+                    contactsPool.push.apply(contactsPool, contacts as any);
+                    contacts.length = 0;
+                    for (let i = 0; i < c; i++) {
+                        if (contactsPool.length > 0) {
+                            const c = contactsPool.pop() as unknown as PhysXContactEquation;
+                            c.colliderA = colliderA; c.colliderB = colliderB;
+                            c.impl = getContactDataOrByteOffset(i, o); contacts.push(c);
+                        } else {
+                            const c = new PhysXContactEquation(CollisionEventObject);
+                            c.colliderA = colliderA; c.colliderB = colliderB;
+                            c.impl = getContactDataOrByteOffset(i, o); contacts.push(c);
+                        }
+                    }
+                    if (colliderA.needCollisionEvent) {
+                        CollisionEventObject.selfCollider = colliderA;
+                        CollisionEventObject.otherCollider = colliderB;
+                        colliderA.emit(CollisionEventObject.type, CollisionEventObject);
+                    }
+                    if (colliderB.needCollisionEvent) {
+                        CollisionEventObject.selfCollider = colliderB;
+                        CollisionEventObject.otherCollider = colliderA;
+                        colliderB.emit(CollisionEventObject.type, CollisionEventObject);
                     }
                 }
-                if (colliderA.needCollisionEvent) {
-                    CollisionEventObject.selfCollider = colliderA;
-                    CollisionEventObject.otherCollider = colliderB;
-                    colliderA.emit(CollisionEventObject.type, CollisionEventObject);
-                }
-                if (colliderB.needCollisionEvent) {
-                    CollisionEventObject.selfCollider = colliderB;
-                    CollisionEventObject.otherCollider = colliderA;
-                    colliderB.emit(CollisionEventObject.type, CollisionEventObject);
+            }
+
+            {
+                const targetComponentA = data.a instanceof PhysXCharacterController ? data.a.characterController : data.a.collider;
+                const targetComponentB = data.b instanceof PhysXCharacterController ? data.b.characterController : data.b.collider;
+                if (targetComponentA && targetComponentA.isValid && targetComponentB && targetComponentB.isValid) {
+                    const collisionEventType = legacyCollisionEventMap[data.type];
+                    const contactCount = data.contactCount;
+                    const dataBuffer = data.buffer;
+                    const contactDataOffset = data.offset;
+                    if (targetComponentA.needCollisionEvent) {
+                        const collision = fillGlobalPhysXCollision(
+                            targetComponentA,
+                            extractActorNode(data.a),
+                            targetComponentB,
+                            extractActorNode(data.b),
+                            dataBuffer,
+                            contactDataOffset,
+                            contactCount,
+                            // Per `PxContactPairPoint.normal`:
+                            // > The normal direction points from the second shape to the first shape.
+                            false,
+                        );
+                        targetComponentA.emit(collisionEventType, collision);
+                        if (targetComponentA instanceof Collider) {
+                            if (targetComponentA.attachedRigidBody && targetComponentA.attachedRigidBody.needCollisionEvent_internal) {
+                                targetComponentA.attachedRigidBody.emit(collisionEventType, collision);
+                            }
+                        }
+                        freeGlobalPhysXCollision(collision);
+                    }
+                    if (targetComponentB.needCollisionEvent) {
+                        const collision = fillGlobalPhysXCollision(
+                            targetComponentB,
+                            extractActorNode(data.b),
+                            targetComponentA,
+                            extractActorNode(data.a),
+                            dataBuffer,
+                            contactDataOffset,
+                            contactCount,
+                            true,
+                        );
+                        targetComponentB.emit(collisionEventType, collision);
+                        if (targetComponentB instanceof Collider) {
+                            if (targetComponentB.attachedRigidBody && targetComponentB.attachedRigidBody.needCollisionEvent_internal) {
+                                targetComponentB.attachedRigidBody.emit(collisionEventType, collision);
+                            }
+                        }
+                        freeGlobalPhysXCollision(collision);
+                    }
                 }
             }
         }
         contactEventDic.reset();
     },
+
     controllerHitReportCB: {
         onShapeHit (hit: any): void { //PX.ControllerShapeHit
             const cct = getWrapShape<PhysXCharacterController>(hit.getCurrentController());
@@ -674,8 +748,8 @@ const PhysXCallback = {
                 motionDir.set(hit.dir.x, hit.dir.y, hit.dir.z);
                 const motionLength = hit.length;
                 item = cctShapeEventDic.set(
-                    hit.getCurrentController(),
-                    hit.getTouchedShape(),
+                    cct.id,
+                    s.id,
                     { PhysXCharacterController: cct, PhysXShape: s, worldPos, worldNormal, motionDir, motionLength },
                 );
             }
@@ -758,3 +832,17 @@ const PhysXCallback = {
         }
     },
 };
+
+const legacyCollisionEventMap: Record<CollisionEventType, CollisionEventTypeNew> = {
+    onCollisionEnter: 'onCollisionBegin',
+    onCollisionStay: 'onCollisionTick',
+    onCollisionExit: 'onCollisionEnd',
+};
+
+function extractActorNode (shape: PhysXShape | PhysXCharacterController): Node {
+    if (shape instanceof PhysXCharacterController) {
+        return shape.characterController.node;
+    } else {
+        return shape.collider.attachedRigidBody?.node ?? shape.collider.node;
+    }
+}

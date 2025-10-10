@@ -37,6 +37,7 @@ import { js } from '../../core';
 import { bt, btCache, EBulletType } from './instantiated';
 import { BulletConstraint } from './constraints/bullet-constraint';
 import { importFunc } from './bullet-env';
+import { ISharedBody } from '../spec/i-shared-body';
 
 const v3_0 = CC_V3_0;
 const quat_0 = CC_QUAT_0;
@@ -48,7 +49,7 @@ let IDCounter = 0;
  * ghost for trigger
  * @mangle
  */
-export class BulletSharedBody {
+export class BulletSharedBody implements ISharedBody {
     private static idCounter = 0;
     private static readonly sharedBodesMap = new Map<string, BulletSharedBody>();
 
@@ -513,6 +514,12 @@ export class BulletSharedBody {
             this.wrappedWorld.removeGhostObject(this);
             this.ghostIndex = this.wrappedWorld.ghosts.length;
             this.wrappedWorld.addGhostObject(this);
+        }
+    }
+
+    updateEventFilters (): void {
+        for (let i = 0; i < this.bodyStruct.wrappedShapes.length; i++) {
+            this.bodyStruct.wrappedShapes[i].updateEventListener();
         }
     }
 
