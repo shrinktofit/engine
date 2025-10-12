@@ -67,7 +67,6 @@ export class PhysXShape implements IBaseShape {
     protected _collider: Collider = null as any;
     protected _flags: any;
     protected _sharedBody!: PhysXSharedBody;
-    protected _rotation = new Quat(0, 0, 0, 1);
     protected _index = -1;
     protected _word3 = 0;
     protected _isEnabled = false;

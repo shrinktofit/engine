@@ -75,17 +75,19 @@ export class PhysXCapsuleShape extends PhysXShape implements ICapsuleShape {
         if (upAxis === EAxisDirection.Y_AXIS) {
             r = co.radius * Math.abs(absMax(ws.x, ws.z));
             hf = co.cylinderHeight / 2 * Math.abs(ws.y);
-            Quat.fromEuler(this._rotation, 0, 0, 90);
+            this.setShapeRotation(Quat.fromEuler(quatCache_1, 0, 0, 90));
         } else if (upAxis === EAxisDirection.X_AXIS) {
             r = co.radius * Math.abs(absMax(ws.y, ws.z));
             hf = co.cylinderHeight / 2 * Math.abs(ws.x);
-            Quat.fromEuler(this._rotation, 0, 0, 0);
+            this.setShapeRotation(Quat.fromEuler(quatCache_1, 0, 0, 0));
         } else {
             r = co.radius * Math.abs(absMax(ws.x, ws.y));
             hf = co.cylinderHeight / 2 * Math.abs(ws.z);
-            Quat.fromEuler(this._rotation, 0, 90, 0);
+            this.setShapeRotation(Quat.fromEuler(quatCache_1, 0, 90, 0));
         }
         PhysXCapsuleShape.CAPSULE_GEOMETRY.setRadius(Math.max(0.0001, r));
         PhysXCapsuleShape.CAPSULE_GEOMETRY.setHalfHeight(Math.max(0.0001, hf));
     }
 }
+
+const quatCache_1 = new Quat();
