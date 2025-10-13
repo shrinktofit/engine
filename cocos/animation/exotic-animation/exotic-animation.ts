@@ -30,6 +30,7 @@ import { TransformHandle } from '../core/animation-handle';
 import { Pose } from '../core/pose';
 import { CLASS_NAME_PREFIX_ANIM } from '../define';
 import { Binder, RuntimeBinding, TrackBinding, TrackPath } from '../tracks/track';
+import { deltaQuat } from '../core/transform';
 
 const SPLIT_METHOD_ENABLED = TEST || EDITOR || NODEJS;
 
@@ -54,7 +55,7 @@ export class ExoticAnimation {
     }
 
     public createEvaluatorForAnimationGraph (context: AnimationClipGraphBindingContext): ExoticTrsAGEvaluation {
-        return new ExoticTrsAGEvaluation(this._nodeAnimations, context);
+        return new ExoticTrsAGEvaluation(this._nodeAnimations, this._rootMotion, context);
     }
 
     public addNodeAnimation (path: string): ExoticNodeAnimation {
@@ -76,6 +77,9 @@ export class ExoticAnimation {
 
         const newAnimation = new ExoticAnimation();
         newAnimation._nodeAnimations = this._nodeAnimations.map((nodeAnimation) => nodeAnimation.split(from, to, splitInfoCache));
+        if (this._rootMotion) {
+            newAnimation._rootMotion = this._rootMotion.split(from, to, splitInfoCache);
+        }
         return newAnimation;
     }
 
@@ -88,6 +92,9 @@ export class ExoticAnimation {
 
     @serializable
     private _nodeAnimations: ExoticNodeAnimation[] = [];
+
+    @serializable
+    private _rootMotion: ExoticRootMotion | null = null;
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}ExoticNodeAnimation`)
@@ -170,6 +177,71 @@ class ExoticNodeAnimation {
 
     @serializable
     private _path = '';
+
+    @serializable
+    private _position: ExoticVec3Track | null = null;
+
+    @serializable
+    private _rotation: ExoticQuatTrack | null = null;
+
+    @serializable
+    private _scale: ExoticVec3Track | null = null;
+}
+
+@ccclass(`${CLASS_NAME_PREFIX_ANIM}ExoticRootMotion`)
+class ExoticRootMotion {
+    public createPosition (times: FloatArray, values: FloatArray): void {
+        this._position = new ExoticTrack(times, new ExoticVec3TrackValues(values));
+    }
+
+    public createRotation (times: FloatArray, values: FloatArray): void {
+        this._rotation = new ExoticTrack(times, new ExoticQuatTrackValues(values));
+    }
+
+    public createScale (times: FloatArray, values: FloatArray): void {
+        this._scale = new ExoticTrack(times, new ExoticVec3TrackValues(values));
+    }
+
+    public createEvaluatorForAnimationGraph (context: AnimationClipGraphBindingContext): ExoticRootMotionAGEvaluation {
+        return new ExoticRootMotionAGEvaluation(
+            this._position,
+            this._rotation,
+            this._scale,
+        );
+    }
+
+    public split (from: number, to: number, splitInfoCache: SplitInfo): ExoticRootMotion {
+        if (!SPLIT_METHOD_ENABLED) {
+            return throwIfSplitMethodIsNotValid();
+        }
+
+        const newAnimation = new ExoticRootMotion();
+        const {
+            _position: position,
+            _rotation: rotation,
+            _scale: scale,
+        } = this;
+        if (position) {
+            newAnimation._position = splitVec3Track(position, from, to, splitInfoCache);
+        }
+        if (rotation) {
+            newAnimation._rotation = splitQuatTrack(rotation, from, to, splitInfoCache);
+        }
+        if (scale) {
+            newAnimation._scale = splitVec3Track(scale, from, to, splitInfoCache);
+        }
+        return newAnimation;
+    }
+
+    /**
+     * @internal
+     */
+    public toHashString (): string {
+        return `RootMotion\n${
+            this._position?.toHashString() ?? ''
+        }${this._scale?.toHashString() ?? ''
+        }${this._rotation?.toHashString() ?? ''}`;
+    }
 
     @serializable
     private _position: ExoticVec3Track | null = null;
@@ -625,19 +697,13 @@ class ExoticNodeAnimationEvaluator {
         binder: Binder,
     ) {
         if (position) {
-            this._position = createExoticTrackEvaluationRecord(
-                position.times, position.values, Vec3, path, 'position', binder,
-            );
+            this._position = createExoticTrackEvaluationRecord(position.times, position.values, Vec3, path, 'position', binder);
         }
         if (rotation) {
-            this._rotation = createExoticTrackEvaluationRecord(
-                rotation.times, rotation.values, Quat, path, 'rotation', binder,
-            );
+            this._rotation = createExoticTrackEvaluationRecord(rotation.times, rotation.values, Quat, path, 'rotation', binder);
         }
         if (scale) {
-            this._scale = createExoticTrackEvaluationRecord(
-                scale.times, scale.values, Vec3, path, 'scale', binder,
-            );
+            this._scale = createExoticTrackEvaluationRecord(scale.times, scale.values, Vec3, path, 'scale', binder);
         }
     }
 
@@ -722,10 +788,17 @@ interface ExoticTrackEvaluationRecord<TValue> {
  * Exotic TRS animation graph evaluator.
  */
 export class ExoticTrsAGEvaluation {
-    constructor (nodeAnimations: ExoticNodeAnimation[], context: AnimationClipGraphBindingContext) {
+    constructor (nodeAnimations: ExoticNodeAnimation[], rootMotion: ExoticRootMotion | null, context: AnimationClipGraphBindingContext) {
         this._nodeEvaluations = nodeAnimations.map(
             (nodeAnimation) => nodeAnimation.createEvaluatorForAnimationGraph(context),
         ).filter((x) => !!x) as ExoticNodeAnimationAGEvaluation[];
+        if (rootMotion) {
+            this._rootMotionEvaluation = rootMotion.createEvaluatorForAnimationGraph(context);
+        }
+    }
+
+    reset (): void {
+        this._rootMotionEvaluation?.reset();
     }
 
     public destroy (): void {
@@ -742,8 +815,10 @@ export class ExoticTrsAGEvaluation {
         for (let iNodeEvaluation = 0; iNodeEvaluation < nNodeEvaluations; ++iNodeEvaluation) {
             nodeEvaluations[iNodeEvaluation].evaluate(time, pose);
         }
+        this._rootMotionEvaluation?.evaluate(time, pose);
     }
 
+    private _rootMotionEvaluation: ExoticRootMotionAGEvaluation | undefined;
     private _nodeEvaluations: ExoticNodeAnimationAGEvaluation[];
 }
 
@@ -800,6 +875,77 @@ class ExoticNodeAnimationAGEvaluation {
     private _rotation: ExoticTrackEvaluator<Quat> | null = null;
     private _scale: ExoticTrackEvaluator<Vec3> | null = null;
     private _transformHandle: TransformHandle;
+}
+
+class ExoticRootMotionAGEvaluation {
+    constructor (
+        position: ExoticVec3Track | null,
+        rotation: ExoticQuatTrack | null,
+        scale: ExoticVec3Track | null,
+    ) {
+        if (position) {
+            this._position = new ExoticTrackEvaluator(position.times, position.values, Vec3);
+        }
+        if (rotation) {
+            this._rotation = new ExoticTrackEvaluator(rotation.times, rotation.values, Quat);
+        }
+        if (scale) {
+            this._scale = new ExoticTrackEvaluator(scale.times, scale.values, Vec3);
+        }
+    }
+
+    reset (): void {
+        this._previousEvaluated = false;
+    }
+
+    evaluate (time: number, pose: Pose): void {
+        const {
+            _position: position,
+            _rotation: rotation,
+            _scale: scale,
+        } = this;
+        if (position) {
+            const value = position.evaluate(time);
+            if (!this._previousEvaluated) {
+                this._previousPosition.set(value);
+            }
+            const delta = Vec3.subtract(ExoticRootMotionAGEvaluation._vec3Cache, value, this._previousPosition);
+            pose.rootMotion.position = delta;
+            Vec3.copy(this._previousPosition, value);
+        }
+        if (rotation) {
+            const value = rotation.evaluate(time);
+            if (!this._previousEvaluated) {
+                this._previousRotation.set(value);
+            }
+            const delta = deltaQuat(ExoticRootMotionAGEvaluation._quatCache, this._previousRotation, value);
+            pose.rootMotion.rotation = delta;
+            Quat.copy(this._previousRotation, value);
+        }
+        if (scale) {
+            const value = scale.evaluate(time);
+            if (!this._previousEvaluated) {
+                this._previousScale.set(value);
+            }
+            const delta = Vec3.divide(ExoticRootMotionAGEvaluation._vec3Cache, value, this._previousScale);
+            pose.rootMotion.scale = delta;
+            Vec3.copy(this._previousScale, value);
+        }
+        if (!this._previousEvaluated) {
+            this._previousEvaluated = true;
+        }
+    }
+
+    private static _vec3Cache = new Vec3();
+    private static _quatCache = new Quat();
+
+    private _position: ExoticTrackEvaluator<Vec3> | null = null;
+    private _rotation: ExoticTrackEvaluator<Quat> | null = null;
+    private _scale: ExoticTrackEvaluator<Vec3> | null = null;
+    private _previousEvaluated = false;
+    private _previousPosition: Vec3 = new Vec3();
+    private _previousRotation: Quat = new Quat();
+    private _previousScale: Vec3 = new Vec3();
 }
 
 interface InputSampleResult {
@@ -989,4 +1135,12 @@ function loadQuatFromQuantized (values: QuantizedFloatArray, index: number, out:
         indexQuantized(values, 4 * index + 2),
         indexQuantized(values, 4 * index + 3),
     );
+}
+
+export function createExoticVec3TraceEvaluator (track: ExoticVec3Track): ExoticTrackEvaluator<Vec3> {
+    return new ExoticTrackEvaluator(track.times, track.values, Vec3);
+}
+
+export function createExoticQuatTraceEvaluator (track: ExoticQuatTrack): ExoticTrackEvaluator<Quat> {
+    return new ExoticTrackEvaluator(track.times, track.values, Quat);
 }

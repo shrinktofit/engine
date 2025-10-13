@@ -9,6 +9,8 @@ export class Pose {
 
     readonly auxiliaryCurves: Float64Array;
 
+    readonly rootMotion = new Transform();
+
     private constructor (transforms: TransformArray, auxiliaryCurves: Float64Array) {
         this.transforms = transforms;
         this.auxiliaryCurves = auxiliaryCurves;
@@ -92,9 +94,18 @@ export class TransformFilter {
     private declare _involvedTransforms: Uint16Array;
 }
 
-export function blendPoseInto (target: Pose, source: Readonly<Pose>, alpha: number, transformFilter: TransformFilter | undefined = undefined): void {
+export function blendPoseInto (
+    target: Pose,
+    source: Readonly<Pose>,
+    alpha: number,
+    transformFilter: TransformFilter | undefined = undefined,
+    includesRootMotion: boolean = true,
+): void {
     blendTransformsInto(target.transforms, source.transforms, alpha, transformFilter);
     blendAuxiliaryCurvesInto(target.auxiliaryCurves, source.auxiliaryCurves, alpha);
+    if (includesRootMotion) {
+        blendRootMotionInto(target.rootMotion, source.rootMotion, alpha);
+    }
 }
 
 export function blendTransformsInto (
@@ -153,6 +164,10 @@ const blendIntoTransformArrayAt = ((): BlendIntoTransformArrayAtFunc => {
     };
 })();
 
+function blendRootMotionInto (target: Transform, source: Transform, alpha: number): void {
+    Transform.lerp(target, target, source, alpha);
+}
+
 export function blendAuxiliaryCurvesInto (target: Float64Array, source: Readonly<Float64Array>, alpha: number): void {
     const nValues = source.length;
     assertIsTrue(nValues === target.length);
@@ -164,6 +179,7 @@ export function blendAuxiliaryCurvesInto (target: Float64Array, source: Readonly
 export function calculateDeltaPose (target: Pose, base: Pose): void {
     calculateDeltaTransforms(target.transforms, base.transforms);
     calculateDeltaAuxiliaryCurves(target.auxiliaryCurves, base.auxiliaryCurves);
+    calculateDeltaRootMotion(target.rootMotion, base.rootMotion);
 }
 
 type CalculateDeltaTransformArrayAtFunc = (target: TransformArray, base: Readonly<TransformArray>, transformIndex: number) => void;
@@ -186,6 +202,10 @@ export function calculateDeltaTransforms (target: TransformArray, base: Transfor
     }
 }
 
+export function calculateDeltaRootMotion (target: Transform, base: Transform): void {
+    __calculateDeltaTransform(target, target, base);
+}
+
 export function calculateDeltaAuxiliaryCurves (target: Float64Array, base: Float64Array): void {
     const nAuxiliaryCurves = target.length;
     assertIsTrue(nAuxiliaryCurves === base.length);
@@ -194,9 +214,18 @@ export function calculateDeltaAuxiliaryCurves (target: Float64Array, base: Float
     }
 }
 
-export function applyDeltaPose (target: Pose, base: Pose, alpha: number, transformFilter: TransformFilter | undefined = undefined): void {
+export function applyDeltaPose (
+    target: Pose,
+    base: Pose,
+    alpha: number,
+    transformFilter: TransformFilter | undefined = undefined,
+    includesRootMotion: boolean = true,
+): void {
     applyDeltaTransforms(target.transforms, base.transforms, alpha, transformFilter);
     applyDeltaAuxiliaryCurves(target.auxiliaryCurves, base.auxiliaryCurves, alpha);
+    if (includesRootMotion) {
+        applyDeltaRootMotion(target.rootMotion, base.rootMotion, alpha);
+    }
 }
 
 type ApplyDeltaTransformArrayAtFunc = (target: TransformArray, delta: Readonly<TransformArray>, alpha: number, transformIndex: number) => void;
@@ -211,9 +240,7 @@ const applyDeltaTransformArrayAt = ((): ApplyDeltaTransformArrayAtFunc => {
     };
 })();
 
-export function applyDeltaTransforms (
-    target: TransformArray, delta: TransformArray, alpha: number, transformFilter: TransformFilter | undefined = undefined,
-): void {
+function applyDeltaTransforms (target: TransformArray, delta: TransformArray, alpha: number, transformFilter: TransformFilter | undefined = undefined): void {
     const nTransforms = target.length;
     assertIsTrue(nTransforms === delta.length);
     if (!transformFilter) {
@@ -230,7 +257,11 @@ export function applyDeltaTransforms (
     }
 }
 
-export function applyDeltaAuxiliaryCurves (target: Float64Array, delta: Float64Array, alpha: number): void {
+function applyDeltaRootMotion (target: Transform, delta: Transform, alpha: number): void {
+    __applyDeltaTransform(target, target, delta, alpha);
+}
+
+function applyDeltaAuxiliaryCurves (target: Float64Array, delta: Float64Array, alpha: number): void {
     const nAuxiliaryCurves = target.length;
     assertIsTrue(nAuxiliaryCurves === delta.length);
     for (let i = 0; i < target.length; ++i) {

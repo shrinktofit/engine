@@ -33,6 +33,7 @@ import { PrimitiveValue, Value, VariableType } from './variable';
 import { AnimationGraphVariant, AnimationGraphVariantRunTime } from './animation-graph-variant';
 import { AnimationGraphLike } from './animation-graph-like';
 import type { ReadonlyClipOverrideMap } from './clip-overriding';
+import { Node } from '../../scene-graph';
 
 const { ccclass, menu, help, type, serializable, editable, formerlySerializedAs } = _decorator;
 
@@ -72,6 +73,11 @@ export class AnimationController extends Component {
     public set graph (value) {
         this._graph = value;
     }
+
+    @type(Node)
+    @editable
+    @serializable
+    rootMotionTarget: Node | null = null;
 
     @serializable
     @formerlySerializedAs('graph')

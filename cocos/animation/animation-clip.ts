@@ -35,7 +35,7 @@ import { Node } from '../scene-graph/node';
 import type { PoseOutput } from './pose-output';
 import * as legacy from './legacy-clip-data';
 import { BAKE_SKELETON_CURVE_SYMBOL } from './internal-symbols';
-import { Binder, RuntimeBinding, Track, TrackBinding, trackBindingTag, TrackEval, TrackPath, TrsTrackPath } from './tracks/track';
+import { Binder, isTrsPropertyName, RuntimeBinding, Track, TrackBinding, trackBindingTag, TrackEval, TrackPath } from './tracks/track';
 import { createEvalSymbol } from './define';
 import { UntypedTrack, UntypedTrackRefine } from './tracks/untyped-track';
 import { Range } from './tracks/utils';
@@ -389,6 +389,13 @@ export class AnimationClip extends Asset {
 
         const binder: Binder = (binding: TrackBinding) => {
             if (context.mask && binding.isMaskedOff(context.mask)) {
+                return undefined;
+            }
+
+            if (binding.path.length === 2
+                && binding.path.isRootMotionAt(0)
+                && binding.path.isPropertyAt(1) && isTrsPropertyName(binding.path.parsePropertyAt(1))) {
+                // Ignore root motion track.
                 return undefined;
             }
 
@@ -1465,7 +1472,7 @@ function relativeTransform (out: Mat4, from: Mat4, to: Mat4): void {
     Mat4.multiply(out, to, out);
 }
 
-function createBoneTransformBinding (boneTransform: BoneTransform, property: TrsTrackPath[1]):  {
+function createBoneTransformBinding (boneTransform: BoneTransform, property: string):  {
     setValue(value: Vec3): void;
 } | {
     setValue(value: Quat): void;

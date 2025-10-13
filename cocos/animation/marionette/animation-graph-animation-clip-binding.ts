@@ -11,6 +11,7 @@ import { ExoticTrsAGEvaluation } from '../exotic-animation/exotic-animation';
 import { isTrsPropertyName, normalizedFollowTag, RuntimeBinding, Track, TrackBinding, trackBindingTag, TrackEval } from '../tracks/track';
 import { UntypedTrack } from '../tracks/untyped-track';
 import { AnimationGraphEvaluationContext } from './animation-graph-context';
+import { deltaQuat } from '../core/transform';
 
 /**
  * This module contains utilities to marry animation clip with animation graph.
@@ -204,6 +205,135 @@ function bindPoseTransform (
     }
 }
 
+abstract class RootMotionBinding {
+    destroy (): void {
+        // Needs no destroy.
+    }
+
+    abstract reset (): void;
+}
+
+class RootMotionPositionBinding extends RootMotionBinding implements PoseBinding<Vec3> {
+    public setValue (value: Vec3, pose: Pose): void {
+        if (!this._evaluated) {
+            this._evaluated = true;
+            this._previousValue.set(value);
+        }
+        const delta = Vec3.subtract(RootMotionPositionBinding._vec3Cache, value, this._previousValue);
+        pose.rootMotion.position = delta;
+        Vec3.copy(this._previousValue, value);
+    }
+
+    public getValue (pose: Pose): Readonly<Vec3> {
+        return pose.rootMotion.position;
+    }
+
+    reset (): void {
+        this._evaluated = false;
+    }
+
+    private static _vec3Cache = new Vec3();
+
+    private _evaluated = false;
+    private _previousValue = new Vec3();
+}
+
+class RootMotionRotationBinding extends RootMotionBinding implements PoseBinding<Quat> {
+    public setValue (value: Quat, pose: Pose): void {
+        if (!this._evaluated) {
+            this._evaluated = true;
+            this._previousValue.set(value);
+        }
+        const delta = deltaQuat(RootMotionRotationBinding._quatCache, this._previousValue, value);
+        pose.rootMotion.rotation = delta;
+        Quat.copy(this._previousValue, value);
+    }
+
+    public getValue (pose: Pose): Readonly<Quat> {
+        return pose.rootMotion.rotation;
+    }
+
+    reset (): void {
+        this._evaluated = false;
+    }
+
+    private static _quatCache = new Quat();
+
+    private _evaluated = false;
+    private _previousValue = new Quat();
+}
+
+class RootMotionEulerAnglesBinding extends RootMotionBinding implements PoseBinding<Vec3> {
+    public setValue (value: Vec3, pose: Pose): void {
+        const quat = Quat.fromEuler(RootMotionEulerAnglesBinding._EULER_TO_QUAT_CACHE, value.x, value.y, value.z);
+        if (!this._evaluated) {
+            this._evaluated = true;
+            this._previousValue.set(quat);
+        }
+        const delta = deltaQuat(RootMotionEulerAnglesBinding._quatCache, this._previousValue, quat);
+        pose.rootMotion.rotation = delta;
+        Quat.copy(this._previousValue, quat);
+    }
+
+    public getValue (pose: Pose): Readonly<Vec3> {
+        const q = pose.rootMotion.rotation;
+        return Quat.toEuler(CACHE_VEC3_GET_VALUE, q) as Readonly<Vec3>;
+    }
+
+    reset (): void {
+        this._evaluated = false;
+    }
+
+    private static _quatCache = new Quat();
+    private static _EULER_TO_QUAT_CACHE = new Quat();
+
+    private _evaluated = false;
+    private _previousValue = new Quat();
+}
+
+class RootMotionScaleBinding extends RootMotionBinding implements PoseBinding<Vec3> {
+    public setValue (value: Vec3, pose: Pose): void {
+        if (!this._evaluated) {
+            this._evaluated = true;
+            this._previousValue.set(value);
+        }
+        const delta = Vec3.divide(RootMotionScaleBinding._vec3Cache, value, this._previousValue);
+        pose.rootMotion.scale = delta;
+        Vec3.copy(this._previousValue, value);
+    }
+
+    public getValue (pose: Pose): Readonly<Vec3> {
+        return pose.rootMotion.scale;
+    }
+
+    reset (): void {
+        this._evaluated = false;
+    }
+
+    private static _vec3Cache = new Vec3();
+
+    private _evaluated = false;
+    private _previousValue = new Vec3(Vec3.ONE);
+}
+
+// eslint-disable-next-line consistent-return
+function bindRootMotionTransform (
+    propertyKey: 'position' | 'rotation' | 'scale' | 'eulerAngles',
+): PoseBinding<unknown> {
+    switch (propertyKey) {
+    case 'position':
+        return new RootMotionPositionBinding();
+    case 'rotation':
+        return new RootMotionRotationBinding();
+    case 'eulerAngles':
+        return new RootMotionEulerAnglesBinding();
+    case 'scale':
+        return new RootMotionScaleBinding();
+    default:
+        assertIsTrue(false);
+    }
+}
+
 class NonTransformPoseBinding implements PoseBinding<any> {
     constructor (
         public readonly binding: RuntimeBinding,
@@ -287,6 +417,11 @@ function createRuntimeBindingAG (
         const lastPropertyKey = path.isPropertyAt(iLastPath)
             ? path.parsePropertyAt(iLastPath)
             : path.parseElementAt(iLastPath);
+
+        if (path.length === 2 && path.isRootMotionAt(0) && isTrsPropertyName(lastPropertyKey)) {
+            return bindRootMotionTransform(lastPropertyKey);
+        }
+
         const resultTarget = path[normalizedFollowTag](origin, 0, nPaths - 1);
         if (resultTarget === null) {
             return null;
@@ -363,6 +498,11 @@ export interface AnimationClipAGEvaluation {
      * @param context The evaluation context.
      */
     evaluate(time: number, context: AnimationGraphEvaluationContext): Pose;
+
+    /**
+     * Resets the evaluation state.
+     */
+    reset(): void;
 }
 
 export function createAnimationAGEvaluation (
@@ -409,6 +549,9 @@ class AnimationClipAGEvaluationRegular implements AnimationClipAGEvaluation {
             const trackSampler = track[createEvalSymbol]();
             const trackEvaluation = new AGTrackEvaluation(trackRuntimeBinding, trackSampler);
             trackEvaluations.push(trackEvaluation);
+            if (trackRuntimeBinding instanceof RootMotionBinding) {
+                this._rootMotionBindings.push(trackRuntimeBinding);
+            }
         }
 
         if (exoticAnimation) {
@@ -431,6 +574,13 @@ class AnimationClipAGEvaluationRegular implements AnimationClipAGEvaluation {
         this._trackEvaluations = trackEvaluations;
         this._exoticAnimationEvaluation = exoticAnimationEvaluation;
         this._auxiliaryCurveEvaluations = auxiliaryCurveEvaluations;
+    }
+
+    reset (): void {
+        this._exoticAnimationEvaluation?.reset();
+        for (const rootMotion of this._rootMotionBindings) {
+            rootMotion.reset();
+        }
     }
 
     public destroy (): void {
@@ -473,6 +623,8 @@ class AnimationClipAGEvaluationRegular implements AnimationClipAGEvaluation {
 
     private _trackEvaluations: AGTrackEvaluation<any>[] = [];
 
+    private _rootMotionBindings: RootMotionBinding[] = [];
+
     private _exoticAnimationEvaluation: ExoticTrsAGEvaluation | undefined;
 
     private _auxiliaryCurveEvaluations: AuxiliaryCurveEvaluation[] = [];
@@ -488,6 +640,11 @@ class AnimationClipAGEvaluationAdditive implements AnimationClipAGEvaluation {
         if (refClip && refClip !== clip) {
             this._refClipEval = new AnimationClipAGEvaluationRegular(refClip, context);
         }
+    }
+
+    reset (): void {
+        this._clipEval.reset();
+        this._refClipEval?.reset();
     }
 
     public destroy (): void {

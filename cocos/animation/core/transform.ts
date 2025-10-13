@@ -12,7 +12,7 @@ const CACHE_QUAT_B = new Quat();
 type ReadonlyTransform = Transform;
 
 export class Transform {
-    public static IDENTITY = Object.freeze(new Transform());
+    public static IDENTITY = Object.freeze(new Transform()) as ReadonlyTransform;
 
     public static ZERO = Object.freeze(((): Transform => {
         const transform = new Transform();
@@ -20,7 +20,7 @@ export class Transform {
         Quat.set(transform._rotation, 0.0, 0.0, 0.0, 0.0);
         Vec3.copy(transform._scale, Vec3.ZERO);
         return transform;
-    })());
+    })()) as ReadonlyTransform;
 
     get position (): Readonly<Vec3> {
         return this._position;
@@ -72,7 +72,7 @@ export class Transform {
             && Vec3.equals(a._scale, b._scale, epsilon);
     }
 
-    public static strictEquals (a: ReadonlyTransform, b: ReadonlyTransform):boolean {
+    public static strictEquals (a: ReadonlyTransform, b: ReadonlyTransform): boolean {
         return Vec3.strictEquals(a._position, b._position)
             && Quat.strictEquals(a._rotation, b._rotation)
             && Vec3.strictEquals(a._scale, b._scale);
@@ -262,7 +262,7 @@ export const __applyDeltaTransform = ((): (out: Transform, base: Readonly<Transf
  * @param from
  * @param to
  */
-const deltaQuat = ((): (out: Quat, from: Quat, to: Quat) => Quat => {
+export const deltaQuat = ((): (out: Quat, from: Quat, to: Quat) => Quat => {
     const quatMultiInvInverseCache = new Quat();
     return (out: Quat, from: Quat, to: Quat): Quat => {
         const fromInv = Quat.invert(quatMultiInvInverseCache, from);

@@ -16,6 +16,7 @@ import { PoseStashAllocator, RuntimeStashView } from './pose-graph/stash/runtime
 import { PoseHeapAllocator } from '../core/pose-heap-allocator';
 import { RuntimeMotionSyncManager } from './pose-graph/motion-sync/runtime-motion-sync';
 import { ReadonlyClipOverrideMap } from './clip-overriding';
+import { applyRootMotion } from './root-motion';
 
 /**
  * This module contains stuffs related to animation graph's evaluation.
@@ -305,9 +306,10 @@ export class AnimationGraphPoseLayoutMaintainer {
     /**
      * @param origin This node and all nodes under this node can be bound.
      */
-    constructor (origin: Node, auxiliaryCurveRegistry: AuxiliaryCurveRegistry) {
+    constructor (origin: Node, auxiliaryCurveRegistry: AuxiliaryCurveRegistry, rootMotionTarget: Node | null) {
         this._origin = origin;
         this._auxiliaryCurveRegistry = auxiliaryCurveRegistry;
+        this._rootMotionTarget = rootMotionTarget ?? origin;
     }
 
     get transformCount (): number {
@@ -504,6 +506,9 @@ export class AnimationGraphPoseLayoutMaintainer {
             );
         }
 
+        // Apply root motion
+        applyRootMotion(pose.rootMotion, this._rootMotionTarget);
+
         const nAuxiliaryCurves = this._auxiliaryCurveRecords.length;
         for (let iAuxiliaryCurve = 0; iAuxiliaryCurve < nAuxiliaryCurves; ++iAuxiliaryCurve) {
             const { name: curveName } = this._auxiliaryCurveRecords[iAuxiliaryCurve];
@@ -632,6 +637,7 @@ export class AnimationGraphPoseLayoutMaintainer {
     }
 
     private _origin: Node;
+    private _rootMotionTarget: Node;
     private _auxiliaryCurveRegistry: AuxiliaryCurveRegistry;
     private _auxiliaryCurveRecords: AuxiliaryCurveRecord[] = [];
     private _transformRecords: TransformRecord[] = [];
@@ -781,6 +787,7 @@ class AnimationGraphEvaluationContext {
         pose.transforms.set(this[defaultTransformsTag]);
         pose._poseTransformSpace = PoseTransformSpace.LOCAL;
         pose.auxiliaryCurves.fill(0.0);
+        Transform.copy(pose.rootMotion, Transform.IDENTITY);
         return pose;
     }
 
@@ -795,6 +802,7 @@ class AnimationGraphEvaluationContext {
         pose.transforms.fill(ZERO_DELTA_TRANSFORM);
         pose._poseTransformSpace = PoseTransformSpace.LOCAL;
         pose.auxiliaryCurves.fill(0.0);
+        Transform.copy(pose.rootMotion, Transform.IDENTITY);
         return pose;
     }
 
@@ -803,6 +811,7 @@ class AnimationGraphEvaluationContext {
         pose.transforms.set(src.transforms);
         pose._poseTransformSpace = src._poseTransformSpace;
         pose.auxiliaryCurves.set(src.auxiliaryCurves);
+        Transform.copy(pose.rootMotion, src.rootMotion);
         return pose;
     }
 

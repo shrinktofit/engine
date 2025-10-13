@@ -5,6 +5,8 @@ export {
 
 export {
     ExoticAnimation,
+    createExoticVec3TraceEvaluator,
+    createExoticQuatTraceEvaluator,
 } from '../../cocos/animation/exotic-animation/exotic-animation';
 
 export {

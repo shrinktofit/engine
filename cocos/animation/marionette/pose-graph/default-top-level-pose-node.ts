@@ -93,11 +93,11 @@ export class DefaultTopLevelPoseNode extends PoseNode {
             const layer = layerRecords[iLayer];
             const layerPose = layer.stateMachineEvaluation.evaluate(context);
             const layerActualWeight = layer.weight * layer.stateMachineEvaluation.passthroughWeight;
-            const { transformFilter } = layer;
+            const { transformFilter, includeRootMotion } = layer;
             if (layer.additive) {
-                applyDeltaPose(finalPose, layerPose, layerActualWeight, transformFilter);
+                applyDeltaPose(finalPose, layerPose, layerActualWeight, transformFilter, includeRootMotion);
             } else {
-                blendPoseInto(finalPose, layerPose, layerActualWeight, transformFilter);
+                blendPoseInto(finalPose, layerPose, layerActualWeight, transformFilter, includeRootMotion);
             }
             context.popPose();
 
@@ -137,6 +137,7 @@ class LayerEvaluationRecord {
         const additive = this.additive = layer.additive;
         this._mask = layer.mask ?? undefined;
         bindingContext._pushAdditiveFlag(additive);
+        this.includeRootMotion = !layer.mask;
         this._topLevelStateMachineEval = new TopLevelStateMachineEvaluation(
             layer.stateMachine,
             layer.name,
@@ -187,6 +188,8 @@ class LayerEvaluationRecord {
     private _mask: AnimationMask | undefined = undefined;
 
     public transformFilter: TransformFilter | undefined = undefined;
+
+    readonly includeRootMotion: boolean;
 }
 
 export type { LayerEvaluationRecord };
