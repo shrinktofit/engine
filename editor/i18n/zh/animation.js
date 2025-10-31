@@ -144,6 +144,17 @@ module.exports = {
                         },
                     },
                 },
+                'PoseNodeBlend1D': {
+                    displayName: '1D 混合',
+                    inputs: {
+                        'poses': {
+                            displayName: '姿态 {elementIndex}',
+                        },
+                        'thresholds': {
+                            displayName: '姿态 {elementIndex} 阈值',
+                        },
+                    },
+                },
                 'PoseNodeBlendTwoPoseBase': {
                     inputs: {
                         'pose0': {

@@ -148,6 +148,17 @@ module.exports = {
                         },
                     },
                 },
+                'PoseNodeBlend1D': {
+                    displayName: 'Blend 1D',
+                    inputs: {
+                        'poses': {
+                            displayName: 'Pose {elementIndex}',
+                        },
+                        'thresholds': {
+                            displayName: 'Pose {elementIndex} Threshold',
+                        },
+                    },
+                },
                 'PoseNodeBlendTwoPoseBase': {
                     inputs: {
                         'pose0': {

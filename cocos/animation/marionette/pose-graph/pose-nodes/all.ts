@@ -10,6 +10,7 @@ import './additively-blend';
 import './blend-in-proportion';
 import './blend-two-pose';
 import './filtering-blend';
+import './blend-1d';
 
 import './choose-pose/index';
 
