@@ -22,9 +22,9 @@ float CCSurfacesLightingCalculateDistanceAttenuation(in LightingIntermediateData
   return CalculateDistanceAttenuation(lightingData.distToLightSqr, lightSizeRangeAngle.x, lightSizeRangeAngle.y, lightType);
 }
 
-float CCSurfacesLightingCalculateAngleAttenuation(in LightingIntermediateData lightingData, in vec4 lightSizeRangeAngle, in vec3 spotLightDir)
+float CCSurfacesLightingCalculateAngleAttenuation(in LightingIntermediateData lightingData, in vec4 lightSizeRangeAngle, in vec3 spotLightDir, in float angleAtt)
 {
-  return CalculateAngleAttenuation(spotLightDir, lightingData.L, lightSizeRangeAngle.z);
+  return CalculateAngleAttenuation(spotLightDir, lightingData.L, lightSizeRangeAngle.z, angleAtt);
 }
 
 float CCSurfacesLightingCalculateAngleAttenuationWithStrength(in LightingIntermediateData lightingData, in vec4 lightSizeRangeAngle, in vec3 spotLightDir, in float strength)

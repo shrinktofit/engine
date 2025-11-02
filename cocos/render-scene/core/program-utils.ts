@@ -121,6 +121,7 @@ defaultUniformCounts.set('cc_lightPos', UBOForwardLightEnum.LIGHTS_PER_PASS);
 defaultUniformCounts.set('cc_lightColor', UBOForwardLightEnum.LIGHTS_PER_PASS);
 defaultUniformCounts.set('cc_lightSizeRangeAngle', UBOForwardLightEnum.LIGHTS_PER_PASS);
 defaultUniformCounts.set('cc_lightDir', UBOForwardLightEnum.LIGHTS_PER_PASS);
+defaultUniformCounts.set('cc_lightUp', UBOForwardLightEnum.LIGHTS_PER_PASS);
 defaultUniformCounts.set('cc_lightBoundingSizeVS', UBOForwardLightEnum.LIGHTS_PER_PASS);
 
 function getUniformSize (prevSize: number, m: Uniform): number {

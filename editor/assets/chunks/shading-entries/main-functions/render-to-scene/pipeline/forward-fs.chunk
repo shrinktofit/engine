@@ -1,6 +1,9 @@
 layout(location = 0) out vec4 fragColorX;
 
+layout(location = 1) out vec4 normalDir;
+
 void main()  {
+  normalDir = vec4((FSInput_worldNormal.xyz + 1.0) * 0.5, 1.0);
 #if CC_DISABLE_STRUCTURE_IN_FRAGMENT_SHADER
   float NoL = dot(-cc_mainLitDir.xyz, FSInput_worldNormal.xyz); //trigger ubo binding
   vec4 color = SurfacesFragmentModifyBaseColorAndTransparency();

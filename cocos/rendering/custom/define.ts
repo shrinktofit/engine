@@ -803,6 +803,12 @@ export function SetLightUBO (
         buffer[index++] = direction.y;
         buffer[index] = direction.z;
 
+        const up = spotLight.node!.up;
+        buffer[offset + UBOForwardLightEnum.LIGHT_UP_OFFSET + 0] = up.x;
+        buffer[offset + UBOForwardLightEnum.LIGHT_UP_OFFSET + 1] = up.y;
+        buffer[offset + UBOForwardLightEnum.LIGHT_UP_OFFSET + 2] = up.z;
+        buffer[offset + UBOForwardLightEnum.LIGHT_UP_OFFSET + 3] = 0;
+
         buffer[offset + UBOForwardLightEnum.LIGHT_BOUNDING_SIZE_VS_OFFSET + 0] = 0;
         buffer[offset + UBOForwardLightEnum.LIGHT_BOUNDING_SIZE_VS_OFFSET + 1] = 0;
         buffer[offset + UBOForwardLightEnum.LIGHT_BOUNDING_SIZE_VS_OFFSET + 2] = 0;

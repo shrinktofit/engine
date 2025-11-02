@@ -27,6 +27,7 @@ import { scene } from '../../render-scene';
 import { Light, PhotometricTerm } from './light-component';
 import { Camera, PCFType, ShadowType } from '../../render-scene/scene';
 import { getPipelineSceneData } from '../../rendering/pipeline-scene-data-utils';
+import { Texture2D } from '../../asset/assets';
 
 const { ccclass, range, slide, type, editable, displayOrder, help, executeInEditMode,
     menu, tooltip, serializable, formerlySerializedAs, visible, property } = _decorator;
@@ -71,6 +72,8 @@ export class SpotLight extends Light {
     private _shadowBias = 0.00001;
     @serializable
     private _shadowNormalBias = 0.0;
+    @serializable
+    private _cookieTexture: Texture2D | null = null;
 
     /**
      * @en Luminous flux of the light.
@@ -290,6 +293,23 @@ export class SpotLight extends Light {
         }
     }
 
+    /**
+     * @en The normal bias of the shadow map.
+     * @zh 设置或者获取灯光贴图。
+     */
+    @property(Texture2D)
+    @editable
+    @type(Texture2D)
+    get cookieTexture (): Texture2D | null {
+        return this._cookieTexture;
+    }
+    set cookieTexture (val) {
+        this._cookieTexture = val;
+        if (this._light) {
+            (this._light as scene.SpotLight).cookieTexture = val;
+        }
+    }
+
     constructor () {
         super();
         this._lightType = scene.SpotLight;
@@ -302,6 +322,7 @@ export class SpotLight extends Light {
         this.range = this._range;
         this.spotAngle = this._spotAngle;
         this.angleAttenuationStrength = this._angleAttenuationStrength;
+        this.cookieTexture = this._cookieTexture;
 
         if (this._light) {
             const spotLight = this._light as scene.SpotLight;

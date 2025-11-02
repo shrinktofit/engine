@@ -51,9 +51,9 @@ float CalculateDistanceAttenuation(float distToLightSqr, float lightRadius, floa
   return GetDistAtt(distToLightSqr, attRadiusSqrInv) * edgeAttenuation;
 }
 
-float CalculateAngleAttenuation(vec3 spotLightDir, vec3 L, float cosAngleOuter)
+float CalculateAngleAttenuation(vec3 spotLightDir, vec3 L, float cosAngleOuter, float angleAtt)
 {
-  float cosInner = max(dot(spotLightDir, L), 0.01);
+  float cosInner = mix(cosAngleOuter, 1.0, angleAtt); // max(dot(spotLightDir, L), 0.01);
   float litAngleScale = 1.0 / max(0.001, cosInner - cosAngleOuter);
   float litAngleOffset = -cosAngleOuter * litAngleScale;
   return GetAngleAtt(L, spotLightDir, litAngleScale, litAngleOffset);

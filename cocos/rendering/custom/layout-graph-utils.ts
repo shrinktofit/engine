@@ -131,6 +131,7 @@ export const DEFAULT_UNIFORM_COUNTS: Map<string, number> = new Map([
     ['cc_lightColor', UBOForwardLightEnum.LIGHTS_PER_PASS],
     ['cc_lightSizeRangeAngle', UBOForwardLightEnum.LIGHTS_PER_PASS],
     ['cc_lightDir', UBOForwardLightEnum.LIGHTS_PER_PASS],
+    ['cc_lightUp', UBOForwardLightEnum.LIGHTS_PER_PASS],
     ['cc_lightBoundingSizeVS', UBOForwardLightEnum.LIGHTS_PER_PASS],
 ]);
 

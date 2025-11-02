@@ -78,11 +78,56 @@
 
         float angleAtt = 1.0;
         if (IS_SPOT_LIGHT(cc_lightPos[i].w)) {
-          angleAtt = CCSurfacesLightingCalculateAngleAttenuationWithStrength(lightingData, cc_lightSizeRangeAngle[i], -cc_lightDir[i].xyz, cc_lightBoundingSizeVS[i].w);
+          angleAtt = CCSurfacesLightingCalculateAngleAttenuation(lightingData, cc_lightSizeRangeAngle[i], -cc_lightDir[i].xyz, cc_lightBoundingSizeVS[i].w);
+          if (true) {
+            // 计算从光源到表面点的向量
+            vec3 toSurface = worldPos - cc_lightPos[i].xyz;
+
+            // 建立光源的局部坐标系
+            // 假设cc_lightDir包含光源方向，cc_lightUp包含光源上方向
+            vec3 lightForward = normalize(-cc_lightDir[i].xyz);
+            vec3 lightUp = normalize(cc_lightUp[i].xyz);
+            vec3 lightRight = normalize(cross(lightUp, lightForward));
+            lightUp = normalize(cross(lightForward, lightRight));
+
+            // 将向量投影到光源的局部坐标系中
+            vec3 localPos;
+            localPos.x = dot(toSurface, lightRight);
+            localPos.y = dot(toSurface, lightUp);
+            localPos.z = dot(toSurface, lightForward);
+
+            // 只有在光源前方的点才受纹理影响
+            // if (localPos.z > 0.0) {
+                // 将3D位置转换为投影纹理的UV坐标
+                float cosOuterHalf = cc_lightSizeRangeAngle[i].z; // 外锥半角的余弦值
+                float sinOuterHalf = sqrt(1.0 - cosOuterHalf * cosOuterHalf); // 正弦值（三角函数关系）
+                float tanOuterHalf = sinOuterHalf / cosOuterHalf; // 半角正切（tanθ = sinθ/cosθ）
+
+                // UV映射公式（现在与角度正确关联）
+                vec2 uv = (localPos.xy / (localPos.z * tanOuterHalf)) * 0.5 + 0.5;
+
+                // 边界检查
+                if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
+                    // 采样Cookie纹理
+                    vec4 cookie;
+                    cookie = texture(cc_spotCookie, uv);
+                    // if (i == 0) cookie = texture(cc_spotCookie_0, uv);
+                    // else if (i == 1) cookie = texture(cc_spotCookie_1, uv);
+                    // else if (i == 2) cookie = texture(cc_spotCookie_2, uv);
+                    // else if (i == 3) cookie = texture(cc_spotCookie_3, uv);
+                    // 使用alpha通道或RGB通道作为衰减因子
+                    angleAtt *= cookie.a; // 或者使用 dot(cookie.rgb, vec3(0.333)) 转为灰度
+                } else {
+                //    // 超出纹理范围的部分完全不照亮
+                    angleAtt = 0.0;
+                }
+            // } else {
+                // 光源后方的点不受影响
+            //    angleAtt = 0.0;
+            // }
+          }
         }
-
         float multiplier = distAtt * angleAtt;
-
         // output
         lightingData.angleAttenuation = angleAtt;
         lightingData.distAttenuation = distAtt;

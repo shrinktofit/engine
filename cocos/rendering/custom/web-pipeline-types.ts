@@ -706,6 +706,9 @@ export class WebSetter implements Setter {
         this.setVec4('cc_lightSizeRangeAngle', _uboVec);
         _uboVec.set(light.direction.x, light.direction.y, light.direction.z, 0);
         this.setVec4('cc_lightDir', _uboVec);
+        const up = light.node!.up;
+        _uboVec.set(up.x, up.y, up.z, 0);
+        this.setVec4('cc_lightUp', _uboVec);
         const isHDR = sceneData.isHDR;
         const lightMeterScale = 10000.0;
         _uboVec.set(light.color.x, light.color.y, light.color.z, 0);

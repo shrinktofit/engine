@@ -538,6 +538,9 @@ export class RenderAdditiveLightQueue {
                 Vec3.toArray(_vec4Array, (light as SpotLight).direction);
                 this._lightBufferData.set(_vec4Array, offset + UBOForwardLightEnum.LIGHT_DIR_OFFSET);
 
+                Vec3.toArray(_vec4Array, (light as SpotLight).node!.up);
+                this._lightBufferData.set(_vec4Array, offset + UBOForwardLightEnum.LIGHT_UP_OFFSET);
+
                 // cc_lightColor
                 Vec3.toArray(_vec4Array, light.color);
                 if (light.useColorTemperature) {

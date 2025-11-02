@@ -14,3 +14,6 @@ layout(set = 0, binding = 2) uniform CCShadow {
   lowp vec4 cc_shadowColor;
   mediump vec4 cc_planarNDInfo;         // xyz -> normalized plane (N);  w -> plane (D);
 };
+
+#pragma builtin(global)
+layout(set = 0, binding = 8) uniform highp sampler2D cc_spotCookie;

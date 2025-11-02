@@ -22,6 +22,7 @@
  THE SOFTWARE.
 */
 
+import { Texture2D } from '../../asset/assets';
 import { Mat4, Quat, Vec3, geometry, cclegacy } from '../../core';
 import type { Frustum } from '../../core/geometry';
 import { getPipelineSceneData } from '../../rendering/pipeline-scene-data-utils';
@@ -73,6 +74,8 @@ export class SpotLight extends Light {
     protected _shadowPcf = PCFType.HARD;
     protected _shadowBias = 0.00001;
     protected _shadowNormalBias = 0.0;
+
+    protected _cookieTexture: Texture2D | null = null;
 
     /**
      * @en The world position of the light source
@@ -252,6 +255,15 @@ export class SpotLight extends Light {
     }
     set shadowNormalBias (val: number) {
         this._shadowNormalBias = val;
+    }
+
+    get cookieTexture (): Texture2D | null {
+        return this._cookieTexture;
+    }
+
+    set cookieTexture (val: Texture2D| null) {
+        this._cookieTexture = val;
+        this._needUpdate = true;
     }
 
     constructor () {

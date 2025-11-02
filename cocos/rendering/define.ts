@@ -128,7 +128,7 @@ export enum PipelineGlobalBindings {
     SAMPLER_ENVIRONMENT, // don't put this as the first sampler binding due to Mac GL driver issues: cubemap at texture unit 0 causes rendering issues
     SAMPLER_SPOT_SHADOW_MAP,
     SAMPLER_DIFFUSEMAP,
-
+    SAMPLER_SPOT_COOKIE,
     COUNT,
 }
 const GLOBAL_UBO_COUNT = PipelineGlobalBindings.SAMPLER_SHADOWMAP;
@@ -438,6 +438,13 @@ const UNIFORM_SPOT_SHADOW_MAP_TEXTURE_LAYOUT = new UniformSamplerTexture(SetInde
 globalDescriptorSetLayout.layouts[UNIFORM_SPOT_SHADOW_MAP_TEXTURE_NAME] = UNIFORM_SPOT_SHADOW_MAP_TEXTURE_LAYOUT;
 globalDescriptorSetLayout.bindings[UNIFORM_SPOT_SHADOW_MAP_TEXTURE_BINDING] = UNIFORM_SPOT_SHADOW_MAP_TEXTURE_DESCRIPTOR;
 
+const UNIFORM_SPOT_COOKIE_TEXTURE_NAME = 'cc_spotCookie';
+export const UNIFORM_SPOT_COOKIE_TEXTURE_BINDING = PipelineGlobalBindings.SAMPLER_SPOT_COOKIE;
+const UNIFORM_SPOT_COOKIE_TEXTURE_DESCRIPTOR = new DescriptorSetLayoutBinding(UNIFORM_SPOT_COOKIE_TEXTURE_BINDING, DescriptorType.SAMPLER_TEXTURE, 1, ShaderStageFlagBit.FRAGMENT);
+const UNIFORM_SPOT_COOKIE_TEXTURE_LAYOUT = new UniformSamplerTexture(SetIndex.GLOBAL, UNIFORM_SPOT_COOKIE_TEXTURE_BINDING, UNIFORM_SPOT_COOKIE_TEXTURE_NAME, Type.SAMPLER2D, 1);
+globalDescriptorSetLayout.layouts[UNIFORM_SPOT_COOKIE_TEXTURE_NAME] = UNIFORM_SPOT_COOKIE_TEXTURE_LAYOUT;
+globalDescriptorSetLayout.bindings[UNIFORM_SPOT_COOKIE_TEXTURE_BINDING] = UNIFORM_SPOT_COOKIE_TEXTURE_DESCRIPTOR;
+
 export enum UBOLocalEnum {
     MAT_WORLD_OFFSET = 0,
     MAT_WORLD_IT_OFFSET = MAT_WORLD_OFFSET + 16,
@@ -552,7 +559,8 @@ export enum UBOForwardLightEnum {
     LIGHT_COLOR_OFFSET = LIGHT_POS_OFFSET + LIGHTS_PER_PASS * 4,
     LIGHT_SIZE_RANGE_ANGLE_OFFSET = LIGHT_COLOR_OFFSET + LIGHTS_PER_PASS * 4,
     LIGHT_DIR_OFFSET = LIGHT_SIZE_RANGE_ANGLE_OFFSET + LIGHTS_PER_PASS * 4,
-    LIGHT_BOUNDING_SIZE_VS_OFFSET = LIGHT_DIR_OFFSET + LIGHTS_PER_PASS * 4,
+    LIGHT_UP_OFFSET = LIGHT_DIR_OFFSET + LIGHTS_PER_PASS * 4,
+    LIGHT_BOUNDING_SIZE_VS_OFFSET = LIGHT_UP_OFFSET + LIGHTS_PER_PASS * 4,
     COUNT = LIGHT_BOUNDING_SIZE_VS_OFFSET + LIGHTS_PER_PASS * 4,
     SIZE = COUNT * 4,
 }
@@ -568,6 +576,7 @@ export class UBOForwardLight {
     public static readonly LIGHT_COLOR_OFFSET = UBOForwardLightEnum.LIGHT_COLOR_OFFSET;
     public static readonly LIGHT_SIZE_RANGE_ANGLE_OFFSET = UBOForwardLightEnum.LIGHT_SIZE_RANGE_ANGLE_OFFSET;
     public static readonly LIGHT_DIR_OFFSET = UBOForwardLightEnum.LIGHT_DIR_OFFSET;
+    public static readonly LIGHT_UP_OFFSET = UBOForwardLightEnum.LIGHT_UP_OFFSET;
     public static readonly LIGHT_BOUNDING_SIZE_VS_OFFSET = UBOForwardLightEnum.LIGHT_BOUNDING_SIZE_VS_OFFSET;
     public static readonly COUNT = UBOForwardLightEnum.COUNT;
     public static readonly SIZE = UBOForwardLightEnum.SIZE;
@@ -587,6 +596,7 @@ export class UBOForwardLight {
         new Uniform('cc_lightColor', Type.FLOAT4, UBOForwardLightEnum.LIGHTS_PER_PASS),
         new Uniform('cc_lightSizeRangeAngle', Type.FLOAT4, UBOForwardLightEnum.LIGHTS_PER_PASS),
         new Uniform('cc_lightDir', Type.FLOAT4, UBOForwardLightEnum.LIGHTS_PER_PASS),
+        new Uniform('cc_lightUp', Type.FLOAT4, UBOForwardLightEnum.LIGHTS_PER_PASS),
         new Uniform('cc_lightBoundingSizeVS', Type.FLOAT4, UBOForwardLightEnum.LIGHTS_PER_PASS),
     ], 1);
 }
