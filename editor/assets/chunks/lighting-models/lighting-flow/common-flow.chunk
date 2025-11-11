@@ -127,7 +127,8 @@
             // }
           }
         }
-        float multiplier = distAtt * angleAtt;
+        // todo: 临时限制multiplier，防止光照过强
+        float multiplier = min(0.01, distAtt * angleAtt);
         // output
         lightingData.angleAttenuation = angleAtt;
         lightingData.distAttenuation = distAtt;
