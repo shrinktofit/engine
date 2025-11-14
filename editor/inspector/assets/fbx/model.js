@@ -21,6 +21,10 @@ exports.template = /* html */`
         <ui-checkbox slot="content" class="skipValidation-checkbox"></ui-checkbox>
     </ui-prop>
     <ui-prop>
+        <ui-label slot="label" value="i18n:ENGINE.assets.fbx.GlTFUserData.importVortexUniqueId.name" tooltip="i18n:ENGINE.assets.fbx.GlTFUserData.importVortexUniqueId.title"></ui-label>
+        <ui-checkbox slot="content" class="importVortexUniqueId-checkbox"></ui-checkbox>
+    </ui-prop>
+    <ui-prop>
         <ui-label slot="label" value="i18n:ENGINE.assets.fbx.disableMeshSplit.name" tooltip="i18n:ENGINE.assets.fbx.disableMeshSplit.title"></ui-label>
         <ui-checkbox slot="content" class="disableMeshSplit-checkbox"></ui-checkbox>
     </ui-prop>
@@ -241,6 +245,7 @@ exports.$ = {
     tangentsSelect: '.tangents-select',
     morphNormalsSelect: '.morphNormals-select',
     skipValidationCheckbox: '.skipValidation-checkbox',
+    importVortexUniqueIdCheckbox: '.importVortexUniqueId-checkbox',
     disableMeshSplitCheckbox: '.disableMeshSplit-checkbox',
     allowMeshDataAccessCheckbox: '.allowMeshDataAccess-checkbox',
     addVertexColorCheckbox: '.addVertexColor-checkbox',
@@ -374,6 +379,24 @@ const Elements = {
 
             updateElementInvalid.call(panel, panel.$.skipValidationCheckbox, 'skipValidation');
             updateElementReadonly.call(panel, panel.$.skipValidationCheckbox);
+        },
+    },
+    importVortexUniqueId: {
+        ready() {
+            const panel = this;
+
+            panel.$.importVortexUniqueIdCheckbox.addEventListener('change', panel.setProp.bind(panel, 'importVortexUniqueId', 'boolean'));
+            panel.$.importVortexUniqueIdCheckbox.addEventListener('confirm', () => {
+                panel.dispatch('snapshot');
+            });
+        },
+        update() {
+            const panel = this;
+
+            panel.$.importVortexUniqueIdCheckbox.value = getPropValue.call(panel, panel.meta.userData.importVortexUniqueId, true);
+
+            updateElementInvalid.call(panel, panel.$.importVortexUniqueIdCheckbox, 'importVortexUniqueId');
+            updateElementReadonly.call(panel, panel.$.importVortexUniqueIdCheckbox);
         },
     },
     disableMeshSplit: {

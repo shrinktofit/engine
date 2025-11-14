@@ -1,5 +1,5 @@
 {
-  "ver": "2.3.14",
+  "ver": "2.3.15",
   "importer": "fbx",
   "imported": true,
   "uuid": "1263d74c-8167-4928-91a6-4e2672411f47",
@@ -244,6 +244,7 @@
           "faceCount": 0.1
         }
       ]
-    }
+    },
+    "importVortexUniqueId": false
   }
 }

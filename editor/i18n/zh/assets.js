@@ -326,6 +326,10 @@ module.exports = {
                     name: '跳过验证',
                     title: '跳过对模型文件的验证。',
                 },
+                importVortexUniqueId: {
+                    name: '导入 Vortex 唯一 ID',
+                    title: '是否导入 Vortex 唯一 ID。',
+                },
                 mountAllAnimationsOnPrefab: {
                     name: '挂载全部动画到预制体',
                 },
