@@ -192,9 +192,6 @@ export class OneShotAudioWeb {
     }
 
     public play (): void {
-        if (EDITOR_NOT_IN_PREVIEW) {
-            return;
-        }
         this._bufferSourceNode.start();
         // audioContextAgent does exist
         audioContextAgent!.runContext().then(() => {
