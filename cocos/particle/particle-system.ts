@@ -23,7 +23,7 @@
 */
 
 // eslint-disable-next-line max-len
-import { ccclass, help, executeInEditMode, executionOrder, menu, tooltip, displayOrder, type, range, displayName, formerlySerializedAs, override, radian, serializable, visible } from 'cc.decorator';
+import { ccclass, help, executeInEditMode, executionOrder, menu, tooltip, displayOrder, type, range, displayName, formerlySerializedAs, override, radian, serializable, visible, group } from 'cc.decorator';
 import { EDITOR, EDITOR_NOT_IN_PREVIEW } from 'internal:constants';
 import { Renderer } from '../misc/renderer';
 import { ModelRenderer } from '../misc/model-renderer';
@@ -52,6 +52,7 @@ import { Camera } from '../render-scene/scene';
 import { ParticleCuller } from './particle-culler';
 import { NoiseModule } from './animator/noise-module';
 import { director, DirectorEvent } from '../game/director';
+import { Mesh } from '../3d/assets';
 
 const _world_mat = new Mat4();
 const _world_rol = new Quat();
@@ -257,7 +258,35 @@ export class ParticleSystem extends ModelRenderer {
     @serializable
     @displayOrder(2)
     @tooltip('i18n:particle_system.alignToVel')
-    public alignToVel = true;
+    public alignToVel = false;
+
+    /**
+     * @en The mesh to emit particles from.
+     * @zh 粒子发射基于的网格。
+     */
+    @type(Mesh)
+    @serializable
+    @displayOrder(1)
+    @tooltip('i18n:particle_system.emitMesh')
+    public emitMesh: Mesh | null = null;
+
+    /**
+     * @en The material index of the mesh to emit particles from.
+     * @zh 粒子基于网格发射的材质索引。
+     */
+    @serializable
+    @displayOrder(1)
+    @tooltip('i18n:particle_system.emitMeshMaterialIndex')
+    public emitMeshMaterialIndex = -1;
+
+    /**
+     * @en The density of the mesh to emit particles from.
+     * @zh 粒子基于网格发射的密度。
+     */
+    @serializable
+    @displayOrder(1)
+    @tooltip('i18n:particle_system.density')
+    public density = 1;
 
     /**
      * @en Play one round before start this particle system.

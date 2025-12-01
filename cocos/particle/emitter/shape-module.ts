@@ -22,7 +22,7 @@
  THE SOFTWARE.
 */
 
-import { ccclass, tooltip, displayOrder, type, formerlySerializedAs, serializable, visible, range } from 'cc.decorator';
+import { ccclass, tooltip, displayOrder, type, formerlySerializedAs, serializable, visible, range, editable } from 'cc.decorator';
 import { Mat4, Quat, Vec2, Vec3, clamp, pingPong, random, randomRange, repeat, toDegree, toRadian, warn } from '../../core';
 
 import CurveRange from '../animator/curve-range';
@@ -30,11 +30,25 @@ import { ParticleArcMode, ParticleEmitLocation, ParticleShapeType } from '../enu
 import { fixedAngleUnitVector2, particleEmitZAxis, randomPointBetweenCircleAtFixedAngle, randomPointBetweenSphere,
     randomPointInCube, randomSign, randomSortArray, randomUnitVector } from '../particle-general-function';
 import { ParticleSystem } from '../particle-system';
+import { Mesh } from '../../3d/assets/mesh';
+import { FormatInfos } from '../../gfx/base/define';
 import type { Particle } from '../particle';
+import { property } from '../../core/data/class-decorator';
 
 const _intermediVec = new Vec3(0, 0, 0);
 const _intermediArr: [number, number, number] = [0, 0, 0];
 const _unitBoxExtent = new Vec3(0.5, 0.5, 0.5);
+
+// 计算属性偏移量的辅助函数
+function getOffset (attributes: any[], attributeIndex: number): number {
+    let result = 0;
+    for (let i = 0; i < attributeIndex; ++i) {
+        const attribute = attributes[i];
+        result += FormatInfos[attribute.format].size;
+    }
+    return result;
+}
+
 function getShapeTypeEnumName (enumValue: number): keyof typeof ParticleShapeType {
     let enumName = '';
     for (const key in ParticleShapeType) {
@@ -194,6 +208,10 @@ export default class ShapeModule {
             if (this.emitFrom === ParticleEmitLocation.Base || this.emitFrom === ParticleEmitLocation.Edge) {
                 this.emitFrom = ParticleEmitLocation.Volume;
             }
+            break;
+        case ParticleShapeType.Mesh:
+            // Mesh 类型只支持从表面发射
+            this.emitFrom = ParticleEmitLocation.Shell;
             break;
         default:
             break;
@@ -382,7 +400,207 @@ export default class ShapeModule {
     private lastTime = 0;
     private totalAngle = 0;
 
+    // Mesh缓存相关属性
+    public _vertexBuffer: Vec3[] = [];
+    public _faceBuffer: number[] = [];
+    public _currentMesh: Mesh | null = null;
+    public _currentMeshMaterialIndex = -1;
+    public _faceAreas: number[] = [];
+    public _totalArea: number = 0;
+
     constructor () {}
+    private _refreshMesh (): void {
+        const mesh = this.particleSystem!.emitMesh;
+        this._currentMesh = mesh;
+        this._currentMeshMaterialIndex = this.particleSystem!.emitMeshMaterialIndex;
+
+        // 清理缓存
+        this._vertexBuffer.length = 0;
+        this._faceBuffer.length = 0;
+        this._faceAreas.length = 0;
+        this._totalArea = 0;
+
+        if (mesh) {
+            const primitives = mesh.struct.primitives;
+
+            // 确定要处理的 primitive 索引
+            let targetPrimitives: number[] = [];
+            if (this.particleSystem!.emitMeshMaterialIndex >= 0) {
+                // 只处理指定的 primitive
+                if (this.particleSystem!.emitMeshMaterialIndex < primitives.length) {
+                    targetPrimitives = [this.particleSystem!.emitMeshMaterialIndex];
+                }
+            } else {
+                // 处理所有 primitives
+                targetPrimitives = Array.from({ length: primitives.length }, (_, i) => i);
+            }
+
+            // 跟踪已处理的顶点束，避免重复处理
+            const processedBundles = new Set<number>();
+            let totalVertexCount = 0;
+
+            // 处理每个目标 primitive
+            for (const primitiveIndex of targetPrimitives) {
+                const primitive = primitives[primitiveIndex];
+                const faceIndexOffset = totalVertexCount; // 当前面索引的偏移量
+
+                // 获取顶点数据
+                if (primitive.vertexBundelIndices && primitive.vertexBundelIndices.length > 0) {
+                    const bundleIndex = primitive.vertexBundelIndices[0];
+                    // 检查是否已经处理过这个顶点束
+                    if (!processedBundles.has(bundleIndex)) {
+                        const bundle = mesh.struct.vertexBundles[bundleIndex];
+
+                        // 查找位置属性
+                        let positionAttributeIndex = -1;
+                        for (let j = 0; j < bundle.attributes.length; j++) {
+                            if (bundle.attributes[j].name === 'a_position') {
+                                positionAttributeIndex = j;
+                                break;
+                            }
+                        }
+
+                        if (positionAttributeIndex !== -1) {
+                            // 验证偏移量是否在有效范围内
+                            const view = bundle.view;
+                            const bufferOffset = mesh.data.byteOffset + view.offset;
+                            const bufferEnd = mesh.data.byteOffset + mesh.data.length;
+
+                            if (bufferOffset + view.length > bufferEnd) {
+                                console.warn(`Buffer overflow: offset ${bufferOffset} + length ${view.length} > buffer end ${bufferEnd}`);
+                                continue;
+                            }
+
+                            // 读取顶点数据
+                            const dataView = new DataView(mesh.data.buffer, bufferOffset, view.length);
+                            const positionOffset = getOffset(bundle.attributes, positionAttributeIndex);
+                            const positionStride = bundle.attributes.reduce((acc, attr) => Math.max(acc, getOffset(bundle.attributes, bundle.attributes.indexOf(attr)) + FormatInfos[attr.format].size), 0);
+                            const vertexCount = view.count;
+
+                            // 验证 positionOffset 是否在有效范围内
+                            if (positionOffset >= view.length) {
+                                console.warn(`Position offset ${positionOffset} is outside view length ${view.length}`);
+                                continue;
+                            }
+
+                            for (let v = 0; v < vertexCount; v++) {
+                                const offset = v * positionStride + positionOffset;
+                                if (offset + 12 > view.length) { // 12 bytes for 3 floats (x, y, z)
+                                    console.warn(`Vertex data offset ${offset} is outside view bounds ${view.length}`);
+                                    break;
+                                }
+                                const x = dataView.getFloat32(offset, true);
+                                const y = dataView.getFloat32(offset + 4, true);
+                                const z = dataView.getFloat32(offset + 8, true);
+                                this._vertexBuffer.push(new Vec3(x, y, z));
+                            }
+
+                            totalVertexCount += vertexCount;
+                            processedBundles.add(bundleIndex);
+                        }
+                    } else {
+                    // 如果已经处理过这个顶点束，需要更新总顶点数
+                        if (mesh.struct.vertexBundles[bundleIndex]) {
+                            totalVertexCount += mesh.struct.vertexBundles[bundleIndex].view.count;
+                        }
+                    }
+                }
+
+                // 获取索引数据（用于表面发射）
+                if (primitive.indexView) {
+                    const indexView = primitive.indexView;
+                    const bufferOffset = mesh.data.byteOffset + indexView.offset;
+                    const bufferEnd = mesh.data.byteOffset + mesh.data.length;
+
+                    if (bufferOffset + indexView.length > bufferEnd) {
+                        console.warn(`Index buffer overflow: offset ${bufferOffset} + length ${indexView.length} > buffer end ${bufferEnd}`);
+                        continue;
+                    }
+
+                    const dataView = new DataView(mesh.data.buffer, bufferOffset, indexView.length);
+                    const indexCount = indexView.count;
+
+                    for (let idx = 0; idx < indexCount; idx += 3) { // 每3个索引组成一个三角形
+                        let index0: number = 0;
+                        let index1: number = 0;
+                        let index2: number = 0;
+
+                        // 获取三角形的三个顶点索引
+                        for (let i = 0; i < 3; i++) {
+                            const currentIndex = idx + i;
+                            let index: number = 0;
+                            switch (indexView.stride) {
+                            case 1:
+                                if (currentIndex >= indexView.length) continue;
+                                index = dataView.getUint8(currentIndex);
+                                break;
+                            case 2:
+                                if (currentIndex * 2 + 1 >= indexView.length) continue;
+                                index = dataView.getUint16(currentIndex * 2, true);
+                                break;
+                            case 4:
+                                if (currentIndex * 4 + 3 >= indexView.length) continue;
+                                index = dataView.getUint32(currentIndex * 4, true);
+                                break;
+                            default:
+                                index = 0;
+                            }
+
+                            // 添加顶点偏移量
+                            const adjustedIndex = index + faceIndexOffset;
+                            switch (i) {
+                            case 0:
+                                index0 = adjustedIndex;
+                                break;
+                            case 1:
+                                index1 = adjustedIndex;
+                                break;
+                            case 2:
+                                index2 = adjustedIndex;
+                                break;
+                            }
+                        }
+
+                        // 存储面索引
+                        this._faceBuffer.push(index0, index1, index2);
+
+                        // 计算三角形面积并存储
+                        let area = 0;
+                        if (index0 < this._vertexBuffer.length
+                        && index1 < this._vertexBuffer.length
+                        && index2 < this._vertexBuffer.length) {
+                            const v0 = this._vertexBuffer[index0];
+                            const v1 = this._vertexBuffer[index1];
+                            const v2 = this._vertexBuffer[index2];
+                            area = this.calculateTriangleArea(v0, v1, v2);
+                        }
+                        this._faceAreas.push(area);
+                        this._totalArea += area;
+                    }
+                }
+            }
+            console.warn(`total area: ${this._totalArea}`);
+            const range = new CurveRange();
+            this.particleSystem!.rateOverTime = range;
+            range.mode = CurveRange.Mode.Constant;
+            range.constant = this._totalArea * this.particleSystem!.density;
+        }
+    }
+
+    // 新增：计算三角形面积的辅助函数
+    private calculateTriangleArea (v0: Vec3, v1: Vec3, v2: Vec3): number {
+    // 使用向量叉积计算三角形面积
+    // 面积 = 0.5 * |(v1-v0) × (v2-v0)|
+        const edge1 = new Vec3();
+        const edge2 = new Vec3();
+        const cross = new Vec3();
+
+        Vec3.subtract(edge1, v1, v0);
+        Vec3.subtract(edge2, v2, v0);
+        Vec3.cross(cross, edge1, edge2);
+
+        return 0.5 * Vec3.len(cross);
+    }
 
     /**
      * @en Apply particle system to this shape and create shape transform matrix.
@@ -394,6 +612,9 @@ export default class ShapeModule {
         this.particleSystem = ps;
         this.constructMat();
         this.lastTime = this.particleSystem.time;
+        if (this.shapeType === ParticleShapeType.Mesh) {
+            this._refreshMesh();
+        }
     }
 
     /**
@@ -419,6 +640,9 @@ export default class ShapeModule {
         case ParticleShapeType.Hemisphere:
             hemisphereEmit(this.emitFrom, this.radius, this.radiusThickness, p.position, p.velocity);
             break;
+        case ParticleShapeType.Mesh:
+            this.meshEmit(p.position, p.velocity);
+            break;
         default:
             warn(`${this.shapeType} shapeType is not supported by ShapeModule.`);
         }
@@ -441,6 +665,95 @@ export default class ShapeModule {
         Mat4.fromRTS(this.mat, this.quat, this._position, this._scale);
     }
 
+    /**
+ * @en Emit particle from mesh surface or vertices
+ * @zh 从网格表面或顶点发射粒子
+ * @param shapeModule @en The shape module instance. @zh 形状模块实例
+ * @param mesh @en The mesh to emit from. @zh 发射用的网格
+ * @param useVertex @en Whether to emit from vertices. @zh 是否从顶点发射
+ * @param pos @en Particle position output. @zh 粒子位置输出
+ * @param dir @en Particle direction output. @zh 粒子方向输出
+ */
+    private meshEmit (pos: Vec3, dir: Vec3, useVertex = false): void {
+        if (this.particleSystem!.emitMesh !== this._currentMesh || this._currentMeshMaterialIndex !== this.particleSystem!.emitMeshMaterialIndex) {
+            this._refreshMesh();
+        }
+        if (!this._currentMesh) {
+            randomUnitVector(pos);
+            Vec3.normalize(dir, pos);
+            return;
+        }
+        if (useVertex && this._vertexBuffer.length > 0) {
+        // 从顶点发射
+            const vertexIndex = Math.floor(randomRange(0, this._vertexBuffer.length));
+            const vertex = this._vertexBuffer[vertexIndex];
+            Vec3.copy(pos, vertex);
+            // 方向为从中心指向顶点
+            Vec3.normalize(dir, vertex);
+        } else if (!useVertex && this._faceBuffer.length >= 3) {
+        // 从表面发射 - 使用面积权重
+            let faceIndex: number;
+            if (this._totalArea > 0 && this._faceAreas.length > 0) {
+            // 根据面积权重选择面
+                const targetArea = randomRange(0, this._totalArea);
+                let accumulatedArea = 0;
+                let selectedFace = 0;
+
+                for (let i = 0; i < this._faceAreas.length; i++) {
+                    accumulatedArea += this._faceAreas[i];
+                    if (targetArea <= accumulatedArea) {
+                        selectedFace = i;
+                        break;
+                    }
+                }
+
+                faceIndex = selectedFace * 3;
+            } else {
+            // fallback到均匀分布
+                faceIndex = Math.floor(randomRange(0, this._faceBuffer.length / 3)) * 3;
+            }
+
+            const index0 = this._faceBuffer[faceIndex];
+            const index1 = this._faceBuffer[faceIndex + 1];
+            const index2 = this._faceBuffer[faceIndex + 2];
+
+            if (index0 < this._vertexBuffer.length && index1 < this._vertexBuffer.length && index2 < this._vertexBuffer.length) {
+                const v0 = this._vertexBuffer[index0];
+                const v1 = this._vertexBuffer[index1];
+                const v2 = this._vertexBuffer[index2];
+
+                // 在三角形面上随机选择一个点
+                const r1 = random();
+                const r2 = random();
+                const sqrtR1 = Math.sqrt(r1);
+                const u = 1 - sqrtR1;
+                const v = r2 * sqrtR1;
+                const w = 1 - u - v;
+
+                // 计算三角形内的点
+                pos.x = u * v0.x + v * v1.x + w * v2.x;
+                pos.y = u * v0.y + v * v1.y + w * v2.y;
+                pos.z = u * v0.z + v * v1.z + w * v2.z;
+
+                // 计算法线方向作为发射方向
+                const edge1 = new Vec3();
+                const edge2 = new Vec3();
+                const normal = new Vec3();
+                Vec3.subtract(edge1, v1, v0);
+                Vec3.subtract(edge2, v2, v0);
+                Vec3.cross(normal, edge1, edge2);
+                Vec3.normalize(dir, normal);
+            } else {
+            // fallback到单位球体
+                randomUnitVector(pos);
+                Vec3.normalize(dir, pos);
+            }
+        } else {
+        // fallback到单位球体
+            randomUnitVector(pos);
+            Vec3.normalize(dir, pos);
+        }
+    }
     private generateArcAngle (): number {
         if (this.arcMode === ParticleArcMode.Random) {
             return randomRange(0, this._arc);

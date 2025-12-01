@@ -117,6 +117,11 @@ export enum ParticleShapeType {
      * 半球体粒子发射器。
      */
     Hemisphere = 4,
+
+    /**
+     * 网格粒子发射器。
+     */
+    Mesh = 5,
 }
 Enum(ParticleShapeType);
 
