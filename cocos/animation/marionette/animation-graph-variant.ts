@@ -78,7 +78,7 @@ export class AnimationGraphVariant extends AnimationGraphLike implements Animati
 }
 
 @ccclass(`${CLASS_NAME_PREFIX_ANIM}ClipOverrideMap`)
-class ClipOverrideMap implements ReadonlyClipOverrideMap {
+export class ClipOverrideMap implements ReadonlyClipOverrideMap {
     get size (): number {
         return this._entries.length;
     }

@@ -73,6 +73,13 @@ export class DefaultTopLevelPoseNode extends PoseNode {
             const layerRecord = layerRecords[iLayer];
             context._pushAdditiveFlag(layerRecord.additive);
             layerRecord.stateMachineEvaluation.overrideClips(context);
+            // todo 优化实现
+            for (const key in layerRecord._stashManager?._stashEvaluations ?? {}) {
+                const record = layerRecord._stashManager._stashEvaluations[key];
+                record._instantiatedPoseGraph?._rootPoseNode?._stateMachineEval?._motionStates.forEach((motionState) => {
+                    motionState.overrideClips?.(context);
+                });
+            }
             context._popAdditiveFlag();
         }
     }

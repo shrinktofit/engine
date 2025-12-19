@@ -32,7 +32,7 @@ import type { MotionStateStatus } from './animation-controller';
 export * from './pose-graph/runtime-exports';
 
 export type { AnimationGraphRunTime } from './animation-graph';
-export type { AnimationGraphVariantRunTime } from './animation-graph-variant';
+export { AnimationGraphVariant, type ClipOverrideMap, type AnimationGraphVariantRunTime } from './animation-graph-variant';
 export { AnimationController } from './animation-controller';
 export type { ClipStatus, TransitionStatus, MotionStateStatus } from './animation-controller';
 export { VariableType } from './parametric';
