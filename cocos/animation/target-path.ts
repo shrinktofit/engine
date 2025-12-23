@@ -23,6 +23,7 @@
 */
 
 import { ccclass, serializable } from 'cc.decorator';
+import { EDITOR_NOT_IN_PREVIEW } from 'internal:constants';
 import { Node } from '../scene-graph/node';
 import { warnID } from '../core';
 import type { Component } from '../scene-graph';
@@ -85,7 +86,7 @@ export class HierarchyPath implements ICustomTargetPath {
             return null;
         }
         const result = target.getChildByPath(this.path);
-        if (!result) {
+        if (EDITOR_NOT_IN_PREVIEW && !result) {
             warnID(3926, target.name, this.path);
             return null;
         }

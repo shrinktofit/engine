@@ -714,7 +714,7 @@ class TopLevelStateMachineEvaluation {
                 const exitTime = realNode.duration * transition.exitCondition;
                 const currentStateTime = realNode.time;
                 if (currentStateTime < exitTime) {
-                    break;
+                    continue;
                 }
             }
 

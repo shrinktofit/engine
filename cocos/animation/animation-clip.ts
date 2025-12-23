@@ -23,7 +23,7 @@
 */
 
 import { ccclass, serializable } from 'cc.decorator';
-import { DEBUG } from 'internal:constants';
+import { DEBUG, EDITOR_NOT_IN_PREVIEW } from 'internal:constants';
 import { Asset } from '../asset/assets/asset';
 import { SpriteFrame } from '../2d/assets/sprite-frame';
 import { errorID, warnID, cclegacy, js, geometry, approx, clamp, Mat4, Quat,
@@ -404,7 +404,7 @@ export class AnimationClip extends Asset {
                 this.enableTrsBlending ? context.pose : undefined,
                 false,
             );
-            if (DEBUG && !trackTarget) {
+            if (EDITOR_NOT_IN_PREVIEW && DEBUG && !trackTarget) {
                 // If we got a null track target here, we should already have warn logged,
                 // To elaborate on error details, we warn here as well.
                 // Note: if in the future this log appears alone,
