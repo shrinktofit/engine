@@ -1,7 +1,7 @@
 {
     "files.exclude": {
         ".git": true,
-        "node_modules": true,
+        "node_modules": true
     },
     "search.exclude": {
         ".git": true,
@@ -11,12 +11,9 @@
     },
     "typescript.preferences.importModuleSpecifier": "relative",
     "typescript.tsdk": "node_modules/typescript/lib",
-    "eslint.validate": [
-        "javascript",
-        "typescript"
-    ],
+    "eslint.validate": ["javascript", "typescript"],
     "editor.codeActionsOnSave": {
-        "source.fixAll": "explicit",
+        // "source.fixAll": "explicit",
     },
     "files.associations": {
         "*.cmake": "makefile",
@@ -33,5 +30,5 @@
         "vector": "cpp",
         "istream": "c"
     },
-    "cmake.configureOnOpen": false,
+    "cmake.configureOnOpen": false
 }

@@ -29,7 +29,7 @@ import { PhysicsMaterial, PhysicsRayResult, CollisionEventType, TriggerEventType
     EPhysicsDrawFlags,
     CollisionEventTypeNew,
     Collider } from '../framework';
-import { error, RecyclePool, js, IVec3Like, geometry, IQuatLike, Vec3, Quat, Color } from '../../core';
+import { error, RecyclePool, js, IVec3Like, geometry, IQuatLike, Vec3, Quat, Color, log } from '../../core';
 import { IBaseConstraint } from '../spec/i-physics-constraint';
 import { PhysXRigidBody } from './physx-rigid-body';
 import {
@@ -48,6 +48,8 @@ import { PhysXCharacterController } from './character-controllers/physx-characte
 import { GeometryRenderer } from '../../rendering/geometry-renderer';
 import { director } from '../../game';
 import { fillGlobalPhysXCollision, freeGlobalPhysXCollision } from './physx-contact-point';
+
+const LOG_COLLISIONS: boolean = true;
 
 const CC_QUAT_0 = new Quat();
 const CC_V3_0 = new Vec3();
@@ -513,6 +515,9 @@ const PhysXCallback = {
 
     onTrigger (type: TriggerEventType, wpa: PhysXShape, wpb: PhysXShape, isEnter: boolean): void {
         if (wpa && wpb) {
+            if (LOG_COLLISIONS && type !== 'onTriggerStay') {
+                log(`[Trigger] ${type} ${this.stringifyPhysxShape(wpa)} <=> ${this.stringifyPhysxShape(wpb)}`);
+            }
             if (wpa.collider.needTriggerEvent || wpb.collider.needTriggerEvent) {
                 let tE: ITriggerEventItem;
                 if (triggerEventsPool.length > 0) {
@@ -532,6 +537,9 @@ const PhysXCallback = {
 
     onTriggerCCT (type: CharacterTriggerEventType, wpa: PhysXShape, cct: PhysXCharacterController, isEnter: boolean): void {
         if (wpa && cct) {
+            if (LOG_COLLISIONS && type !== 'onControllerTriggerStay') {
+                log(`[CharacterTrigger] ${type} ${this.stringifyPhysxShape(wpa)} <=> ${this.stringifyPhysxCharacterController(cct)}`);
+            }
             if (wpa.collider.needTriggerEvent) {
                 let tE: ITriggerEventItemCCT;
                 if (cctTriggerEventsPool.length > 0) {
@@ -565,15 +573,27 @@ const PhysXCallback = {
             if (colliderA && colliderB) {
                 const type: TriggerEventType = 'onTriggerExit';
                 TriggerEventObject.type = type;
-                if (colliderA.needTriggerEvent) {
+                if (colliderA.selfNeedTriggerEvent) {
                     TriggerEventObject.selfCollider = colliderA;
                     TriggerEventObject.otherCollider = colliderB;
                     colliderA.emit(type, TriggerEventObject);
                 }
-                if (colliderB.needTriggerEvent) {
+                const attachedBodyA = colliderA.attachedRigidBody;
+                if (attachedBodyA?.needTriggerEvent_internal) {
+                    TriggerEventObject.selfCollider = colliderA;
+                    TriggerEventObject.otherCollider = colliderB;
+                    attachedBodyA.emit(type, TriggerEventObject);
+                }
+                if (colliderB.selfNeedTriggerEvent) {
                     TriggerEventObject.selfCollider = colliderB;
                     TriggerEventObject.otherCollider = colliderA;
                     colliderB.emit(type, TriggerEventObject);
+                }
+                const attachedBodyB = colliderB.attachedRigidBody;
+                if (attachedBodyB?.needTriggerEvent_internal) {
+                    TriggerEventObject.selfCollider = colliderB;
+                    TriggerEventObject.otherCollider = colliderA;
+                    attachedBodyB.emit(type, TriggerEventObject);
                 }
             }
         }
@@ -591,18 +611,38 @@ const PhysXCallback = {
             } else {
                 const type: TriggerEventType = data.times++ ? 'onTriggerStay' : 'onTriggerEnter';
                 TriggerEventObject.type = type;
-                if (colliderA.needTriggerEvent) {
+                if (colliderA.selfNeedTriggerEvent) {
                     TriggerEventObject.selfCollider = colliderA;
                     TriggerEventObject.otherCollider = colliderB;
                     colliderA.emit(type, TriggerEventObject);
+                }
+                const attachedBodyA = colliderA.attachedRigidBody;
+                if (attachedBodyA?.needTriggerEvent_internal) {
+                    TriggerEventObject.selfCollider = colliderA;
+                    TriggerEventObject.otherCollider = colliderB;
+                    attachedBodyA.emit(type, TriggerEventObject);
                 }
                 if (colliderB.needTriggerEvent) {
                     TriggerEventObject.selfCollider = colliderB;
                     TriggerEventObject.otherCollider = colliderA;
                     colliderB.emit(type, TriggerEventObject);
                 }
+                const attachedBodyB = colliderB.attachedRigidBody;
+                if (attachedBodyB?.needTriggerEvent_internal) {
+                    TriggerEventObject.selfCollider = colliderB;
+                    TriggerEventObject.otherCollider = colliderA;
+                    attachedBodyB.emit(type, TriggerEventObject);
+                }
             }
         }
+    },
+
+    stringifyPhysxShape (shape: PhysXShape): string {
+        return `[${shape.collider.constructor.name}]${shape.collider.node.getPathInHierarchy()}`;
+    },
+
+    stringifyPhysxCharacterController (cct: PhysXCharacterController): string {
+        return `[${cct.characterController.constructor.name}]${cct.characterController.node.getPathInHierarchy()}`;
     },
 
     /**
@@ -612,6 +652,9 @@ const PhysXCallback = {
      */
     onCollision (type: CollisionEventType, wpa: PhysXShape, wpb: PhysXShape, c: number, d: any, o: number): void {
         if (wpa && wpb) {
+            if (LOG_COLLISIONS && type !== 'onCollisionStay') {
+                log(`[Collision] ${type} ${this.stringifyPhysxShape(wpa)} <=> ${this.stringifyPhysxShape(wpb)}`);
+            }
             if (wpa.collider.needCollisionEvent || wpb.collider.needCollisionEvent) {
                 if (contactEventsPool.length > 0) {
                     const cE = contactEventsPool.pop() as ICollisionEventItem;
@@ -627,6 +670,9 @@ const PhysXCallback = {
 
     // eslint-disable-next-line max-len
     onCharacterControllerColliderCollision (type: CollisionEventType, wpa: PhysXCharacterController, wpb: PhysXShape, c: number, d: any, o: number): void {
+        if (LOG_COLLISIONS && type !== 'onCollisionStay') {
+            log(`[CharacterControllerColliderCollision] ${type} ${this.stringifyPhysxCharacterController(wpa)} <=> ${this.stringifyPhysxShape(wpb)}`);
+        }
         if (contactEventsPool.length > 0) {
             const cE = contactEventsPool.pop() as ICollisionEventItem;
             cE.type = type; cE.a = wpa; cE.b = wpb; cE.contactCount = c; cE.buffer = d; cE.offset = o;
@@ -667,15 +713,27 @@ const PhysXCallback = {
                             c.impl = getContactDataOrByteOffset(i, o); contacts.push(c);
                         }
                     }
-                    if (colliderA.needCollisionEvent) {
+                    if (colliderA.selfNeedCollisionEvent) {
                         CollisionEventObject.selfCollider = colliderA;
                         CollisionEventObject.otherCollider = colliderB;
                         colliderA.emit(CollisionEventObject.type, CollisionEventObject);
                     }
-                    if (colliderB.needCollisionEvent) {
+                    const attachedBodyA = colliderA.attachedRigidBody;
+                    if (attachedBodyA?.needCollisionEvent_internal) {
+                        CollisionEventObject.selfCollider = colliderA;
+                        CollisionEventObject.otherCollider = colliderB;
+                        attachedBodyA.emit(CollisionEventObject.type, CollisionEventObject);
+                    }
+                    if (colliderB.selfNeedCollisionEvent) {
                         CollisionEventObject.selfCollider = colliderB;
                         CollisionEventObject.otherCollider = colliderA;
                         colliderB.emit(CollisionEventObject.type, CollisionEventObject);
+                    }
+                    const attachedBodyB = colliderB.attachedRigidBody;
+                    if (attachedBodyB?.needCollisionEvent_internal) {
+                        CollisionEventObject.selfCollider = colliderB;
+                        CollisionEventObject.otherCollider = colliderA;
+                        attachedBodyB.emit(CollisionEventObject.type, CollisionEventObject);
                     }
                 }
             }
@@ -797,6 +855,12 @@ const PhysXCallback = {
                     CharacterTriggerEventObject.characterController = characterController;
                     collider.emit(type, CharacterTriggerEventObject);
                 }
+                const attachedRigidBody = collider.attachedRigidBody;
+                if (attachedRigidBody && attachedRigidBody.needTriggerEvent_internal) {
+                    CharacterTriggerEventObject.collider = collider;
+                    CharacterTriggerEventObject.characterController = characterController;
+                    attachedRigidBody.emit(type, CharacterTriggerEventObject);
+                }
                 if (characterController.needTriggerEvent) {
                     CharacterTriggerEventObject.collider = collider;
                     CharacterTriggerEventObject.characterController = characterController;
@@ -822,6 +886,12 @@ const PhysXCallback = {
                     CharacterTriggerEventObject.collider = collider;
                     CharacterTriggerEventObject.characterController = characterController;
                     collider.emit(type, CharacterTriggerEventObject);
+                }
+                const attachedRigidBody = collider.attachedRigidBody;
+                if (attachedRigidBody && attachedRigidBody.needTriggerEvent_internal) {
+                    CharacterTriggerEventObject.collider = collider;
+                    CharacterTriggerEventObject.characterController = characterController;
+                    attachedRigidBody.emit(type, CharacterTriggerEventObject);
                 }
                 if (characterController.needTriggerEvent) {
                     CharacterTriggerEventObject.collider = collider;

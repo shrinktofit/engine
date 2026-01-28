@@ -212,8 +212,16 @@ export class Collider extends Eventify(Component) {
         return this._boundingSphere;
     }
 
+    public get selfNeedTriggerEvent (): boolean {
+        return this._needTriggerEvent;
+    }
+
     public get needTriggerEvent (): boolean {
         return this._needTriggerEvent || (this._attachedRigidBody?.needTriggerEvent_internal ?? false);
+    }
+
+    public get selfNeedCollisionEvent (): boolean {
+        return this._needCollisionEvent;
     }
 
     public get needCollisionEvent (): boolean {
