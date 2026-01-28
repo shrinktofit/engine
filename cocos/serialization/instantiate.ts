@@ -331,8 +331,24 @@ function instantiateObj (obj: TypedArray | any[] | CCObject, parent: any): any {
         return obj;
     }
     enumerateObject(obj, clone, parent);
+    const onAfterInstantiated = clone[onAfterInstantiatedTag];
+    if (typeof onAfterInstantiated === 'function') {
+        onAfterInstantiated.call(clone);
+    }
     return clone;
 }
+
+const onAfterInstantiatedTag = Symbol('onAfterInstantiated');
+
+export declare namespace instantiate {
+    export namespace Tags {
+        export const onAfterInstantiated: typeof onAfterInstantiatedTag;
+    }
+}
+
+instantiate.Tags = {
+    onAfterInstantiated: onAfterInstantiatedTag,
+};
 
 instantiate._clone = doInstantiate;
 cclegacy.instantiate = instantiate;
