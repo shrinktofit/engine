@@ -33,6 +33,7 @@ import { degreesToRadians } from '../../../core/utils/misc';
 import { TransformBit } from '../../../scene-graph';
 import { PhysXFilterData } from '../filter-data';
 import { PhysXObject } from '../physx-object';
+import { PhysXFilterData } from '../filter-data';
 
 const v3_0 = new Vec3(0, 0, 0);
 const v3_1 = new Vec3(0, 0, 0);

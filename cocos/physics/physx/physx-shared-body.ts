@@ -39,6 +39,7 @@ import { PhysicsGroup } from '../framework/physics-enum';
 import { Node } from '../../scene-graph';
 import { PhysXFilterData } from './filter-data';
 import { ISharedBody } from '../spec/i-shared-body';
+import { PhysXFilterData } from './filter-data';
 
 /** @mangle */
 export class PhysXSharedBody implements ISharedBody {
