@@ -72,14 +72,7 @@ export class DefaultTopLevelPoseNode extends PoseNode {
         for (let iLayer = 0; iLayer < nLayers; ++iLayer) {
             const layerRecord = layerRecords[iLayer];
             context._pushAdditiveFlag(layerRecord.additive);
-            layerRecord.stateMachineEvaluation.overrideClips(context);
-            // todo 优化实现
-            for (const key in layerRecord._stashManager?._stashEvaluations ?? {}) {
-                const record = layerRecord._stashManager._stashEvaluations[key];
-                record._instantiatedPoseGraph?._rootPoseNode?._stateMachineEval?._motionStates.forEach((motionState) => {
-                    motionState.overrideClips?.(context);
-                });
-            }
+            layerRecord.overrideClips(context);
             context._popAdditiveFlag();
         }
     }
@@ -180,6 +173,11 @@ class LayerEvaluationRecord {
     public postEvaluate (): void {
         // Reset stash resources.
         this._stashManager.reset();
+    }
+
+    public overrideClips (context: AnimationGraphBindingContext): void {
+        this.stateMachineEvaluation.overrideClips(context);
+        this._stashManager.overrideClips(context);
     }
 
     public additive = false;

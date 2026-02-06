@@ -75,6 +75,14 @@ class InstantiatedPoseGraph {
         }
         return maxWeightedTime;
     }
+
+    public overrideClips (context: AnimationGraphBindingContext): void {
+        // FIXME: here should iterate all animation nodes and override clips.
+        // @ts-expect-error
+        this._rootPoseNode?._stateMachineEval?._motionStates.forEach((motionState) => {
+            motionState.overrideClips?.(context);
+        });
+    }
 }
 
 export type { InstantiatedPoseGraph };

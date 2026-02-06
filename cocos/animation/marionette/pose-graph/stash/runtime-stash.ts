@@ -284,6 +284,10 @@ class RuntimeStashRecord implements RuntimeStash {
             : null;
     }
 
+    public overrideClips (context: AnimationGraphBindingContext): void {
+        this._instantiatedPoseGraph?.overrideClips(context);
+    }
+
     private _state = StashRecordState.UNINITIALIZED;
     private _instantiatedPoseGraph: InstantiatedPoseGraph | undefined = undefined;
     private _maxRequestedUpdateTime = 0.0;
@@ -334,6 +338,12 @@ export class RuntimeStashManager implements RuntimeStashView {
         for (const stashId in this._stashEvaluations) {
             const record = this._stashEvaluations[stashId];
             record.settle(context);
+        }
+    }
+
+    public overrideClips (context: AnimationGraphBindingContext): void {
+        for (const stashEvaluation of Object.values(this._stashEvaluations)) {
+            stashEvaluation.overrideClips(context);
         }
     }
 

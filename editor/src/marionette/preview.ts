@@ -83,7 +83,7 @@ class AnimationGraphPartialPreviewer {
     private _dummyAnimationController: AnimationController;
 
     private _updateAllRecords() {
-        const poseLayoutMaintainer = new AnimationGraphPoseLayoutMaintainer(this._root, new AuxiliaryCurveRegistry());
+        const poseLayoutMaintainer = new AnimationGraphPoseLayoutMaintainer(this._root, new AuxiliaryCurveRegistry(), null);
         this._poseLayoutMaintainer = poseLayoutMaintainer;
 
         const bindingContext = new AnimationGraphBindingContext(
@@ -257,7 +257,7 @@ export class TransitionPreviewer extends AnimationGraphPartialPreviewer {
     }
 
     /**
-     * 
+     *
      * @param time Player time, in seconds.
      */
     public setTime(time: number) {

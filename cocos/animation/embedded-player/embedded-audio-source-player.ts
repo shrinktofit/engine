@@ -113,7 +113,7 @@ class EmbeddedAudioSourcePlayableState extends EmbeddedPlayableState {
      * @param speed The speed.
      */
     public setSpeed (speed: number): void {
-        this._audioSource.speed = speed;
+        // Audio source does not support speed control.
     }
 
     private _audioSource: AudioSource;
