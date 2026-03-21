@@ -174,6 +174,9 @@ function translationDump(dump, dumps, assets) {
         if (allow) {
             collectGroups(component);
             translate(component.value, component.path, dumps ? dumps.map((dump) => dump.__comps__[i].value) : undefined, assets);
+            if (component.editorExecutableMethods) {
+                translate(component.editorExecutableMethods, component.path, dumps ? dumps.map((dump) => dump.__comps__[i].editorExecutableMethods) : undefined, assets);
+            }
         } else {
             break;
         }

@@ -133,6 +133,19 @@ exports.listeners = {
             for (let i = 0; i < panel.uuidList.length; i++) {
                 const uuid = panel.uuidList[i];
                 const { path, type, isArray } = dump;
+
+                if (type === '__editorExecutableMethod__') {
+                    await Editor.Message.request(messageProtocol.scene, 'invoke-editor-executable-method', {
+                        uuid,
+                        path,
+                        dump: {
+                            type,
+                            isArray,
+                        },
+                    });
+                    continue;
+                }
+
                 let value = dump.value;
 
                 if (dump.values) {

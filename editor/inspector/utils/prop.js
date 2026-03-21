@@ -303,6 +303,83 @@ exports.updatePropByDump = function(panel, dump) {
         $prop.render(info);
     });
 
+    if (dump.editorExecutableMethods) {
+        Object.entries(dump.editorExecutableMethods).forEach(([key, info], index) => {
+            if (!info.visible) {
+                return;
+            }
+
+            newPropKeys.push(key);
+
+            const element = panel.elements[key];
+            let $prop = panel.$props[key];
+            if (!$prop) {
+                if (element && element.create) {
+                    // when it need to go custom initialize
+                    $prop = panel.$props[key] = panel.$[key] = element.create.call(panel, info);
+                } else {
+                    $prop = panel.$props[key] = panel.$[key] = document.createElement('ui-prop');
+                    $prop.setAttribute('type', 'dump');
+                }
+
+                const _displayOrder = info.group?.displayOrder ?? info.displayOrder;
+                $prop.displayOrder = _displayOrder === undefined ? (index + Object.keys(dump.value).length) : Number(_displayOrder);
+
+                if (element && element.displayOrder !== undefined) {
+                    $prop.displayOrder = element.displayOrder;
+                }
+
+                if (!element || !element.isAppendToParent || element.isAppendToParent.call(panel)) {
+                    if (info.group && dump.groups) {
+                        const { id = 'default', name } = info.group;
+
+                        if (!panel.$groups[id] && dump.groups[id]) {
+                            if (dump.groups[id].style === 'tab') {
+                                panel.$groups[id] = exports.createTabGroup(dump.groups[id], panel);
+                            } else if (dump.groups[id].style === 'section') {
+                                panel.$groups[id] = exports.createGroup(dump.groups[id]);
+                            }
+                        }
+
+                        if (panel.$groups[id]) {
+                            if (!panel.$groups[id].isConnected) {
+                                exports.appendChildByDisplayOrder(panel.$.componentContainer, panel.$groups[id]);
+                            }
+                            if (dump.groups[id].style === 'tab') {
+                                exports.appendToTabGroup(panel.$groups[id], name);
+                            } else if (dump.groups[id].style === 'section') {
+                                exports.appendToGroup(panel.$groups[id], name);
+                            }
+                        }
+
+                        if (dump.groups[id].style === 'tab') {
+                            exports.appendChildByDisplayOrder(panel.$groups[id].tabs[name], $prop);
+                        } else if (dump.groups[id].style === 'section') {
+                            exports.appendChildByDisplayOrder(panel.$groups[id].names[name], $prop);
+                        }
+                    } else {
+                        exports.appendChildByDisplayOrder(panel.$.componentContainer, $prop);
+                    }
+                }
+            } else if (!$prop.isConnected || !$prop.parentElement) {
+                if (!element || !element.isAppendToParent || element.isAppendToParent.call(panel)) {
+                    if (info.group && dump.groups) {
+                        const { id = 'default', name } = info.group;
+                        if (dump.groups[id].style === 'tab') {
+                            exports.appendChildByDisplayOrder(panel.$groups[id].tabs[name], $prop);
+                        } else {
+                            exports.appendChildByDisplayOrder(panel.$groups[id].names[name], $prop);
+                        }
+                    } else {
+                        exports.appendChildByDisplayOrder(panel.$.componentContainer, $prop);
+                    }
+                }
+            }
+
+            $prop.render(info);
+        });
+    }
+
     for (const id of oldPropKeys) {
         if (!newPropKeys.includes(id)) {
             const $prop = panel.$props[id];
