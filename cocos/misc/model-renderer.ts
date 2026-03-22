@@ -28,10 +28,11 @@ import {
 import { scene } from '../render-scene';
 import { Layers } from '../scene-graph/layers';
 import { Renderer } from './renderer';
-import { cclegacy, _decorator } from '../core';
+import { cclegacy, _decorator, geometry } from '../core';
 import { SubModel } from '../render-scene/scene';
 import { isEnableEffect } from '../rendering/define';
 import { getPhaseID } from '../rendering/pass-phase';
+import { BoundingComponent } from '../scene-graph/component-editor-traits';
 
 let _phaseID = getPhaseID('specular-pass');
 function getSkinPassIndex (subModel: SubModel): number {
@@ -52,7 +53,7 @@ function getSkinPassIndex (subModel: SubModel): number {
  * @zh 所有包含 model 的渲染组件基类。
  */
 @ccclass('cc.ModelRenderer')
-export class ModelRenderer extends Renderer {
+export class ModelRenderer extends Renderer implements BoundingComponent {
     constructor () {
         super();
     }
@@ -120,5 +121,22 @@ export class ModelRenderer extends Renderer {
                 this._models[i].priority = this._priority;
             }
         }
+    }
+
+    [BoundingComponent.Tags.getBoundingBox] (): geometry.AABB | undefined {
+        let result: geometry.AABB | undefined;
+        for (let i = 0; i < this._models.length; i++) {
+            const model = this._models[i];
+            const worldBounds = model.worldBounds;
+            if (!worldBounds) {
+                continue;
+            }
+            if (!result) {
+                result = new geometry.AABB().copy(worldBounds);
+            } else {
+                geometry.AABB.merge(result, result, worldBounds);
+            }
+        }
+        return result;
     }
 }

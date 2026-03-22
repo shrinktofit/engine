@@ -30,6 +30,7 @@ import { director, DirectorEvent } from '../../game/director';
 import { NodeEventType } from '../../scene-graph/node-event';
 import { IMask } from '../../scene-graph/node-event-processor';
 import type { Mask } from '../components/mask';
+import { BoundingComponent } from '../../scene-graph/component-editor-traits';
 
 const _vec2a = new Vec2();
 const _vec2b = new Vec2();
@@ -52,7 +53,7 @@ const _rect = new Rect();
 @menu('UI/UITransform')
 @disallowMultiple
 @executeInEditMode
-export class UITransform extends Component {
+export class UITransform extends Component implements BoundingComponent {
     constructor () {
         super();
     }
@@ -813,6 +814,15 @@ export class UITransform extends Component {
      */
     public static _cleanChangeMap (): void {
         UITransform.priorityChangeNodeMap.clear();
+    }
+
+    [BoundingComponent.Tags.getBoundingBox] (): geometry.AABB {
+        const rect = this.getBoundingBoxToWorld();
+        return geometry.AABB.fromPoints(
+            new geometry.AABB(),
+            new Vec3(rect.xMin, rect.yMin, this.node.worldPositionZ),
+            new Vec3(rect.xMax, rect.yMax, this.node.worldPositionZ),
+        );
     }
 }
 
