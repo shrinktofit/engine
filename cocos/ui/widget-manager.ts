@@ -66,6 +66,7 @@ function align (node: Node, widget: Widget): void {
 
     const isRoot = useGlobal;
     node.getPosition(_tempPos);
+    const { x: oldX, y: oldY, z: oldZ } = node.position;
     const uiTrans = node._getUITransformComp()!;
     let x = _tempPos.x;
     let y = _tempPos.y;
@@ -197,8 +198,13 @@ function align (node: Node, widget: Widget): void {
         widget._lastSize.height = height;
     }
 
-    node.setPosition(x, y, _tempPos.z);
-    Vec3.set(widget._lastPos, x, y, _tempPos.z);
+    const z = _tempPos.z;
+
+    // Node.setPosition is a heavy operation, only set if outdated.
+    if (x !== oldX || y !== oldY || z !== oldZ) {
+        node.setPosition(x, y, z);
+    }
+    Vec3.set(widget._lastPos, x, y, z);
 }
 
 // TODO: type is hack, Change to the type actually used (Node or BaseNode) when BaseNode complete
