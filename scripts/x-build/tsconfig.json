@@ -1,0 +1,20 @@
+{
+    "include": ["."],
+    "compilerOptions": {
+        "target": "es2022",
+        "module": "node20",
+        "rootDir": "src",
+        "outDir": "lib",
+        "sourceMap": true,
+        "declaration": true,
+        "declarationMap": true,
+        "strict": true,
+        "noImplicitOverride": true,
+        "verbatimModuleSyntax": true,
+        "rewriteRelativeImportExtensions": true,
+        "allowImportingTsExtensions": true,
+        "types": [
+            "node",
+        ],
+    }
+}

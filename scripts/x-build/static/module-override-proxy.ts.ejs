@@ -1,0 +1,13 @@
+import __ctx from '<%- contextModuleId %>';
+
+export const __synthetic = (async () => {
+  const context = __ctx;
+
+  <% variants.forEach(function(variant){ %>
+    if (( <%- variant.condition %> )) {
+      return await import('<%- variant.override %>');
+    }
+  <% }) %>
+
+  throw new Error('No variant matches for module ' + String.raw`<%= alias %>`);
+})();

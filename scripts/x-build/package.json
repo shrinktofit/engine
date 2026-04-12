@@ -1,0 +1,32 @@
+{
+  "name": "x-build",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "bin": "node ./src/bin.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/ejs": "^3.1.5",
+    "@types/node": "^25.6.0",
+    "@types/yargs": "^17.0.35",
+    "eslint": "^10.2.0",
+    "typescript": "6.0.2",
+    "typescript-eslint": "^8.58.1"
+  },
+  "dependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/plugin-transform-dynamic-import": "^7.27.1",
+    "@babel/plugin-transform-modules-systemjs": "^7.29.0",
+    "@babel/preset-env": "^7.29.2",
+    "@babel/preset-typescript": "^7.28.5",
+    "@cocos/ccbuild": "2.3.16",
+    "ejs": "^5.0.2",
+    "rolldown": "1.0.0-rc.15",
+    "vite": "^7.3.2",
+    "vite-plugin-babel": "^1.6.0",
+    "yargs": "^18.0.0"
+  }
+}

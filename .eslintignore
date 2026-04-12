@@ -1,3 +1,4 @@
 *.jsb.ts
 **/*.ems.ts
 cocos/webgpu/**/*
+scripts/x-build/**/*

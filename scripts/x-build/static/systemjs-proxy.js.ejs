@@ -1,0 +1,10 @@
+System.register([<%- '\n' + dependencies.map(dep => `  '${dep}',\n`).join('') %>], (_export, _ctx) => {
+  return {
+    async execute() {
+      const m = typeof require === 'function' ?
+        await Promise.resolve(require('<%- target %>')) :
+        await import('<%- target %>');
+      _export(m);
+    },
+  };
+});

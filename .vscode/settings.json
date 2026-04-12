@@ -11,9 +11,11 @@
     },
     "typescript.preferences.importModuleSpecifier": "relative",
     "typescript.tsdk": "node_modules/typescript/lib",
+    "js/ts.preferences.quoteStyle": "single",
+    "eslint.workingDirectories": [{ "directory": "scripts/x-build" }],
     "eslint.validate": ["javascript", "typescript"],
     "editor.codeActionsOnSave": {
-        // "source.fixAll": "explicit",
+        "source.fixAll": "explicit"
     },
     "files.associations": {
         "*.cmake": "makefile",
