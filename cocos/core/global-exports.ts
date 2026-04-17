@@ -22,7 +22,7 @@
  THE SOFTWARE.
 */
 
-import { DEV, EDITOR_NOT_IN_PREVIEW } from 'internal:constants';
+import { DEV, EDITOR_NOT_IN_PREVIEW, HEADLESS } from 'internal:constants';
 
 const _global = typeof window === 'undefined' ? global : window;
 
@@ -89,3 +89,15 @@ _global.ccwindow = ccwindow;
  * 原生环境下为 jsb.window, 引擎为模拟部分 web 环境所提供. Web 环境这个变量是 window 对象。
  */
 export { ccwindow };
+
+// eslint-disable-next-line @typescript-eslint/ban-types
+export function exportLegacyFunction (name: string, func: Function): void {
+    exportLegacyVariable(name, func);
+}
+
+export function exportLegacyVariable (name: string, value: unknown): void {
+    if (HEADLESS) {
+        return;
+    }
+    cclegacy[name] = value;
+}

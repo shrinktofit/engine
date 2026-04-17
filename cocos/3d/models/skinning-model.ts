@@ -30,7 +30,7 @@ import { geometry, Mat4, Vec3, warnID } from '../../core';
 import { BufferUsageBit, MemoryUsageBit, DescriptorSet, Buffer, BufferInfo, Attribute, FormatFeatureBit, Format } from '../../gfx';
 import { UBOSkinning, UNIFORM_REALTIME_JOINT_TEXTURE_BINDING } from '../../rendering/define';
 import { Node } from '../../scene-graph/node';
-import { ModelType } from '../../render-scene/scene/model';
+import { ModelType } from '../../render-scene/scene';
 import { uploadJointData } from '../skeletal-animation/skeletal-animation-utils';
 import { MorphModel } from './morph-model';
 import { deleteTransform, getTransform, getWorldMatrix, IJointTransform } from '../../animation/skeletal-animation-utils';

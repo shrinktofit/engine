@@ -24,6 +24,7 @@
 */
 
 import { Vec2, cclegacy } from '../../core';
+import { exportLegacyFunction } from '../../core/global-exports';
 import type { View } from '../../ui/view';
 
 const _vec2 = new Vec2();
@@ -341,4 +342,4 @@ export class Touch {
     }
 }
 
-cclegacy.Touch = Touch;
+exportLegacyFunction('Touch', Touch);

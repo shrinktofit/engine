@@ -31,7 +31,7 @@ import { INST_JOINT_ANIM_INFO, UBOSkinningAnimation, UBOSkinningTexture, UNIFORM
 import { Node } from '../../scene-graph';
 import { IMacroPatch, Pass } from '../../render-scene/core/pass';
 import type { DataPoolManager } from '../skeletal-animation/data-pool-manager';
-import { ModelType } from '../../render-scene/scene/model';
+import { ModelType } from '../../render-scene/scene';
 import { IAnimInfo, IJointTextureHandle } from '../skeletal-animation/skeletal-animation-utils';
 import { MorphModel } from './morph-model';
 import { jointTextureSamplerInfo } from '../misc/joint-texture-sampler-info';

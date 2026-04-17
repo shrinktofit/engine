@@ -23,6 +23,7 @@
  THE SOFTWARE.
 */
 
+import { HEADLESS } from 'internal:constants';
 import { Event } from './event';
 import { SystemEventTypeUnion, SystemEventType } from '../event-enum';
 import { KeyCode } from '../key-code';
@@ -93,6 +94,8 @@ export class EventKeyboard extends Event {
     }
 }
 
-// TODO: this is an injected property, should be deprecated
-// issue: https://github.com/cocos/cocos-engine/issues/14643
-(Event as any).EventKeyboard = EventKeyboard;
+if (!HEADLESS) {
+    // TODO: this is an injected property, should be deprecated
+    // issue: https://github.com/cocos/cocos-engine/issues/14643
+    (Event as any).EventKeyboard = EventKeyboard;
+}

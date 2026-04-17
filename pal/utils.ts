@@ -195,12 +195,12 @@ export function versionCompare (versionA: string, versionB: string): number {
 export function setTimeoutRAF<T extends any[]> (callback: (...args: T) => void, delay: number, ...args: T): number {
     const start = performance.now();
 
-    const raf = requestAnimationFrame
-    || window.requestAnimationFrame
-    || window.webkitRequestAnimationFrame
-    || window.mozRequestAnimationFrame
-    || window.oRequestAnimationFrame
-    || window.msRequestAnimationFrame;
+    const raf = (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : undefined)
+    || globalThis.requestAnimationFrame
+    || globalThis.webkitRequestAnimationFrame
+    || globalThis.mozRequestAnimationFrame
+    || globalThis.oRequestAnimationFrame
+    || globalThis.msRequestAnimationFrame;
 
     if (EDITOR || NODEJS || raf === undefined || (USE_XR && globalThis.__globalXR?.isWebXR)) {
         return setTimeout(callback, delay, ...args);

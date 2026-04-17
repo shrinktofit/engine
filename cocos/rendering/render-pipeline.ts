@@ -33,8 +33,8 @@ import { AccessFlagBit, Attribute, Buffer, BufferInfo, BufferUsageBit, ClearFlag
 } from '../gfx';
 import { MacroRecord } from '../render-scene/core/pass-utils';
 import { RenderWindow } from '../render-scene/core/render-window';
-import { Camera, SkyBoxFlagValue } from '../render-scene/scene/camera';
-import { Model } from '../render-scene/scene/model';
+import { Camera, SkyBoxFlagValue } from '../render-scene/scene';
+import { Model } from '../render-scene/scene';
 import { GlobalDSManager } from './global-descriptor-set-manager';
 import { GeometryRenderer } from './geometry-renderer';
 import { PipelineSceneData } from './pipeline-scene-data';

@@ -23,8 +23,8 @@
 */
 
 import { Pass } from '../render-scene/core/pass';
-import { Model } from '../render-scene/scene/model';
-import { SubModel } from '../render-scene/scene/submodel';
+import { Model } from '../render-scene/scene';
+import { SubModel } from '../render-scene/scene';
 import { Layers } from '../scene-graph/layers';
 import { cclegacy, RecyclePool } from '../core';
 import { BindingMappingInfo, DescriptorType, Type, ShaderStageFlagBit, UniformStorageBuffer, DescriptorSetLayoutBinding,

@@ -20,13 +20,13 @@
  THE SOFTWARE.
 */
 
-import { Shadows, CSMLevel, CSMOptimizationMode } from '../../render-scene/scene/shadows';
-import { DirectionalLight } from '../../render-scene/scene/directional-light';
-import { Camera } from '../../render-scene/scene/camera';
+import { Shadows, CSMLevel, CSMOptimizationMode } from '../../render-scene/scene';
+import { DirectionalLight } from '../../render-scene/scene';
+import { Camera } from '../../render-scene/scene';
 import { Mat4, Vec3, Vec2, Vec4 } from '../../core/math';
 import { Frustum, AABB } from '../../core/geometry';
 import { IRenderObject } from '../define';
-import { PipelineSceneData } from '../pipeline-scene-data';
+import type { PipelineSceneData } from '../pipeline-scene-data';
 import { CachedArray } from '../../core/memop/cached-array';
 import { cclegacy } from '../../core';
 import type { Director } from '../../game/director';

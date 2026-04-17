@@ -25,7 +25,7 @@
 import { Material } from '../../asset/assets/material';
 import { Texture, Sampler, InputAssembler, DescriptorSet, Shader, DepthStencilState } from '../../gfx';
 import { Node } from '../../scene-graph';
-import { Model } from '../../render-scene/scene/model';
+import { Model } from '../../render-scene/scene';
 import { Layers } from '../../scene-graph/layers';
 import { cclegacy } from '../../core';
 import { IMacroPatch, Pass } from '../../render-scene/core/pass';

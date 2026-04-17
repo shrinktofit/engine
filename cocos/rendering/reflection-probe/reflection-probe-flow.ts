@@ -27,8 +27,7 @@ import { IRenderFlowInfo, RenderFlow } from '../render-flow';
 import { ReflectionProbeStage } from './reflection-probe-stage';
 import { RenderFlowTag } from '../pipeline-serialization';
 import { RenderPipeline } from '../render-pipeline';
-import { Camera } from '../../render-scene/scene/camera';
-import { ProbeType, ReflectionProbe } from '../../render-scene/scene/reflection-probe';
+import { Camera, ProbeType, ReflectionProbe } from '../../render-scene/scene';
 import { cclegacy } from '../../core';
 
 /**

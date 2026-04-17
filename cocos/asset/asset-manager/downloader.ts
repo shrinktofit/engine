@@ -112,7 +112,7 @@ const downloadBundle = (nameOrUrl: string, options: Record<string, any>, onCompl
     const config = `${url}/config.${version ? `${version}.` : ''}json`;
     let out: IConfigOption | null = null;
     let error: Error | null = null;
-    downloadJson(config, options, (err, response): void => {
+    downloader._downloadJson(config, options, (err, response): void => {
         error = err || error;
         out = response as IConfigOption;
         if (out) { out.base = `${url}/`; }
@@ -122,7 +122,7 @@ const downloadBundle = (nameOrUrl: string, options: Record<string, any>, onCompl
     });
 
     const jspath = `${url}/index.${version ? `${version}.` : ''}js`;
-    downloadScript(jspath, options, (err): void => {
+    downloader.downloadScript(jspath, options, (err): void => {
         error = err || error;
         if (++count === 2) {
             onComplete(error, out);

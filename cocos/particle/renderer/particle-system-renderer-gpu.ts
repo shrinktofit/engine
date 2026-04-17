@@ -35,7 +35,7 @@ import { packGradientRange } from '../animator/gradient-range';
 import { Pass } from '../../render-scene/core/pass';
 import { packCurveRangeXYZ, packCurveRangeZ, packCurveRangeXYZW, packCurveRangeN, packCurveRangeXY } from '../animator/curve-range';
 import { ParticleSystemRendererBase } from './particle-system-renderer-base';
-import { Camera } from '../../render-scene/scene/camera';
+import { Camera } from '../../render-scene/scene';
 import type { ParticleSystem } from '../particle-system';
 import type ParticleSystemRenderer from './particle-system-renderer-data';
 

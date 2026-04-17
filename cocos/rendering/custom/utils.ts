@@ -25,7 +25,7 @@
 // https://stackoverflow.com/questions/56714318/how-to-disable-multiple-rules-for-eslint-nextline?msclkid=5d4c2298ba7911eca34d0ab30591752e
 
 import { Type } from '../../gfx';
-import { Camera } from '../../render-scene/scene/camera';
+import { Camera } from '../../render-scene/scene';
 
 export function isUICamera (camera: Camera): boolean {
     const scene = camera.scene!;

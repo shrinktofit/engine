@@ -30,7 +30,7 @@
 /* eslint-disable max-len */
 import { AdjI, AdjacencyGraph, BidirectionalGraph, ComponentGraph, ED, InEI, MutableGraph, MutableReferenceGraph, NamedGraph, OutE, OutEI, PolymorphicGraph, PropertyGraph, ReferenceGraph, UuidGraph, VertexListGraph } from './graph';
 import type { Material } from '../../asset/assets';
-import type { Camera } from '../../render-scene/scene/camera';
+import type { Camera } from '../../render-scene/scene';
 import type { Buffer, Framebuffer, RenderPass, Sampler, SamplerInfo, Swapchain, Texture } from '../../gfx';
 import { AccessFlagBit, ClearFlagBit, Color, Format, LoadOp, SampleCount, ShaderStageFlagBit, StoreOp, TextureFlagBit, TextureType, Viewport } from '../../gfx';
 import type { CopyPair, MovePair, ResolvePair, UploadPair } from './types';

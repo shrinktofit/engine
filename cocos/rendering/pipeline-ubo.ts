@@ -29,11 +29,11 @@ import { UBOGlobal, UBOShadow, UBOCamera, UBOCameraEnum, UNIFORM_SHADOWMAP_BINDI
     UBOGlobalEnum,
     UBOCSMEnum } from './define';
 import { Device, BufferInfo, BufferUsageBit, MemoryUsageBit, DescriptorSet } from '../gfx';
-import { Camera } from '../render-scene/scene/camera';
+import { Camera } from '../render-scene/scene';
 import { Mat4, Vec3, Vec4, Color, toRadian, cclegacy } from '../core';
 import { PipelineRuntime } from './custom/pipeline';
-import { CSMLevel, PCFType, Shadows, ShadowType } from '../render-scene/scene/shadows';
-import { Light, LightType } from '../render-scene/scene/light';
+import { CSMLevel, PCFType, Shadows, ShadowType } from '../render-scene/scene';
+import { Light, LightType } from '../render-scene/scene';
 import { DirectionalLight, SpotLight } from '../render-scene/scene';
 import { RenderWindow } from '../render-scene/core/render-window';
 import { DebugViewCompositeType } from './debug-view';

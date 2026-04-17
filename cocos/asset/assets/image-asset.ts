@@ -29,7 +29,7 @@ import { Device, Format, FormatFeatureBit, deviceManager } from '../../gfx';
 import { Asset } from './asset';
 import { PixelFormat } from './asset-enum';
 import { warnID, macro, sys, cclegacy, warn } from '../../core';
-import { ccwindow } from '../../core/global-exports';
+import { ccwindow, exportLegacyFunction } from '../../core/global-exports';
 import { Enum } from '../../core/value-types/enum';
 
 // Compress mipmap constants
@@ -810,4 +810,5 @@ export class ImageAsset extends Asset {
 function _getGlobalDevice (): Device | null {
     return deviceManager.gfxDevice;
 }
-cclegacy.ImageAsset = ImageAsset;
+
+exportLegacyFunction('ImageAsset', ImageAsset);

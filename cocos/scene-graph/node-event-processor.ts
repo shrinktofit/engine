@@ -22,6 +22,7 @@
  THE SOFTWARE.
 */
 
+import { HEADLESS } from 'internal:constants';
 import { CallbacksInvoker } from '../core/event/callbacks-invoker';
 import { Event, EventMouse, EventTouch, Touch } from '../input/types';
 import { Vec2 } from '../core/math/vec2';
@@ -187,7 +188,7 @@ export class NodeEventProcessor {
         if (this.capturingTarget) this.capturingTarget.clear();
         if (this.bubblingTarget) this.bubblingTarget.clear();
         globalCallbacksInvoker.emit(DispatcherEventType.REMOVE_POINTER_EVENT_PROCESSOR, this);
-        if (this._dispatchingTouch) {
+        if (!HEADLESS && this._dispatchingTouch) {
             // Dispatch touch cancel event when node is destroyed.
             const cancelEvent = new EventTouch([this._dispatchingTouch], true, InputEventType.TOUCH_CANCEL);
             cancelEvent.touch = this._dispatchingTouch;

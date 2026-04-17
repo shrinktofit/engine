@@ -28,8 +28,8 @@
  */
 
 import { ccclass, displayOrder, type, serializable } from 'cc.decorator';
-import { Camera } from '../../render-scene/scene/camera';
-import { LightType } from '../../render-scene/scene/light';
+import { Camera } from '../../render-scene/scene';
+import { LightType } from '../../render-scene/scene';
 import { UBODeferredLight, SetIndex, UBOForwardLight, UBOLocal, UBOLocalEnum } from '../define';
 import { getPhaseID } from '../pass-phase';
 import { Color, Rect, Buffer, BufferUsageBit, MemoryUsageBit, BufferInfo, BufferViewInfo, DescriptorSet,

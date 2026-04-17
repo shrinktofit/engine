@@ -23,7 +23,7 @@
  THE SOFTWARE.
 */
 
-import { DEBUG, EDITOR, NATIVE, PREVIEW, TEST, EDITOR_NOT_IN_PREVIEW, WECHAT, USE_XR, NODEJS } from 'internal:constants';
+import { DEBUG, EDITOR, NATIVE, PREVIEW, TEST, EDITOR_NOT_IN_PREVIEW, WECHAT, USE_XR, NODEJS, HEADLESS } from 'internal:constants';
 import { systemInfo } from 'pal/system-info';
 import { findCanvas, loadJsFile } from 'pal/env';
 import { Pacer } from 'pal/pacer';
@@ -40,8 +40,8 @@ import { Layers, Node } from '../scene-graph';
 import { builtinResMgr } from '../asset/asset-manager/builtin-res-mgr';
 import { director, DirectorEvent } from './director';
 import { bindingMappingInfo } from '../rendering/define';
-import { ICustomJointTextureLayout } from '../3d/skeletal-animation/skeletal-animation-utils';
-import { IPhysicsConfig } from '../physics/framework/physics-config';
+import type { ICustomJointTextureLayout } from '../3d/skeletal-animation/skeletal-animation-utils';
+import type { IPhysicsConfig } from '../physics/framework/physics-config';
 import { effectSettings } from '../core/effect-settings';
 
 const querySettings = settings.querySettings.bind(settings);
@@ -631,7 +631,7 @@ export class Game extends EventTarget {
             this.resume();
             this._shouldLoadLaunchScene = true;
         }).then((): Promise<void[]> => {
-            if (WECHAT) {
+            if (WECHAT || HEADLESS) {
                 return Promise.resolve([]);
             } else {
                 return SplashScreen.createInstance().init();
@@ -894,7 +894,7 @@ export class Game extends EventTarget {
             .then((): Promise<any[]> => this._loadPreloadAssets())
             .then((): Promise<void[]> => {
                 builtinResMgr.compileBuiltinMaterial();
-                if (WECHAT) {
+                if (WECHAT || HEADLESS) {
                     return Promise.resolve([]);
                 }
                 return SplashScreen.createInstance().init();
@@ -1061,10 +1061,10 @@ export class Game extends EventTarget {
 
     private _updateCallback (): void {
         if (!this._inited) return;
-        if (!WECHAT && SplashScreen.instance && !SplashScreen.instance.isFinished) {
+        if (!WECHAT && !HEADLESS && SplashScreen.instance && !SplashScreen.instance.isFinished) {
             SplashScreen.instance.update(this._calculateDT(false));
         } else if (this._shouldLoadLaunchScene) {
-            if (!WECHAT) {
+            if (!WECHAT && !HEADLESS) {
                 SplashScreen.releaseInstance();
             }
             this._shouldLoadLaunchScene = false;
@@ -1153,6 +1153,10 @@ export class Game extends EventTarget {
     }
 
     private _setupRenderPipeline (): void | Promise<void> {
+        if (HEADLESS) {
+            return;
+        }
+
         const usesCustomPipeline = querySettings(
             SettingsCategory.RENDERING,
             'customPipeline',

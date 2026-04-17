@@ -27,7 +27,7 @@
 
 /* spell-checker:words COORD, Quesada, INITED, Renerer */
 
-import { DEBUG, EDITOR, BUILD, TEST, EDITOR_NOT_IN_PREVIEW } from 'internal:constants';
+import { DEBUG, EDITOR, BUILD, TEST, EDITOR_NOT_IN_PREVIEW, HEADLESS } from 'internal:constants';
 import { SceneAsset } from '../asset/assets/scene-asset';
 import { System, EventTarget, Scheduler, js, errorID, error, assertID, warnID, macro, CCObject, CCObjectFlags, cclegacy, isValid } from '../core';
 import { input } from '../input';
@@ -349,7 +349,7 @@ export class Director extends EventTarget {
 
         if (!EDITOR) {
             if (isValid(this._scene)) {
-                this._scene!.destroy();
+                this._scene.destroy();
             }
             this._scene = null;
         }
@@ -443,7 +443,7 @@ export class Director extends EventTarget {
             console.time('Destroy');
         }
         if (isValid(oldScene)) {
-            oldScene!.destroy();
+            oldScene.destroy();
         }
         if (!EDITOR) {
             // auto release assets
@@ -767,7 +767,7 @@ export class Director extends EventTarget {
     public tick (dt: number): void {
         if (!this._invalid) {
             this.emit(DirectorEvent.BEGIN_FRAME);
-            if (!EDITOR_NOT_IN_PREVIEW) {
+            if (!HEADLESS && !EDITOR_NOT_IN_PREVIEW) {
                 input._frameDispatchEvents();
             }
 
@@ -796,8 +796,12 @@ export class Director extends EventTarget {
             }
 
             this.emit(DirectorEvent.BEFORE_DRAW);
-            uiRendererManager.updateAllDirtyRenderers();
-            this._root!.frameMove(dt);
+            if (!HEADLESS) {
+                uiRendererManager.updateAllDirtyRenderers();
+            }
+            if (!HEADLESS) {
+                this._root!.frameMove(dt);
+            }
             this.emit(DirectorEvent.AFTER_DRAW);
 
             Node.resetHasChangedFlags();
@@ -852,9 +856,12 @@ export class Director extends EventTarget {
         // Scheduler
         // TODO: have a solid organization of priority and expose to user
         this.registerSystem(Scheduler.ID, this._scheduler, 200);
-        this._root = new Root(deviceManager.gfxDevice);
-        const rootInfo = {};
-        this._root.initialize(rootInfo);
+
+        if (!HEADLESS) {
+            this._root = new Root(deviceManager.gfxDevice);
+            const rootInfo = {};
+            this._root.initialize(rootInfo);
+        }
 
         this.setupRenderPipelineBuilder();
 

@@ -22,6 +22,7 @@
  THE SOFTWARE.
 */
 
+import { HEADLESS } from 'internal:constants';
 import { builtinResMgr } from '../../asset/asset-manager/builtin-res-mgr';
 import { Material } from '../../asset/assets/material';
 import { Mesh } from '../../3d/assets/mesh';
@@ -443,4 +444,6 @@ export class Skybox {
     }
 }
 
-cclegacy.Skybox = Skybox;
+if (!HEADLESS) {
+    cclegacy.Skybox = Skybox;
+}

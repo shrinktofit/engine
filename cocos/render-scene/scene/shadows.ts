@@ -28,6 +28,7 @@ import { Color, Mat4, Vec3, Vec2, Enum, assert, geometry, cclegacy } from '../..
 import type { ShadowsInfo } from '../../scene-graph/scene-globals';
 import { IMacroPatch } from '../core/pass';
 import { Shader } from '../../gfx';
+import { exportLegacyFunction } from '../../core/global-exports';
 
 /**
  * @zh 阴影贴图分辨率。
@@ -419,4 +420,4 @@ export class Shadows {
     }
 }
 
-cclegacy.Shadows = Shadows;
+exportLegacyFunction('Shadows', Shadows);

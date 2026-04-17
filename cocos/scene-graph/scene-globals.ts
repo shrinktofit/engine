@@ -29,12 +29,7 @@ import {
 import { TextureCube } from '../asset/assets/texture-cube';
 import { CCFloat, CCInteger } from '../core/data/utils/attribute';
 import { Color, Quat, Vec3, Vec2, Vec4, v3 } from '../core/math';
-import { Ambient } from '../render-scene/scene/ambient';
-import { Shadows, ShadowType, ShadowSize } from '../render-scene/scene/shadows';
-import { Skybox, EnvironmentLightingType } from '../render-scene/scene/skybox';
-import { Octree } from '../render-scene/scene/octree';
-import { Skin } from '../render-scene/scene/skin';
-import { Fog, FogType } from '../render-scene/scene/fog';
+import { Ambient, Shadows, ShadowType, ShadowSize, Skybox, EnvironmentLightingType, Octree, Skin, Fog, FogType, PostSettings, ToneMappingType } from '../render-scene/scene';
 import { LightProbesData, LightProbes } from '../gi/light-probe/light-probe';
 import { Node } from './node';
 import { legacyCC } from '../core/global-exports';
@@ -44,7 +39,6 @@ import { Material, MaterialPropertyFull } from '../asset/assets/material';
 import { cclegacy } from '../core';
 import { Scene } from './scene';
 import { NodeEventType } from './node-event';
-import { PostSettings, ToneMappingType } from '../render-scene/scene/post-settings';
 import { getPipelineSceneData } from '../rendering/pipeline-scene-data-utils';
 
 const _up = new Vec3(0, 1, 0);

@@ -23,6 +23,7 @@
  THE SOFTWARE.
 */
 
+import { HEADLESS } from 'internal:constants';
 import { Event } from './event';
 import { Acceleration } from '../acceleration';
 import { SystemEventType } from '../event-enum';
@@ -52,4 +53,6 @@ export class EventAcceleration extends Event {
 
 // TODO: this is an injected property, should be deprecated
 // issue: https://github.com/cocos/cocos-engine/issues/14643
-(Event as any).EventAcceleration = EventAcceleration;
+if (!HEADLESS) {
+    (Event as any).EventAcceleration = EventAcceleration;
+}

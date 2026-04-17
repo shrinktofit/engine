@@ -29,22 +29,22 @@
  */
 /* eslint-disable max-len */
 import type { Material } from '../../asset/assets';
-import type { Camera } from '../../render-scene/scene/camera';
-import type { DirectionalLight } from '../../render-scene/scene/directional-light';
+import type { Camera } from '../../render-scene/scene';
+import type { DirectionalLight } from '../../render-scene/scene';
 import type { GeometryRenderer } from '../geometry-renderer';
 import type { Buffer, BufferInfo, ClearFlagBit, Color, CommandBuffer, DescriptorSet, DescriptorSetLayout, Device, Format, LoadOp, ResolveMode, SampleCount, Sampler, ShaderStageFlagBit, StoreOp, Swapchain, Texture, TextureInfo, TextureType, Viewport } from '../../gfx';
 import type { GlobalDSManager } from '../global-descriptor-set-manager';
 import type { Mat4, Quat, Vec2, Vec4 } from '../../core/math';
 import type { MacroRecord } from '../../render-scene/core/pass-utils';
 import type { PipelineSceneData } from '../pipeline-scene-data';
-import type { PointLight } from '../../render-scene/scene/point-light';
-import type { RangedDirectionalLight } from '../../render-scene/scene/ranged-directional-light';
+import type { PointLight } from '../../render-scene/scene';
+import type { RangedDirectionalLight } from '../../render-scene/scene';
 import type { AccessType, CopyPair, LightInfo, MovePair, QueueHint, ResolvePair, ResourceDimension, ResourceFlags, ResourceResidency, SceneFlags, UpdateFrequency, UploadPair } from './types';
 import type { RenderScene } from '../../render-scene/core/render-scene';
 import type { RenderWindow } from '../../render-scene/core/render-window';
 import type { Light, Model } from '../../render-scene/scene';
-import type { SphereLight } from '../../render-scene/scene/sphere-light';
-import type { SpotLight } from '../../render-scene/scene/spot-light';
+import type { SphereLight } from '../../render-scene/scene';
+import type { SpotLight } from '../../render-scene/scene';
 
 /**
  * @engineInternal

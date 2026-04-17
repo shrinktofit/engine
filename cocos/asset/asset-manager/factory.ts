@@ -22,7 +22,7 @@
  THE SOFTWARE.
 */
 
-import { EDITOR, NODEJS } from 'internal:constants';
+import { EDITOR, HEADLESS, NODEJS } from 'internal:constants';
 import { ImageAsset } from '../assets/image-asset';
 import JsonAsset from '../assets/json-asset';
 import { TextAsset } from '../assets/text-asset';
@@ -40,6 +40,9 @@ import { js } from '../../core';
 export type CreateHandler = (id: string, data: any, options: Record<string, any>, onComplete: ((err: Error | null, data?: Asset | Bundle | null) => void)) => void;
 
 function createImageAsset (id: string, data: HTMLImageElement, options: Record<string, any>, onComplete: ((err: Error | null, data?: ImageAsset | null) => void)): void {
+    if (HEADLESS) {
+        throw new Error('ImageAsset is not supported in headless mode');
+    }
     let out: ImageAsset | null = null;
     let err: Error | null = null;
     try {
@@ -100,18 +103,20 @@ export class Factory {
 
     private _producers: Record<string, CreateHandler> = {
         // Images
-        '.png': createImageAsset,
-        '.jpg': createImageAsset,
-        '.bmp': createImageAsset,
-        '.jpeg': createImageAsset,
-        '.gif': createImageAsset,
-        '.ico': createImageAsset,
-        '.tiff': createImageAsset,
-        '.webp': createImageAsset,
-        '.image': createImageAsset,
-        '.pvr': createImageAsset,
-        '.pkm': createImageAsset,
-        '.astc': createImageAsset,
+        ...(HEADLESS ? {} : {
+            '.png': createImageAsset,
+            '.jpg': createImageAsset,
+            '.bmp': createImageAsset,
+            '.jpeg': createImageAsset,
+            '.gif': createImageAsset,
+            '.ico': createImageAsset,
+            '.tiff': createImageAsset,
+            '.webp': createImageAsset,
+            '.image': createImageAsset,
+            '.pvr': createImageAsset,
+            '.pkm': createImageAsset,
+            '.astc': createImageAsset,
+        }),
 
         // Txt
         '.txt': createTextAsset,

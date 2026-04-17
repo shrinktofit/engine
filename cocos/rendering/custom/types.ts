@@ -29,7 +29,7 @@
  */
 /* eslint-disable max-len */
 import { ResolveMode } from '../../gfx';
-import type { ReflectionProbe } from '../../render-scene/scene/reflection-probe';
+import type { ReflectionProbe } from '../../render-scene/scene';
 import type { Light } from '../../render-scene/scene';
 import { RecyclePool } from '../../core/memop';
 import type { OutputArchive, InputArchive } from './archive';

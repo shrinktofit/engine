@@ -37,7 +37,7 @@ import { AttributeName, BufferUsageBit, Format, MemoryUsageBit, PrimitiveMode, A
 import { clamp, Rect, Size, v3, Vec2, Vec3, Vec4 } from '../core/math';
 import { MacroRecord } from '../render-scene/core/pass-utils';
 import { Pass, scene } from '../render-scene';
-import { Camera } from '../render-scene/scene/camera';
+import { Camera } from '../render-scene/scene';
 import { Root } from '../root';
 import { HeightField } from './height-field';
 import { legacyCC } from '../core/global-exports';

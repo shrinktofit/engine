@@ -25,7 +25,7 @@
 import { RenderPass } from '../gfx';
 import { PipelineStateManager } from './pipeline-state-manager';
 import { isEnableEffect, SetIndex } from './define';
-import { Camera } from '../render-scene/scene/camera';
+import { Camera } from '../render-scene/scene';
 import { RenderPipeline } from './render-pipeline';
 import { getPhaseID } from './pass-phase';
 import { cclegacy } from '../core';

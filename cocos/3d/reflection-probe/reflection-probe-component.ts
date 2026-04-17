@@ -33,7 +33,7 @@ import { Component } from '../../scene-graph/component';
 import { Layers } from '../../scene-graph/layers';
 import { Camera } from '../../misc/camera-component';
 import { Node, TransformBit } from '../../scene-graph';
-import { ProbeClearFlag, ProbeType } from '../../render-scene/scene/reflection-probe';
+import { ProbeClearFlag, ProbeType } from '../../render-scene/scene';
 import { absolute } from '../../physics/utils/util';
 
 const tmpVec3 = v3();

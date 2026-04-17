@@ -25,8 +25,7 @@
 import { CachedArray } from '../../core';
 import { TextureBase } from '../../asset/assets/texture-base';
 import { Device, Attribute } from '../../gfx';
-import { Camera } from '../../render-scene/scene/camera';
-import { Model } from '../../render-scene/scene/model';
+import { Camera, Model } from '../../render-scene/scene';
 import { SpriteFrame } from '../assets/sprite-frame';
 import { UIStaticBatch } from '../components/ui-static-batch';
 import { UIRenderer, RenderRoot2D } from '../framework';

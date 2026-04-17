@@ -21,12 +21,12 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
 */
-import { Model } from '../render-scene/scene/model';
-import { Camera, CameraUsage, SkyBoxFlagValue } from '../render-scene/scene/camera';
+import { Model } from '../render-scene/scene';
+import { Camera, CameraUsage, SkyBoxFlagValue } from '../render-scene/scene';
 import { Vec3, Pool, geometry, cclegacy, warnID } from '../core';
 import { PipelineUBO } from './pipeline-ubo';
 import { IRenderObject, UBOShadowEnum } from './define';
-import { ShadowType, CSMOptimizationMode } from '../render-scene/scene/shadows';
+import { ShadowType, CSMOptimizationMode } from '../render-scene/scene';
 import { PipelineSceneData } from './pipeline-scene-data';
 import { ShadowLayerVolume } from './shadow/csm-layers';
 import { AABB } from '../core/geometry';

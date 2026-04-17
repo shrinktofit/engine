@@ -28,15 +28,15 @@ import { BufferInfo, Buffer, BufferUsageBit, ClearFlagBit, Color, DescriptorSet,
     UniformBlock,
     Device,
 } from '../../gfx';
-import { ReflectionProbe } from '../../render-scene/scene/reflection-probe';
-import { Camera, SkyBoxFlagValue } from '../../render-scene/scene/camera';
-import { CSMLevel, ShadowType, Shadows } from '../../render-scene/scene/shadows';
-import { Light, LightType } from '../../render-scene/scene/light';
-import { DirectionalLight } from '../../render-scene/scene/directional-light';
-import { RangedDirectionalLight } from '../../render-scene/scene/ranged-directional-light';
-import { PointLight } from '../../render-scene/scene/point-light';
-import { SphereLight } from '../../render-scene/scene/sphere-light';
-import { SpotLight } from '../../render-scene/scene/spot-light';
+import { ReflectionProbe } from '../../render-scene/scene';
+import { Camera, SkyBoxFlagValue } from '../../render-scene/scene';
+import { CSMLevel, ShadowType, Shadows } from '../../render-scene/scene';
+import { Light, LightType } from '../../render-scene/scene';
+import { DirectionalLight } from '../../render-scene/scene';
+import { RangedDirectionalLight } from '../../render-scene/scene';
+import { PointLight } from '../../render-scene/scene';
+import { SphereLight } from '../../render-scene/scene';
+import { SpotLight } from '../../render-scene/scene';
 import { UBOForwardLightEnum, supportsR32FloatTexture, supportsRGBA16HalfFloatTexture } from '../define';
 import { BasicPipeline } from './pipeline';
 import {

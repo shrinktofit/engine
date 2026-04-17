@@ -23,6 +23,7 @@
 */
 
 import { Vec4, cclegacy } from '../../core';
+import { exportLegacyFunction } from '../../core/global-exports';
 import { getPipelineSceneData } from '../../rendering/pipeline-scene-data-utils';
 import { AmbientInfo } from '../../scene-graph/scene-globals';
 
@@ -140,4 +141,4 @@ export class Ambient {
     }
 }
 
-cclegacy.Ambient = Ambient;
+exportLegacyFunction('Ambient', Ambient);

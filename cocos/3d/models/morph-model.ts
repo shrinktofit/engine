@@ -22,7 +22,7 @@
  THE SOFTWARE.
 */
 
-import { Model } from '../../render-scene/scene/model';
+import { Model } from '../../render-scene/scene';
 import { MorphRenderingInstance } from '../assets/morph-rendering';
 import { Material } from '../../asset/assets/material';
 import { RenderingSubMesh } from '../../asset/assets/rendering-sub-mesh';

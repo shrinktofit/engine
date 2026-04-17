@@ -32,7 +32,7 @@ import { Color, Rect, toRadian, Vec3, cclegacy, geometry, Enum } from '../core';
 import { CAMERA_DEFAULT_MASK } from '../rendering/define';
 import { scene } from '../render-scene';
 import { SkyBoxFlagValue, CameraProjection, CameraFOVAxis, CameraAperture, CameraISO, CameraShutter,
-    CameraType, TrackingType } from '../render-scene/scene/camera';
+    CameraType, TrackingType } from '../render-scene/scene';
 import { Node } from '../scene-graph/node';
 import { Layers } from '../scene-graph/layers';
 import { TransformBit } from '../scene-graph/node-enum';

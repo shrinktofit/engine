@@ -77,8 +77,8 @@ import {
 import { legacyCC } from '../../core/global-exports';
 import { Vec3 } from '../../core/math/vec3';
 import { Vec4 } from '../../core/math/vec4';
-import { Camera } from '../../render-scene/scene/camera';
-import { ShadowType } from '../../render-scene/scene/shadows';
+import { Camera } from '../../render-scene/scene';
+import { ShadowType } from '../../render-scene/scene';
 import { Root } from '../../root';
 import { IRenderPass, SetIndex, UBODeferredLight, UBOForwardLight, UBOLocal, UBOLocalEnum } from '../define';
 import { PipelineSceneData } from '../pipeline-scene-data';

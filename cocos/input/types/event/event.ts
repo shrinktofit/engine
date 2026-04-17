@@ -24,6 +24,7 @@
 */
 
 import { cclegacy } from '../../../core';
+import { exportLegacyFunction } from '../../../core/global-exports';
 import { SystemEventTypeUnion } from '../event-enum';
 
 /**
@@ -289,5 +290,4 @@ export class Event {
     }
 }
 
-/* tslint:disable:no-string-literal */
-cclegacy.Event = Event;
+exportLegacyFunction('Event', Event);

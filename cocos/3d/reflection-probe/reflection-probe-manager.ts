@@ -31,7 +31,7 @@ import { Vec3, geometry, cclegacy } from '../../core';
 import { AABB } from '../../core/geometry';
 import { Texture } from '../../gfx';
 import { Camera, Model } from '../../render-scene/scene';
-import { ProbeType, ReflectionProbe } from '../../render-scene/scene/reflection-probe';
+import { ProbeType, ReflectionProbe } from '../../render-scene/scene';
 import { Layers } from '../../scene-graph/layers';
 import { ENABLE_PROBE_BLEND } from '../../rendering/define';
 

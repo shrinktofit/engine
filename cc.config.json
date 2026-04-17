@@ -180,8 +180,8 @@
                 "USE_XR": true
             }
         },
-        "light-probe": { 
-            "modules": [ "light-probe" ] 
+        "light-probe": {
+            "modules": [ "light-probe" ]
         },
         "terrain": {
             "modules": ["terrain"],
@@ -227,7 +227,7 @@
         },
         "dragon-bones": {
             "modules": ["dragon-bones"],
-            "dependentAssets":[ 
+            "dependentAssets":[
                 "c27215d8-6835-4b68-bfbb-bdeac6100c04",
                 "b5d6115f-0370-4d7c-aad3-c194cc71cf98"
             ],
@@ -262,7 +262,7 @@
         },
         "custom-pipeline-post-process": {
             "modules": ["custom-pipeline-post-process"],
-            "dependentAssets":[ 
+            "dependentAssets":[
                 "15049ccd-4dd7-451e-a8ae-af66735c929e",
                 "521c5f6e-1a26-42e2-8108-4400c912d9bf",
                 "4c3ce6de-e6d1-47f7-aa36-36b9b58f72d3",
@@ -300,9 +300,13 @@
             "overrideConstants": {
                 "CULL_MESHOPT": false
             }
+        },
+        "headless-core": {
+            "modules": ["headless-core"]
         }
     },
-    "moduleOverrides": [{
+    "moduleOverrides": [
+        {
             "test": "true",
             "isVirtualModule": true,
             "overrides": {
@@ -491,6 +495,48 @@
             "overrides": {
                 "vendor/google/index.ts": "vendor/google/impl.ts"
             }
+        },
+        {
+            "test": "context.buildTimeConstants.HEADLESS",
+            "isVirtualModule": false,
+            "overrides": {
+                "cocos/game/splash-screen.ts": "cocos/game/splash-screen-headless.ts",
+                "cocos/asset/asset-manager/builtin-res-mgr.ts": "cocos/asset/asset-manager/builtin-res-mgr.headless.ts",
+                "cocos/asset/assets/asset-enum.ts": "cocos/asset/assets/asset-enum-headless.ts",
+                "cocos/asset/assets/effect-asset.ts": "cocos/asset/assets/effect-asset-headless.ts",
+                "cocos/asset/assets/image-asset.ts": "cocos/asset/assets/image-asset-headless.ts",
+                "cocos/asset/assets/index.ts": "cocos/asset/assets/index-headless.ts",
+                "cocos/asset/assets/material.ts": "cocos/asset/assets/material-headless.ts",
+                "cocos/asset/assets/texture-2d.ts": "cocos/asset/assets/texture-2d-headless.ts",
+                "cocos/asset/assets/texture-base.ts": "cocos/asset/assets/texture-base-headless.ts",
+                "cocos/asset/assets/texture-cube.ts": "cocos/asset/assets/texture-cube-headless.ts",
+                "cocos/gfx/index.ts": "cocos/gfx/index-headless.ts",
+                "cocos/input/index.ts": "cocos/input/index-headless.ts",
+                "cocos/render-scene/core/material-instance.ts": "cocos/render-scene/core/material-instance-headless.ts",
+                "cocos/render-scene/core/pass-utils.ts": "cocos/render-scene/core/pass-utils-headless.ts",
+                "cocos/render-scene/core/pass.ts": "cocos/render-scene/core/pass-headless.ts",
+                "cocos/render-scene/core/program-lib.ts": "cocos/render-scene/core/program-lib-headless.ts",
+                "cocos/render-scene/core/program-utils.ts": "cocos/render-scene/core/program-utils-headless.ts",
+                "cocos/render-scene/core/render-scene.ts": "cocos/render-scene/core/render-scene-headless.ts",
+                "cocos/render-scene/core/render-window.ts": "cocos/render-scene/core/render-window-headless.ts",
+                "cocos/render-scene/core/texture-buffer-pool.ts": "cocos/render-scene/core/texture-buffer-pool-headless.ts",
+                "cocos/render-scene/index.ts": "cocos/render-scene/index-headless.ts",
+                "cocos/render-scene/scene/index.ts": "cocos/render-scene/scene/index-headless.ts",
+                "cocos/rendering/define.ts": "cocos/rendering/define-headless.ts",
+                "cocos/rendering/index.ts": "cocos/rendering/index-headless.ts",
+                "cocos/root.ts": "cocos/root-headless.ts",
+                "cocos/scene-graph/scene-globals.ts": "cocos/scene-graph/scene-globals-headless.ts"
+            }
+        },
+        {
+            "test": "context.buildTimeConstants.HEADLESS",
+            "isVirtualModule": true,
+            "overrides": {
+                "pal/system-info": "cocos/headless/headless-system-info.ts",
+                "pal/screen-adapter": "cocos/headless/headless-screen-adapter.ts",
+                "pal/pacer": "cocos/headless/headless-pacer.ts",
+                "pal/env": "cocos/headless/headless-env.ts"
+            }
         }
     ],
     "includes": [
@@ -501,6 +547,13 @@
     ],
 
     "constants": {
+        "HEADLESS": {
+            "comment": "Running in headless",
+            "type": "boolean",
+            "value": false,
+            "internal": false,
+            "dynamic": true
+        },
         "HTML5": {
             "comment": "Running in Web platform",
             "type": "boolean",
@@ -549,7 +602,7 @@
             "value": false,
             "internal": false,
             "dynamic": false
-        },        
+        },
         "OHOS": {
             "comment": "Running in OHOS platform",
             "type": "boolean",
@@ -778,7 +831,7 @@
         "NATIVE_CODE_BUNDLE_MODE": {
             "comment": "Native code (wasm/asmjs) bundle mode, 0: asmjs, 1: wasm, 2: both",
             "type": "number",
-            "value": 2, 
+            "value": 2,
             "internal": true
         },
         "WASM_SUBPACKAGE": {
@@ -851,7 +904,7 @@
             "rangeMax", "rangeStep", "slide", "displayOrder", "unit", "radian", "multiline", "disallowAnimation",
             "requireComponent", "executionOrder", "disallowMultiple", "allowReplicated", "ccclass"
         ],
-        
+
         "editorDecorators": [
             "executeInEditMode", "menu", "playOnFocus", "inspector", "icon", "help", "editable", "visible",
             "readOnly", "displayName", "tooltip", "group", "range", "rangeMin", "rangeMax", "rangeStep", "slide",

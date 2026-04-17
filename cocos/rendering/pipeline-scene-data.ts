@@ -20,22 +20,14 @@
  THE SOFTWARE.
 */
 
-import { Fog } from '../render-scene/scene/fog';
-import { Ambient } from '../render-scene/scene/ambient';
-import { Skybox } from '../render-scene/scene/skybox';
-import { Shadows } from '../render-scene/scene/shadows';
-import { Octree } from '../render-scene/scene/octree';
+import { Fog, Ambient, Skybox, Shadows, Octree, Light, Skin, Model, PostSettings } from '../render-scene/scene';
 import { IRenderObject } from './define';
 import { Device, Framebuffer, InputAssembler, InputAssemblerInfo, Buffer, BufferInfo,
     BufferUsageBit, MemoryUsageBit, Attribute, Format, Shader } from '../gfx';
-import { Light } from '../render-scene/scene/light';
 import { Material } from '../asset/assets';
 import { Pass } from '../render-scene/core/pass';
 import { CSMLayers } from './shadow/csm-layers';
 import { cclegacy } from '../core/global-exports';
-import { Skin } from '../render-scene/scene/skin';
-import { Model } from '../render-scene/scene/model';
-import { PostSettings } from '../render-scene/scene/post-settings';
 import type { MeshRenderer } from '../3d/framework/mesh-renderer';
 import type { LightProbes } from '../gi/light-probe';
 import type { Director } from '../game/director';

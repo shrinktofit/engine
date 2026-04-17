@@ -28,7 +28,7 @@ import { CommandBuffer, Device, RenderPass, Shader } from '../gfx';
 import { PipelineStateManager } from './pipeline-state-manager';
 import { Model, Camera, SubModel } from '../render-scene/scene';
 import { RenderInstancedQueue } from './render-instanced-queue';
-import { ShadowType } from '../render-scene/scene/shadows';
+import { ShadowType } from '../render-scene/scene';
 import { Layers } from '../scene-graph/layers';
 import { PipelineRuntime } from './custom/pipeline';
 import { BatchingSchemes, Pass } from '../render-scene/core/pass';

@@ -31,8 +31,7 @@ import { ResolveFlags, AccessType, AttachmentType, CopyPair, LightInfo, Lighting
 import { ComputePass, CopyPass, MovePass, RasterPass, RasterSubpass, RenderData, RenderGraph, RenderGraphComponent, RenderGraphValue, RenderQueue, RenderSwapchain, ResourceDesc, ResourceGraph, ResourceGraphValue, ResourceStates, ResourceTraits, SceneData, Subpass, PersistentBuffer, RenderGraphObjectPool, CullingFlags, ManagedResource, ManagedBuffer, BlitType } from './render-graph';
 import { ComputePassBuilder, ComputeQueueBuilder, BasicPipeline, RenderQueueBuilder, RenderSubpassBuilder, PipelineType, BasicRenderPassBuilder, PipelineCapabilities, BasicMultisampleRenderPassBuilder, Setter, SceneBuilder } from './pipeline';
 import { PipelineSceneData } from '../pipeline-scene-data';
-import { Model, Camera, PCFType, ProbeType, DirectionalLight, PointLight, RangedDirectionalLight, SphereLight, SpotLight } from '../../render-scene/scene';
-import { Light, LightType } from '../../render-scene/scene/light';
+import { Model, Camera, PCFType, ProbeType, DirectionalLight, PointLight, RangedDirectionalLight, SphereLight, SpotLight, Light, LightType } from '../../render-scene/scene';
 import { DescriptorSetData, LayoutGraphData } from './layout-graph';
 import { Executor } from './executor';
 import { RenderWindow } from '../../render-scene/core/render-window';

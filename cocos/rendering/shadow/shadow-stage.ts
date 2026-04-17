@@ -29,11 +29,11 @@ import { ForwardStagePriority } from '../enum';
 import { RenderShadowMapBatchedQueue } from '../render-shadow-map-batched-queue';
 import { ForwardPipeline } from '../forward/forward-pipeline';
 import { SetIndex } from '../define';
-import { Light, LightType } from '../../render-scene/scene/light';
+import { Light, LightType } from '../../render-scene/scene';
 import { ShadowFlow } from './shadow-flow';
-import { DirectionalLight } from '../../render-scene/scene/directional-light';
-import { CSMLevel } from '../../render-scene/scene/shadows';
-import { Camera } from '../../render-scene/scene/camera';
+import { DirectionalLight } from '../../render-scene/scene';
+import { CSMLevel } from '../../render-scene/scene';
+import { Camera } from '../../render-scene/scene';
 
 const colors: Color[] = [new Color(1, 1, 1, 1)];
 
